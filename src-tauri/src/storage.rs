@@ -306,6 +306,8 @@ pub fn exit_app(app: tauri::AppHandle) {
 
 /// Запуск ffmpeg без мелькающего окна консоли (Windows).
 fn ffmpeg_cmd() -> std::process::Command {
+    // `mut` нужен только на Windows (creation_flags) — на других ОС он не используется.
+    #[allow(unused_mut)]
     let mut cmd = std::process::Command::new(crate::downloader::binary_path("ffmpeg"));
     #[cfg(target_os = "windows")]
     {
