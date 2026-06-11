@@ -1,0 +1,8 @@
+# Единые переводы строк в репозитории (LF), нативные в рабочей копии.
+* text=auto eol=lf
+
+# Бинарные файлы — не трогать.
+*.png binary
+*.ico binary
+*.bmp binary
+*.icns binary

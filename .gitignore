@@ -1,0 +1,20 @@
+# Зависимости
+node_modules/
+dist/
+dist-ssr/
+
+# Tauri / Rust
+src-tauri/target/
+src-tauri/gen/
+
+# Бинарники sidecar (скачиваются скриптом fetch-binaries — НЕ коммитим)
+src-tauri/binaries/
+
+# Логи и системное
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# (иконки src-tauri/icons и src-tauri/installer КОММИТЯТСЯ — нужны для сборки)

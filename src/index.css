@@ -1,0 +1,344 @@
+@import "tailwindcss";
+
+/*
+  Tailwind v4: связываем утилиты (bg-accent, text-ink, rounded-ui …) с
+  CSS-переменными тем. `inline` заставляет утилиты ссылаться на var() напрямую,
+  поэтому смена data-theme на <html> мгновенно перекрашивает весь интерфейс.
+*/
+@theme inline {
+  --color-snow: var(--c-snow);
+  --color-paper: var(--c-paper);
+  --color-ink: var(--c-ink);
+  --color-fog: var(--c-fog);
+  --color-smoke: var(--c-smoke);
+  --color-accent: var(--c-accent);
+  --color-accent-light: var(--c-accent-light);
+
+  --radius-ui: 10px;
+
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* ── 5 цветовых тем (логика и значения из прототипа index.html) ───────────── */
+
+/* 1. Sunset Lavender */
+[data-theme="lavender"] {
+  --c-snow: #f4f2f9;
+  --c-paper: #e5def0;
+  --c-ink: #7d4c35;
+  --c-accent: #de8255;
+  --c-accent-light: #e8968a;
+  --c-fog: #cfc2e2;
+  --c-smoke: #947a82;
+}
+
+/* 2. Velvet Midnight */
+[data-theme="midnight"] {
+  --c-snow: #fdf1f2;
+  --c-paper: #fae0e2;
+  --c-ink: #200d20;
+  --c-accent: #ae445d;
+  --c-accent-light: #ec6d7a;
+  --c-fog: #f2c0c5;
+  --c-smoke: #6e4664;
+}
+
+/* 3. Matcha Oasis */
+[data-theme="matcha"] {
+  --c-snow: #f6f3eb;
+  --c-paper: #ebdcb9;
+  --c-ink: #2b4f4f;
+  --c-accent: #458282;
+  --c-accent-light: #8cc3a4;
+  --c-fog: #d2c19a;
+  --c-smoke: #58706b;
+}
+
+/* 4. Warm Ember (тёмная, тёплая/угольная) */
+[data-theme="ember"] {
+  --c-snow: #211712;
+  --c-paper: #2c1e17;
+  --c-ink: #ecd9d0;
+  --c-accent: #bb6044;
+  --c-accent-light: #cc9281;
+  --c-fog: #433025;
+  --c-smoke: #a08a7e;
+}
+
+/* 5. Midnight Indigo (тёмная, сине-фиолетовая) */
+[data-theme="indigo"] {
+  --c-snow: #191826;
+  --c-paper: #232137;
+  --c-ink: #dbe1f2;
+  --c-accent: #5672af;
+  --c-accent-light: #959fc1;
+  --c-fog: #343150;
+  --c-smoke: #8b91ad;
+}
+
+/* 6. Deep Forest (тёмная, зелёная) */
+[data-theme="forest"] {
+  --c-snow: #141a13;
+  --c-paper: #1d251b;
+  --c-ink: #d8e2d4;
+  --c-accent: #2a5747;
+  --c-accent-light: #758d83;
+  --c-fog: #2b3621;
+  --c-smoke: #8a9582;
+}
+
+/* 7. Clean Mono (нейтральная светлая) */
+[data-theme="mono"] {
+  --c-snow: #fbfbfb;
+  --c-paper: #f2f2f2;
+  --c-ink: #000000;
+  --c-accent: #1a1a1a;
+  --c-accent-light: #707070;
+  --c-fog: #dddddd;
+  --c-smoke: #6b6b6b;
+}
+
+/* 8. Graphite (нейтральная тёмная) */
+[data-theme="graphite"] {
+  --c-snow: #34332f;
+  --c-paper: #3d3d3a;
+  --c-ink: #faf9f5;
+  --c-accent: #6a6a62;
+  --c-accent-light: #8c8b81;
+  --c-fog: #4b4a45;
+  --c-smoke: #a3a299;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background-color: var(--c-snow);
+  color: var(--c-ink);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* Плавные переходы цветов/трансформаций (как в прототипе) */
+* {
+  transition: background-color 0.2s ease, border-color 0.2s ease,
+    color 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+}
+
+/* Тонкий скроллбар в тон темы */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--c-fog);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Запрещаем выделение текста в навигации/перетаскиваемых элементах по месту */
+.no-select {
+  user-select: none;
+}
+
+/* Бегунок слайдеров (прогресс/громкость) в стиле темы */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 14px;
+  width: 14px;
+  margin-top: -4px;
+  border-radius: 9999px;
+  background: var(--c-snow);
+  border: 2px solid var(--c-ink);
+  cursor: pointer;
+}
+
+/* ── Анимации и эффекты ────────────────────────────────────────────────────── */
+
+/* Плавное появление экранов */
+@keyframes mestia-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.mestia-fade-in {
+  animation: mestia-fade-in 0.35s ease both;
+}
+
+/* Стрелка-кнопка в строке ввода: статична, едет вправо только при наведении */
+.mestia-go svg {
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.mestia-go:hover svg {
+  transform: translateX(5px);
+}
+
+/* Лёгкий подъём карточек при наведении */
+.mestia-lift {
+  transition: transform 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+}
+.mestia-lift:hover {
+  transform: translateY(-3px);
+}
+
+/* Анимация загрузки в логотипе (стрелка «падает» в лоток) */
+@keyframes mestia-logo-dl {
+  0% {
+    transform: translateY(-4px);
+    opacity: 0;
+  }
+  35% {
+    opacity: 1;
+  }
+  75% {
+    transform: translateY(3px);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(3px);
+    opacity: 0;
+  }
+}
+/* Стрелка в логотипе оживает только при наведении на логотип */
+.mestia-logo:hover .mestia-logo-arrow {
+  animation: mestia-logo-dl 2s ease-in-out infinite;
+}
+
+/* Экран запуска */
+.mestia-splash-badge {
+  animation: mestia-pop-in 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.mestia-splash-arrow {
+  animation: mestia-logo-dl 1.3s ease-in-out infinite;
+}
+.mestia-splash-word {
+  animation: mestia-fade-in 0.6s ease 0.2s both;
+}
+.mestia-splash-fill {
+  animation: mestia-splash-load 1.3s ease-in-out infinite;
+}
+@keyframes mestia-pop-in {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@keyframes mestia-splash-load {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(360%);
+  }
+}
+
+/* Пульсация обложки аудио-плеера во время воспроизведения */
+.mestia-pulse {
+  animation: mestia-pulse 1.6s ease-in-out infinite;
+}
+@keyframes mestia-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 var(--c-accent);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+/* Анимация иконок навигации — только при наведении на пункт */
+.mestia-nav:hover .mestia-ico-dl {
+  animation: mestia-bob 0.9s ease-in-out infinite;
+}
+@keyframes mestia-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(3px);
+  }
+}
+
+.mestia-nav:hover .mestia-ico-folder {
+  animation: mestia-pop 0.9s ease-in-out infinite;
+}
+@keyframes mestia-pop {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.16);
+  }
+}
+
+.mestia-nav:hover .mestia-ico-history {
+  animation: mestia-rewind 1.3s linear infinite;
+}
+@keyframes mestia-rewind {
+  from {
+    transform: rotate(0);
+  }
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+.mestia-nav:hover .mestia-ico-gear {
+  animation: mestia-gear 2.4s linear infinite;
+}
+
+.mestia-nav:hover .mestia-ico-folderplus {
+  animation: mestia-pop 0.9s ease-in-out infinite;
+}
+.mestia-nav:hover .mestia-ico-open {
+  animation: mestia-bob 0.9s ease-in-out infinite;
+}
+@keyframes mestia-gear {
+  from {
+    transform: rotate(0);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Мигающий курсор печатающегося плейсхолдера */
+.mestia-caret {
+  margin-left: 1px;
+  color: var(--c-accent);
+  font-weight: 400;
+  animation: mestia-blink 1s steps(1, end) infinite;
+}
+@keyframes mestia-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}

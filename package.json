@@ -1,0 +1,36 @@
+{
+  "name": "mestia",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Mestia — кроссплатформенный загрузчик видео и медиатека (Tauri v2 + React)",
+  "author": "sesitskii",
+  "license": "MIT",
+  "scripts": {
+    "predev": "node scripts/free-port.mjs 1420",
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "fetch-binaries": "node scripts/fetch-binaries.mjs"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.1.1",
+    "@tauri-apps/plugin-dialog": "^2.2.0",
+    "@tauri-apps/plugin-notification": "^2.3.3",
+    "@tauri-apps/plugin-sql": "^2.2.0",
+    "lucide-react": "^0.456.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@tauri-apps/cli": "^2.1.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.3"
+  }
+}
