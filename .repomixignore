@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+
+# VCS / editors
+.git/
+.idea/
+.vscode/
+
+# Frontend build output
+dist/
+build/
+out/
+
+# Rust / Tauri build output
+src-tauri/target/
+src-tauri/gen/
+
+# Bundled sidecar binaries (fetched, large)
+src-tauri/binaries/
+
+# Lockfiles (large, low signal)
+package-lock.json
+src-tauri/Cargo.lock
+
+# Repomix output
+repomix-output.xml
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+
+# Binary / media assets
+*.png
+*.ico
+*.bmp
+*.icns
+*.exe
+*.dll
+*.so
+*.dylib
+*.db
+*.sqlite
+
+# OS junk
+.DS_Store
+Thumbs.db

@@ -5,6 +5,7 @@ import { LogOut, PictureInPicture2, X } from "lucide-react";
 import Sidebar from "./components/Sidebar";
 import Settings from "./components/Settings";
 import Splash from "./components/Splash";
+import UpdateModal from "./components/UpdateModal";
 import DownloadsPanel from "./components/DownloadsPanel";
 import Downloader from "./views/Downloader";
 import Locker from "./views/Locker";
@@ -141,6 +142,9 @@ export default function App() {
       )}
 
       {booting && <Splash fading={splashFading} />}
+
+      {/* Проверка обновлений при запуске (только главное окно) */}
+      {!booting && <UpdateModal />}
     </div>
   );
 }

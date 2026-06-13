@@ -30,9 +30,18 @@
       }
     }
   },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/kweharmony/Mestia/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEExNjNGQUI5MTk0NUYwMTEKUldRUjhFVVp1ZnBqb1NqajRrZzlOanU1K3pkSXIxdWJ2Tm0yakVQVHJGTzJLUldnSHFkYTFXVnIK"
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "publisher": "Mestia",
     "copyright": "© Mestia",
     "category": "Utility",

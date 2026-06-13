@@ -1,0 +1,44 @@
+# Cursor Rules — Mestia
+
+Cross-platform desktop video downloader & media library.
+
+## Stack
+- Backend: Rust + Tauri v2 (`src-tauri/`)
+- Frontend: React 18 + TypeScript + Vite 6 (`src/`)
+- Styling: Tailwind CSS v4
+- DB: SQLite via tauri-plugin-sql (`src-tauri/migrations/`)
+- Sidecars: yt-dlp + ffmpeg/ffprobe (`src-tauri/binaries/`)
+- Package manager: npm
+
+## Commands
+- Install: `npm install`
+- Fetch binaries: `npm run fetch-binaries`
+- Dev: `npm run tauri dev` (frontend only: `npm run dev`)
+- Build + typecheck: `npm run build` (`tsc --noEmit && vite build`)
+- Build installers: `npm run tauri build`
+- No tests/linter configured; typecheck via `tsc --noEmit`.
+
+## Architecture
+- `src/context/` — ThemeContext, DownloadsContext (queue/events), DragContext
+- `src/components/` — Sidebar, Settings, DownloadsPanel, Splash, Toast, etc.
+- `src/lib/` — ipc.ts (bridge to Rust), db.ts (SQLite)
+- `src/views/` — Downloader, Locker (library), History, Player, MiniPlayer
+- `src-tauri/src/` — lib.rs (plugins/tray/commands), downloader.rs (yt-dlp), storage.rs (files/watcher/thumbnails)
+- Frontend ↔ Rust via `src/lib/ipc.ts`.
+
+## Token-saving rules
+- Do NOT rewrite whole files. Edit only relevant lines; use `// ... existing code ...` markers.
+- Be terse: no preamble, no flattery, answer directly.
+- Read only the needed section of a file, not the whole file.
+- Match surrounding code style (naming, comments, idioms).
+- No unsolicited refactors — change only what was asked.
+- Code comments and UI strings are in Russian (match existing codebase).
+- Keep `package.json` and `src-tauri/tauri.conf.json` versions in sync.
+
+## Keep docs current
+Update these docs in the SAME change that makes them wrong:
+- New/removed/renamed folder or key module → update architecture map in `CLAUDE.md`, `.cursorrules`, `.context/index.md`.
+- Changed `package.json` scripts → update Commands in `CLAUDE.md` and `.cursorrules`.
+- Changed stack (new defining dependency: test runner, linter, state lib…) → update Stack in all three.
+- Changed a core flow (download/library/auto-update) → update `.context/index.md`.
+No structure/command/stack/flow change ⇒ no doc edit. Edit only wrong lines, don't rewrite.
