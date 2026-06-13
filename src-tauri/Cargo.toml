@@ -1,6 +1,6 @@
 [package]
 name = "mestia"
-version = "0.1.0"
+version = "0.1.1"
 description = "Mestia — загрузчик видео и медиатека"
 authors = ["del"]
 edition = "2021"

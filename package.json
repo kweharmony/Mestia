@@ -1,7 +1,7 @@
 {
   "name": "mestia",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Mestia — кроссплатформенный загрузчик видео и медиатека (Tauri v2 + React)",
   "author": "sesitskii",
