@@ -17,6 +17,11 @@ flatpak/flatpak-build/
 .flatpak-builder/
 *.flatpak
 
+# Ключи подписи апдейтера (приватный ключ — НИКОГДА не коммитим)
+*.key
+*.key.pub
+mestia.key
+
 # Логи и системное
 *.log
 .DS_Store
