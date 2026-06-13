@@ -34,8 +34,6 @@ modules:
         path: mestia.deb
       - type: file
         path: com.mestia.app.desktop
-      - type: file
-        path: com.mestia.app.metainfo.xml
     build-commands:
       - ar x *.deb
       - tar xf data.tar.*
@@ -45,6 +43,8 @@ modules:
       # Имя главного бинаря зависит от productName — приводим к фиксированному.
       - if [ -f /app/bin/Mestia ]; then mv /app/bin/Mestia /app/bin/mestia; fi
       - install -Dm644 com.mestia.app.desktop /app/share/applications/com.mestia.app.desktop
-      - install -Dm644 com.mestia.app.metainfo.xml /app/share/metainfo/com.mestia.app.metainfo.xml
+      # metainfo.xml намеренно НЕ ставим: старый flatpak-builder зовёт appstream-compose,
+      # которого нет в свежем GNOME SDK. Для бокового .flatpak он не нужен; вернуть при
+      # публикации на Flathub (с современным flatpak-builder).
       # Иконки из .deb (Mestia.png) переименовываем в app-id, как требует Flatpak.
       - for s in 32x32 128x128 128x128@2x; do src="usr/share/icons/hicolor/$s/apps/Mestia.png"; [ -f "$src" ] && install -Dm644 "$src" "/app/share/icons/hicolor/$s/apps/com.mestia.app.png" || true; done
