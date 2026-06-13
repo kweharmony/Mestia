@@ -1,5 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { MotionConfig } from "framer-motion";
 import App from "./App";
 import "./index.css";
 import { ThemeProvider } from "./context/ThemeContext";
@@ -13,18 +14,21 @@ const miniId = new URLSearchParams(window.location.search).get("mini");
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <ThemeProvider>
-      {miniId ? (
-        <MiniPlayer id={Number(miniId)} />
-      ) : (
-        <ToastProvider>
-          <DownloadsProvider>
-            <DragProvider>
-              <App />
-            </DragProvider>
-          </DownloadsProvider>
-        </ToastProvider>
-      )}
-    </ThemeProvider>
+    {/* reducedMotion="user" — все motion-анимации уважают системную настройку */}
+    <MotionConfig reducedMotion="user">
+      <ThemeProvider>
+        {miniId ? (
+          <MiniPlayer id={Number(miniId)} />
+        ) : (
+          <ToastProvider>
+            <DownloadsProvider>
+              <DragProvider>
+                <App />
+              </DragProvider>
+            </DownloadsProvider>
+          </ToastProvider>
+        )}
+      </ThemeProvider>
+    </MotionConfig>
   </React.StrictMode>
 );

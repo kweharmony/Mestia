@@ -6,6 +6,7 @@ Cross-platform desktop video downloader & media library.
 - Backend: Rust + Tauri v2 (`src-tauri/`)
 - Frontend: React 18 + TypeScript + Vite 6 (`src/`)
 - Styling: Tailwind CSS v4
+- Animation: framer-motion (global `<MotionConfig reducedMotion="user">`; motion-animated elements use `.mestia-anim` to avoid clashing with the global CSS transform/opacity transition)
 - DB: SQLite via tauri-plugin-sql (`src-tauri/migrations/`)
 - Sidecars: yt-dlp + ffmpeg/ffprobe (`src-tauri/binaries/`)
 - Package manager: npm
@@ -24,6 +25,8 @@ Cross-platform desktop video downloader & media library.
 - `src/lib/` — ipc.ts (bridge to Rust), db.ts (SQLite)
 - `src/views/` — Downloader, Locker (library), History, Player, MiniPlayer
 - `src-tauri/src/` — lib.rs (plugins/tray/commands), downloader.rs (yt-dlp), storage.rs (files/watcher/thumbnails)
+- `flatpak/` — Flatpak packaging for Steam Deck/SteamOS (manifest + desktop/metainfo); wraps the built .deb in the GNOME runtime, built in CI.
+- `docs/` — GitHub Pages landing site (self-contained index.html, all 8 themes + download links); static, not part of the app build.
 - Frontend ↔ Rust via `src/lib/ipc.ts`.
 
 ## Token-saving rules

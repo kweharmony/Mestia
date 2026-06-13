@@ -304,6 +304,85 @@ pub fn exit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+/// Удаление приложения. Стирает данные (БД/настройки/кэш превью), при
+/// `delete_content == true` — ещё и папку загрузок со скачанным контентом,
+/// затем запускает штатную деинсталляцию под текущую ОС. После возврата
+/// фронтенд закрывает приложение.
+#[tauri::command]
+pub fn uninstall_app(app: tauri::AppHandle, delete_content: bool) -> Result<(), String> {
+    // 1. Скачанный контент (папка загрузок) — только по согласию пользователя.
+    if delete_content {
+        if let Ok(root) = storage_root(&app) {
+            let _ = std::fs::remove_dir_all(&root);
+        }
+    }
+
+    // 2. Данные приложения: БД, настройки, кэш превью.
+    for dir in [
+        app.path().app_config_dir().ok(),
+        app.path().app_data_dir().ok(),
+        app.path().app_cache_dir().ok(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // 3. Запуск деинсталляции под платформу.
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        // NSIS-деинсталлятор лежит рядом с исполняемым файлом (uninstall.exe).
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        let uninstaller = exe
+            .parent()
+            .ok_or("не найден каталог установки")?
+            .join("uninstall.exe");
+        if !uninstaller.is_file() {
+            return Err("Деинсталлятор не найден (портативный запуск?)".into());
+        }
+        std::process::Command::new(uninstaller)
+            .creation_flags(0x0000_0008) // DETACHED_PROCESS
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        // Самоудаление .app: .../Mestia.app/Contents/MacOS/<bin> → подняться к .app.
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        if let Some(app_bundle) = exe.ancestors().find(|p| p.extension().map_or(false, |e| e == "app")) {
+            let target = app_bundle.to_string_lossy().to_string();
+            // Ждём закрытия приложения, затем удаляем бандл.
+            std::process::Command::new("sh")
+                .arg("-c")
+                .arg(format!("sleep 1; rm -rf \"{}\"", target))
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(flatpak_id) = std::env::var("FLATPAK_ID") {
+            // Внутри песочницы — деинсталляция через портал на хосте.
+            let _ = std::process::Command::new("flatpak-spawn")
+                .args(["--host", "flatpak", "uninstall", "-y", &flatpak_id])
+                .spawn();
+        } else if let Ok(appimage) = std::env::var("APPIMAGE") {
+            // Портативный AppImage — просто удаляем файл после выхода.
+            let _ = std::process::Command::new("sh")
+                .arg("-c")
+                .arg(format!("sleep 1; rm -f \"{}\"", appimage))
+                .spawn();
+        }
+        // Для .deb/.rpm штатно удаляется пакетным менеджером — данные уже стёрты.
+    }
+
+    Ok(())
+}
+
 /// Запуск ffmpeg без мелькающего окна консоли (Windows).
 fn ffmpeg_cmd() -> std::process::Command {
     // `mut` нужен только на Windows (creation_flags) — на других ОС он не используется.

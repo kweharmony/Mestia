@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   isPermissionGranted,
   requestPermission,
 } from "@tauri-apps/plugin-notification";
 import {
+  AlertTriangle,
   Bell,
   FolderCog,
   FolderOpen,
@@ -12,14 +14,17 @@ import {
   Loader2,
   Palette,
   RefreshCw,
+  Trash2,
   X,
 } from "lucide-react";
 import {
+  exitApp,
   getSetting,
   getStorageRoot,
   openFolder,
   setSetting,
   setStorageRoot,
+  uninstallApp,
   updateYtdlp,
 } from "../lib/ipc";
 import ThemeSwitcher from "./ThemeSwitcher";
@@ -39,6 +44,9 @@ export default function Settings({
   const [notifications, setNotifications] = useState(false);
   const [parallel, setParallel] = useState(2);
   const [updating, setUpdating] = useState(false);
+  const [confirmUninstall, setConfirmUninstall] = useState(false);
+  const [deleteContent, setDeleteContent] = useState(false);
+  const [uninstalling, setUninstalling] = useState(false);
 
   useEffect(() => {
     getStorageRoot().then(setPath).catch(() => {});
@@ -91,6 +99,17 @@ export default function Settings({
     await setSetting("maxParallel", String(n)).catch(() => {});
   }
 
+  async function handleUninstall() {
+    setUninstalling(true);
+    try {
+      await uninstallApp(deleteContent);
+      await exitApp();
+    } catch (e) {
+      setUninstalling(false);
+      notify(`Не удалось удалить: ${e}`, "error");
+    }
+  }
+
   async function handleUpdate() {
     setUpdating(true);
     try {
@@ -104,12 +123,20 @@ export default function Settings({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-8 backdrop-blur-sm"
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
+      className="mestia-anim fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-8 backdrop-blur-sm"
       onClick={onClose}
     >
-      <div
-        className="max-h-[88vh] w-full max-w-[520px] space-y-7 overflow-y-auto rounded-ui border-2 border-ink bg-snow p-7"
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 8 }}
+        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+        className="mestia-anim max-h-[88vh] w-full max-w-[520px] space-y-7 overflow-y-auto rounded-ui border-2 border-ink bg-snow p-7"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
@@ -164,17 +191,27 @@ export default function Settings({
             <span className="text-accent">{parallel}</span>
           </div>
           <div className="flex gap-1.5">
-            {[1, 2, 3, 4, 5].map((n) => (
-              <button
-                key={n}
-                onClick={() => changeParallel(n)}
-                className={`flex-1 rounded-ui border-2 py-1.5 text-sm font-semibold transition-all ${
-                  parallel === n ? "border-accent bg-snow text-accent" : "border-fog hover:bg-fog"
-                }`}
-              >
-                {n}
-              </button>
-            ))}
+            {[1, 2, 3, 4, 5].map((n) => {
+              const active = parallel === n;
+              return (
+                <button
+                  key={n}
+                  onClick={() => changeParallel(n)}
+                  className={`relative flex-1 rounded-ui border-2 border-transparent py-1.5 text-sm font-semibold ${
+                    active ? "text-accent" : "hover:bg-fog"
+                  }`}
+                >
+                  {active && (
+                    <motion.span
+                      layoutId="parallelPill"
+                      transition={{ type: "spring", stiffness: 500, damping: 38 }}
+                      className="mestia-anim absolute -inset-[2px] z-0 rounded-ui border-2 border-accent bg-snow"
+                    />
+                  )}
+                  <span className="relative z-10">{n}</span>
+                </button>
+              );
+            })}
           </div>
           <p className="text-xs font-semibold text-smoke">
             Остальные задачи становятся в очередь.
@@ -194,10 +231,10 @@ export default function Settings({
                 notifications ? "border-accent bg-accent" : "border-fog bg-fog"
               }`}
             >
-              <span
-                className={`absolute top-0.5 h-4 w-4 rounded-full bg-snow transition-all ${
-                  notifications ? "left-[22px]" : "left-0.5"
-                }`}
+              <motion.span
+                animate={{ x: notifications ? 20 : 0 }}
+                transition={{ type: "spring", stiffness: 500, damping: 32 }}
+                className="mestia-anim absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-snow"
               />
             </button>
           </div>
@@ -218,11 +255,31 @@ export default function Settings({
               disabled={updating}
               className="flex items-center gap-2 rounded-ui border-2 border-ink px-3 py-1.5 text-xs font-semibold hover:bg-fog disabled:opacity-50"
             >
-              {updating ? (
-                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.25} />
-              ) : (
-                <RefreshCw className="h-4 w-4" strokeWidth={2.25} />
-              )}
+              <AnimatePresence mode="wait" initial={false}>
+                {updating ? (
+                  <motion.span
+                    key="u-spin"
+                    className="mestia-anim"
+                    initial={{ opacity: 0, scale: 0.6 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.6 }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.25} />
+                  </motion.span>
+                ) : (
+                  <motion.span
+                    key="u-ref"
+                    className="mestia-anim"
+                    initial={{ opacity: 0, scale: 0.6 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.6 }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    <RefreshCw className="h-4 w-4" strokeWidth={2.25} />
+                  </motion.span>
+                )}
+              </AnimatePresence>
               Обновить
             </button>
           </div>
@@ -242,7 +299,101 @@ export default function Settings({
             Верхний ряд — светлые, нижний — тёмные.
           </p>
         </section>
-      </div>
-    </div>
+
+        {/* Удаление приложения */}
+        <section className="space-y-3 border-t-2 border-fog pt-6">
+          <div className="flex items-center justify-between text-sm font-semibold">
+            <span className="flex items-center gap-2">
+              <Trash2 className="h-4 w-4 text-rose-500" strokeWidth={2.25} />
+              Удалить приложение
+            </span>
+            <button
+              onClick={() => {
+                setDeleteContent(false);
+                setConfirmUninstall(true);
+              }}
+              className="rounded-ui border-2 border-rose-500 px-3 py-1.5 text-xs font-semibold text-rose-500 hover:bg-rose-500 hover:text-white"
+            >
+              Удалить
+            </button>
+          </div>
+          <p className="text-xs font-semibold text-smoke">
+            Сотрёт данные приложения и запустит деинсталляцию.
+          </p>
+        </section>
+      </motion.div>
+
+      {/* Подтверждение удаления приложения */}
+      <AnimatePresence>
+        {confirmUninstall && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="mestia-anim fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-8 backdrop-blur-sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!uninstalling) setConfirmUninstall(false);
+            }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              className="mestia-anim w-full max-w-[420px] space-y-5 rounded-ui border-2 border-rose-500 bg-snow p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 shrink-0 text-rose-500" strokeWidth={2.25} />
+                <h3 className="text-base font-semibold tracking-tight">Удалить Mestia?</h3>
+              </div>
+              <p className="text-sm font-semibold text-smoke">
+                Будут стёрты данные приложения (история, медиатека, настройки) и
+                запущена деинсталляция. Действие необратимо.
+              </p>
+
+              <label className="flex cursor-pointer items-start gap-2.5 rounded-ui border-2 border-fog bg-paper/40 p-3">
+                <input
+                  type="checkbox"
+                  checked={deleteContent}
+                  onChange={(e) => setDeleteContent(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-rose-500"
+                />
+                <span className="text-sm font-semibold">
+                  Также удалить скачанные файлы
+                  <span className="mt-0.5 block text-xs font-semibold text-smoke">
+                    Папка загрузок со всем видео/аудио. Иначе файлы останутся на диске.
+                  </span>
+                </span>
+              </label>
+
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setConfirmUninstall(false)}
+                  disabled={uninstalling}
+                  className="rounded-ui border-2 border-fog px-4 py-2 text-sm font-semibold hover:bg-fog disabled:opacity-50"
+                >
+                  Отмена
+                </button>
+                <button
+                  onClick={handleUninstall}
+                  disabled={uninstalling}
+                  className="flex items-center gap-2 rounded-ui border-2 border-rose-600 bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                >
+                  {uninstalling ? (
+                    <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.25} />
+                  ) : (
+                    <Trash2 className="h-4 w-4" strokeWidth={2.25} />
+                  )}
+                  Удалить приложение
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
 }

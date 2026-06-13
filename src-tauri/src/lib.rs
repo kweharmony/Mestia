@@ -17,6 +17,16 @@ fn show_main(app: &tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // На Linux (особенно Steam Deck / AMD GPU) WebKitGTK с DMABUF-рендерером
+    // часто отдаёт пустое белое окно без интерфейса. Отключаем его до создания
+    // webview, если пользователь не переопределил переменную сам.
+    #[cfg(target_os = "linux")]
+    {
+        if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        }
+    }
+
     // Миграции БД выполняются плагином SQL при первом подключении к sqlite:mestia.db.
     let migrations = vec![
         Migration {
@@ -95,6 +105,7 @@ pub fn run() {
             downloader::cancel_download,
             downloader::update_ytdlp,
             storage::exit_app,
+            storage::uninstall_app,
             storage::generate_thumbnail,
             storage::watch_library,
             storage::existing_paths,

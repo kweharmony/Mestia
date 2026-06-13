@@ -13,6 +13,10 @@ and themes.
 - **Backend:** Rust + Tauri v2 (`src-tauri/`)
 - **Frontend:** React 18 + TypeScript + Vite 6 (`src/`)
 - **Styling:** Tailwind CSS v4 (`@tailwindcss/vite`)
+- **Animation:** `framer-motion` (layout/exit transitions, sliding tab pills); global
+  `<MotionConfig reducedMotion="user">` honors OS reduced-motion. Motion-animated
+  elements carry the `.mestia-anim` class so the global CSS `transform`/`opacity`
+  transition doesn't fight framer's per-frame writes.
 - **Database:** SQLite via `tauri-plugin-sql` (migrations in `src-tauri/migrations/`)
 - **Sidecars:** `yt-dlp` + `ffmpeg`/`ffprobe` (bundled per-OS into `src-tauri/binaries/`)
 - **Package manager:** npm
@@ -37,6 +41,12 @@ Notes:
 ## Architecture
 
 ```
+flatpak/            Flatpak packaging for Steam Deck/SteamOS: manifest (com.mestia.app.yml),
+                    .desktop and metainfo.xml. Wraps the built .deb in the GNOME runtime
+                    (bundles WebKitGTK). Built in CI (release.yml) on the Linux leg.
+docs/               GitHub Pages landing site (self-contained index.html: all 8 app
+                    themes + theme switcher, app blurb, download links). Static, not
+                    part of the app build.
 scripts/            Node scripts: fetch-binaries.mjs, free-port.mjs
 src/                Frontend (React + TS)
   context/          React contexts: ThemeContext, DownloadsContext (queue/events), DragContext

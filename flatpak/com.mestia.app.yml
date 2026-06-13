@@ -1,0 +1,50 @@
+# Flatpak-манифест для Steam Deck / Linux.
+# Берёт готовый .deb (собранный `tauri build`) и заворачивает его в Flatpak с
+# рантаймом GNOME, который содержит WebKitGTK — поэтому не нужен системный
+# libwebkit2gtk (его нет на SteamOS из коробки).
+#
+# Локальная сборка:
+#   cp src-tauri/target/release/bundle/deb/*.deb flatpak/mestia.deb
+#   flatpak-builder --user --install-deps-from=flathub --force-clean \
+#     --repo=repo flatpak-build flatpak/com.mestia.app.yml
+#   flatpak build-bundle repo Mestia.flatpak com.mestia.app
+
+id: com.mestia.app
+runtime: org.gnome.Platform
+runtime-version: "47"
+sdk: org.gnome.Sdk
+command: mestia
+
+finish-args:
+  - --share=ipc
+  - --share=network              # yt-dlp / проверка обновлений
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri                 # аппаратный рендер (важно для AMD GPU Деки)
+  - --socket=pulseaudio          # звук в плеере
+  - --filesystem=home            # папка загрузок / медиатека (по умолчанию в ~)
+  - --filesystem=/run/media      # microSD / внешние диски (Steam Deck монтирует сюда)
+  - --talk-name=org.freedesktop.Notifications
+
+modules:
+  - name: mestia
+    buildsystem: simple
+    sources:
+      - type: file
+        path: mestia.deb
+      - type: file
+        path: com.mestia.app.desktop
+      - type: file
+        path: com.mestia.app.metainfo.xml
+    build-commands:
+      - ar x *.deb
+      - tar xf data.tar.*
+      - mkdir -p /app/bin
+      # Главный бинарь + sidecar'ы (yt-dlp/ffmpeg/ffprobe) лежат в usr/bin.
+      - cp -a usr/bin/. /app/bin/
+      # Имя главного бинаря зависит от productName — приводим к фиксированному.
+      - if [ -f /app/bin/Mestia ]; then mv /app/bin/Mestia /app/bin/mestia; fi
+      - install -Dm644 com.mestia.app.desktop /app/share/applications/com.mestia.app.desktop
+      - install -Dm644 com.mestia.app.metainfo.xml /app/share/metainfo/com.mestia.app.metainfo.xml
+      # Иконки из .deb (Mestia.png) переименовываем в app-id, как требует Flatpak.
+      - for s in 32x32 128x128 128x128@2x; do src="usr/share/icons/hicolor/$s/apps/Mestia.png"; [ -f "$src" ] && install -Dm644 "$src" "/app/share/icons/hicolor/$s/apps/com.mestia.app.png" || true; done

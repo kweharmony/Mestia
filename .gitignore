@@ -10,6 +10,13 @@ src-tauri/gen/
 # Бинарники sidecar (скачиваются скриптом fetch-binaries — НЕ коммитим)
 src-tauri/binaries/
 
+# Flatpak (артефакты сборки; манифест и desktop/metainfo — коммитятся)
+flatpak/mestia.deb
+flatpak/repo/
+flatpak/flatpak-build/
+.flatpak-builder/
+*.flatpak
+
 # Логи и системное
 *.log
 .DS_Store

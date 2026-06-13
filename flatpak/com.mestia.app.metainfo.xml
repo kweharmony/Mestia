@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.mestia.app</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Mestia</name>
+  <summary>Загрузчик видео и медиатека</summary>
+  <description>
+    <p>
+      Mestia — кроссплатформенный загрузчик видео/аудио с медиатекой и
+      встроенным плеером. Оболочка вокруг yt-dlp с поддержкой 1800+ площадок,
+      плейлистов, фоновых загрузок и тем оформления.
+    </p>
+  </description>
+  <launchable type="desktop-id">com.mestia.app.desktop</launchable>
+  <categories>
+    <category>Utility</category>
+    <category>AudioVideo</category>
+  </categories>
+  <releases>
+    <release version="0.1.0" date="2026-06-13"/>
+  </releases>
+  <content_rating type="oars-1.1"/>
+</component>

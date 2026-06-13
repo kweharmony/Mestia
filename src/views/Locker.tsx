@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { AnimatePresence, motion } from "framer-motion";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   ChevronRight,
+  Download,
   Folder,
   FolderOpen,
   FolderPlus,
@@ -27,6 +29,7 @@ import {
   listFolders,
   listVideos,
   moveVideoToFolder,
+  pruneOutsideRoot,
   renameFolderRows,
   renameVideo,
   searchVideos,
@@ -118,6 +121,14 @@ export default function Locker({
 
   // ── Фоновая генерация обложек для видео без превью ───────────────────────────
   const thumbAttempts = useRef<Set<number>>(new Set());
+  // id видео, для которых сейчас генерится кадр — показываем скелетон.
+  const [generatingIds, setGeneratingIds] = useState<Set<number>>(new Set());
+  const markGen = (id: number, on: boolean) =>
+    setGeneratingIds((s) => {
+      const n = new Set(s);
+      on ? n.add(id) : n.delete(id);
+      return n;
+    });
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -127,6 +138,7 @@ export default function Locker({
           continue;
         }
         thumbAttempts.current.add(v.id);
+        markGen(v.id, true);
         try {
           const thumb = await generateThumbnail(v.file_path);
           if (cancelled) break;
@@ -136,6 +148,8 @@ export default function Locker({
           );
         } catch {
           /* нет кадра — оставляем заглушку */
+        } finally {
+          markGen(v.id, false);
         }
       }
     })();
@@ -199,6 +213,10 @@ export default function Locker({
   }
 
   async function reload() {
+    // Сначала вычищаем записи от прежнего корня хранилища (если корень известен),
+    // чтобы папки из ранее выбранной основной папки не «всплывали».
+    if (storageRoot) await pruneOutsideRoot(storageRoot).catch(() => {});
+
     // Подхватываем вручную добавленные на диск подпапки и медиафайлы текущей папки.
     const dir = current?.path ?? storageRoot;
     if (dir) {
@@ -590,8 +608,15 @@ export default function Locker({
         </div>
 
         {/* Панель выбора */}
+        <AnimatePresence>
         {selectionMode && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-ui border-2 border-accent bg-accent/10 px-4 py-2.5">
+          <motion.div
+            initial={{ opacity: 0, y: -10, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: "auto" }}
+            exit={{ opacity: 0, y: -10, height: 0 }}
+            transition={{ duration: 0.2 }}
+            className="mestia-anim flex flex-wrap items-center justify-between gap-3 overflow-hidden rounded-ui border-2 border-accent bg-accent/10 px-4 py-2.5"
+          >
             <span className="text-sm font-semibold">Выбрано: {selected.size}</span>
             <div className="flex items-center gap-2 text-sm font-semibold">
               <span className="hidden text-smoke md:inline">перетащите на папку для переноса</span>
@@ -615,23 +640,24 @@ export default function Locker({
                 Снять
               </button>
             </div>
-          </div>
+          </motion.div>
         )}
+        </AnimatePresence>
 
         {/* Контент — с выделением рамкой */}
         <div ref={gridRef} onMouseDown={onGridMouseDown} className="relative min-h-[300px]">
         {searchActive ? (
           results.length === 0 ? (
-            <div className="py-16 text-center text-sm font-semibold text-smoke">
-              Ничего не найдено по запросу «{query}».
-            </div>
+            <EmptyState icon={Search} text={`Ничего не найдено по запросу «${query}».`} />
           ) : (
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3">
+              <AnimatePresence mode="popLayout">
               {results.map((v) => (
                 <VideoCard
                   key={`s-${v.id}`}
                   video={v}
                   leaving={leavingIds.has(v.id)}
+                  generating={generatingIds.has(v.id)}
                   selected={selected.has(v.id)}
                   selectionMode={selectionMode}
                   onToggleSelect={() => toggleSelect(v.id)}
@@ -649,14 +675,18 @@ export default function Locker({
                   onDragEnd={endDrag}
                 />
               ))}
+              </AnimatePresence>
             </div>
           )
         ) : folders.length === 0 && videos.length === 0 ? (
-          <div className="py-16 text-center text-sm font-semibold text-smoke">
-            {trail.length ? "В этой папке пусто." : "Пусто. Скачайте видео во вкладке «Загрузчик»."}
-          </div>
+          trail.length ? (
+            <EmptyState icon={FolderOpen} text="В этой папке пусто." />
+          ) : (
+            <EmptyState icon={Download} text="Пусто. Скачайте видео во вкладке «Загрузчик»." />
+          )
         ) : (
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3">
+            <AnimatePresence mode="popLayout">
             {folders.map((folder) => (
               <FolderCardView
                 key={`f-${folder.id}`}
@@ -686,6 +716,7 @@ export default function Locker({
                 key={`v-${video.id}`}
                 video={video}
                 leaving={leavingIds.has(video.id)}
+                generating={generatingIds.has(video.id)}
                 selected={selected.has(video.id)}
                 selectionMode={selectionMode}
                 onToggleSelect={() => toggleSelect(video.id)}
@@ -707,6 +738,7 @@ export default function Locker({
                 onDragEnd={endDrag}
               />
             ))}
+            </AnimatePresence>
           </div>
         )}
         </div>
@@ -728,13 +760,22 @@ export default function Locker({
       </div>
 
       {/* Подтверждение удаления */}
+      <AnimatePresence>
       {confirm && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-8 backdrop-blur-sm"
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+          className="mestia-anim fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-8 backdrop-blur-sm"
           onClick={() => setConfirm(null)}
         >
-          <div
-            className="w-full max-w-[380px] space-y-5 rounded-ui border-2 border-ink bg-snow p-6"
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 8 }}
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            className="mestia-anim w-full max-w-[380px] space-y-5 rounded-ui border-2 border-ink bg-snow p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <p className="text-sm font-semibold leading-snug">{confirm.text}</p>
@@ -761,9 +802,10 @@ export default function Locker({
                 Удалить
               </button>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -786,16 +828,20 @@ function FolderCardView(props: {
 }) {
   const { folder, hover, renaming } = props;
   return (
-    <div
+    <motion.div
+      layout
+      initial={{ opacity: 0, scale: 0.92 }}
+      animate={{ opacity: 1, scale: hover ? 1.03 : 1 }}
+      exit={{ opacity: 0, scale: 0.85 }}
+      whileHover={{ y: -2 }}
+      transition={{ type: "spring", stiffness: 400, damping: 30 }}
       data-card
       onClick={() => !renaming && props.onEnter()}
       onDragOver={props.onDragOver}
       onDragLeave={props.onDragLeave}
       onDrop={props.onDrop}
-      className={`group relative flex cursor-pointer items-center justify-between rounded-ui border-2 bg-paper p-4 no-select ${
-        hover
-          ? "scale-[1.03] border-accent bg-snow"
-          : "border-fog hover:-translate-y-0.5 hover:border-accent hover:bg-snow"
+      className={`mestia-anim group relative flex cursor-pointer items-center justify-between rounded-ui border-2 bg-paper p-4 no-select ${
+        hover ? "border-accent bg-snow" : "border-fog hover:border-accent hover:bg-snow"
       }`}
     >
       <div className="flex min-w-0 items-center gap-4">
@@ -822,7 +868,7 @@ function FolderCardView(props: {
           />
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }
 
@@ -830,6 +876,7 @@ function FolderCardView(props: {
 function VideoCard(props: {
   video: VideoRow;
   leaving: boolean;
+  generating: boolean;
   selected: boolean;
   selectionMode: boolean;
   onToggleSelect: () => void;
@@ -846,7 +893,7 @@ function VideoCard(props: {
   onDragStart: (e: React.DragEvent) => void;
   onDragEnd: () => void;
 }) {
-  const { video, leaving, renaming, selected, selectionMode } = props;
+  const { video, leaving, generating, renaming, selected, selectionMode } = props;
   const audio = isAudioPath(video.file_path);
 
   // Клик: Ctrl/Cmd или режим выбора → переключить выделение; иначе — воспроизвести.
@@ -857,17 +904,23 @@ function VideoCard(props: {
   };
 
   return (
-    <div
+    <motion.div
+      layout
+      initial={{ opacity: 0, scale: 0.92 }}
+      animate={leaving ? { opacity: 0, scale: 0.5 } : { opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.85 }}
+      whileHover={leaving ? undefined : { y: -4 }}
+      transition={{ type: "spring", stiffness: 400, damping: 30 }}
       data-card
       data-video-id={video.id}
       draggable={props.draggable && !renaming}
-      onDragStart={props.onDragStart}
-      onDragEnd={props.onDragEnd}
-      style={leaving ? { opacity: 0, transform: "scale(0.5)" } : undefined}
-      className={`group relative rounded-ui border-2 p-2.5 transition-all duration-300 ${
+      // нативный HTML5 DnD: типы расходятся с жестами motion, поэтому cast
+      onDragStart={props.onDragStart as any}
+      onDragEnd={props.onDragEnd as any}
+      className={`mestia-anim group relative rounded-ui border-2 p-2.5 ${
         selected
           ? "border-accent bg-accent/5"
-          : "border-transparent hover:-translate-y-1 hover:border-fog hover:bg-paper/40"
+          : "border-transparent hover:border-fog hover:bg-paper/40"
       }`}
     >
       {/* Чекбокс выбора */}
@@ -912,6 +965,9 @@ function VideoCard(props: {
             className="h-full w-full object-cover"
           />
         ) : null}
+        {!video.thumbnail_path && !audio && generating && (
+          <span className="mestia-skeleton absolute inset-0" />
+        )}
         {audio ? (
           <Music className="absolute h-8 w-8 text-accent opacity-70 group-hover:opacity-100" strokeWidth={2.25} />
         ) : (
@@ -939,7 +995,24 @@ function VideoCard(props: {
       <p className="mt-1 text-xs font-semibold text-smoke">
         {audio ? "Аудио" : "Видео"} · {formatBytes(video.size)} · {video.platform ?? "—"}
       </p>
-    </div>
+    </motion.div>
+  );
+}
+
+// ── Пустое состояние ─────────────────────────────────────────────────────────
+function EmptyState({ icon: Icon, text }: { icon: typeof Folder; text: string }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="mestia-anim flex flex-col items-center gap-3 py-20 text-center"
+    >
+      <div className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-fog bg-paper/40 text-smoke">
+        <Icon className="h-6 w-6" strokeWidth={2} />
+      </div>
+      <p className="max-w-[280px] text-sm font-semibold text-smoke">{text}</p>
+    </motion.div>
   );
 }
 

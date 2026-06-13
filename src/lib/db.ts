@@ -26,6 +26,32 @@ export async function listFolders(parentId: number | null = null): Promise<Folde
   );
 }
 
+/**
+ * Удаляет из БД все папки и видео, чьи пути лежат вне текущего корня
+ * хранилища (остатки от ранее выбранной основной папки). Файлы на диске
+ * не трогаются — чистим только записи библиотеки.
+ */
+export async function pruneOutsideRoot(root: string): Promise<void> {
+  if (!root) return;
+  const d = await db();
+  const norm = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  const prefix = norm(root) + "/";
+  const folders = await d.select<{ id: number; path: string }[]>("SELECT id, path FROM folders");
+  for (const f of folders) {
+    if (!norm(f.path).startsWith(prefix)) {
+      await d.execute("DELETE FROM folders WHERE id = $1", [f.id]);
+    }
+  }
+  const videos = await d.select<{ id: number; file_path: string }[]>(
+    "SELECT id, file_path FROM videos"
+  );
+  for (const v of videos) {
+    if (!norm(v.file_path).startsWith(prefix)) {
+      await d.execute("DELETE FROM videos WHERE id = $1", [v.id]);
+    }
+  }
+}
+
 /** Все пути папок, уже занесённых в БД (для дедупликации при сканировании). */
 export async function allFolderPaths(): Promise<Set<string>> {
   const d = await db();

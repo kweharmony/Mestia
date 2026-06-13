@@ -79,6 +79,35 @@ sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file \
 > ```
 > Приложение само подскажет эту команду, если файл существует, но не декодируется.
 
+### Steam Deck (SteamOS)
+
+SteamOS основан на Arch (`pacman`), корневая ФС read-only, и **системного
+webkit2gtk там нет** — поэтому `.deb`/`.rpm` не устанавливаются, а AppImage даёт
+пустое окно (не находит WebKitGTK). Рекомендуемый способ — **Flatpak**: он несёт
+свой рантайм GNOME с WebKitGTK внутри, ставится в user-space и переживает
+обновления SteamOS.
+
+```bash
+# В режиме рабочего стола (Desktop Mode):
+flatpak install --user ./Mestia.flatpak
+flatpak run com.mestia.app
+```
+
+Чтобы запускать из игрового режима, добавьте Mestia в Steam как стороннюю игру
+(Desktop Mode → Steam → «Добавить стороннюю игру»), команда запуска —
+`flatpak run com.mestia.app`.
+
+> **Пустое белое окно (для AppImage / своей сборки).** На AMD-видеокарте Деки
+> WebKitGTK с DMABUF-рендерером отдаёт пустое окно. Приложение само выставляет
+> `WEBKIT_DISABLE_DMABUF_RENDERER=1` при старте на Linux; в варианте Flatpak это
+> уже учтено. Для AppImage при необходимости — вручную:
+> ```bash
+> WEBKIT_DISABLE_DMABUF_RENDERER=1 ./Mestia_*.AppImage
+> ```
+
+> **Авто-обновление.** Во Flatpak встроенный апдейтер не применяется (обновления
+> идут через `flatpak update`); окно обновления можно игнорировать.
+
 ---
 
 ## Установка и запуск (dev)
@@ -106,7 +135,8 @@ npm run tauri build
 - **Windows** — `nsis/Mestia_x.y.z_x64-setup.exe` (установщик с выбором папки) и
   `msi/*.msi`.
 - **macOS** — `dmg/*.dmg` и `macos/Mestia.app`.
-- **Linux** — `appimage/*.AppImage` и `deb/*.deb`.
+- **Linux** — `appimage/*.AppImage` и `deb/*.deb`; для Steam Deck/SteamOS CI
+  дополнительно собирает `Mestia.flatpak` (см. «Steam Deck» и `flatpak/`).
 
 > Бинарники yt-dlp/ffmpeg должны быть скачаны (`npm run fetch-binaries`) **до**
 > сборки — они встраиваются в установщик как sidecar.

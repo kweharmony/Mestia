@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { LogOut, PictureInPicture2, X } from "lucide-react";
@@ -88,21 +89,32 @@ export default function App() {
         />
       )}
 
-      {settingsOpen && (
-        <Settings
-          onClose={() => setSettingsOpen(false)}
-          onFolderChanged={() => setStorageVersion((v) => v + 1)}
-        />
-      )}
+      <AnimatePresence>
+        {settingsOpen && (
+          <Settings
+            onClose={() => setSettingsOpen(false)}
+            onFolderChanged={() => setStorageVersion((v) => v + 1)}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Диалог закрытия */}
+      <AnimatePresence>
       {closePrompt && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-8 backdrop-blur-sm"
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+          className="mestia-anim fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-8 backdrop-blur-sm"
           onClick={() => setClosePrompt(false)}
         >
-          <div
-            className="w-full max-w-[400px] space-y-5 rounded-ui border-2 border-ink bg-snow p-6"
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 8 }}
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            className="mestia-anim w-full max-w-[400px] space-y-5 rounded-ui border-2 border-ink bg-snow p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <div>
@@ -137,9 +149,10 @@ export default function App() {
                 Отмена
               </button>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
       {booting && <Splash fading={splashFading} />}
 

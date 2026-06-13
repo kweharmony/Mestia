@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Mestia
+Comment=Загрузчик видео и медиатека
+Exec=mestia
+Icon=com.mestia.app
+Terminal=false
+Categories=Utility;AudioVideo;
+StartupWMClass=Mestia

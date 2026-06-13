@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowDownToLine,
   ArrowRight,
@@ -139,25 +140,60 @@ export default function Downloader() {
             onClick={handleFetch}
             disabled={phase === "fetching"}
             aria-label="Проверить"
-            className="mestia-go flex h-10 w-10 shrink-0 items-center justify-center rounded-ui bg-accent text-white transition-all hover:opacity-90 active:scale-90 disabled:opacity-50"
+            className="mestia-go flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-ui bg-accent text-white transition-all hover:opacity-90 active:scale-90 disabled:opacity-50"
           >
-            {phase === "fetching" ? (
-              <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2.5} />
-            ) : (
-              <ArrowRight className="h-5 w-5" strokeWidth={2.75} />
-            )}
+            <AnimatePresence mode="wait" initial={false}>
+              {phase === "fetching" ? (
+                <motion.span
+                  key="spin"
+                  className="mestia-anim"
+                  initial={{ opacity: 0, scale: 0.6 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.6 }}
+                  transition={{ duration: 0.15 }}
+                >
+                  <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2.5} />
+                </motion.span>
+              ) : (
+                <motion.span
+                  key="go"
+                  className="mestia-anim"
+                  initial={{ opacity: 0, scale: 0.6 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.6 }}
+                  transition={{ duration: 0.15 }}
+                >
+                  <ArrowRight className="h-5 w-5" strokeWidth={2.75} />
+                </motion.span>
+              )}
+            </AnimatePresence>
           </button>
         </div>
 
         {/* Ошибка */}
-        {error && (
-          <div className="w-full rounded-ui border-2 border-rose-400 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
-            {error}
-          </div>
-        )}
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2 }}
+              className="mestia-anim w-full rounded-ui border-2 border-rose-400 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700"
+            >
+              {error}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
+        <AnimatePresence>
         {info && phase !== "fetching" && (
-          <div className="w-full space-y-5 rounded-ui border-2 border-fog bg-paper/40 p-5">
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 12 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            className="mestia-anim w-full space-y-5 rounded-ui border-2 border-fog bg-paper/40 p-5"
+          >
             {/* Шапка: видео или плейлист */}
             {isPlaylist ? (
               <div className="flex items-center gap-4">
@@ -201,22 +237,29 @@ export default function Downloader() {
             {isPlaylist && (
               <div className="space-y-2">
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => setPlMode("all")}
-                    className={`flex-1 rounded-ui border-2 px-3 py-2 text-sm font-semibold transition-all ${
-                      plMode === "all" ? "border-ink bg-snow" : "border-fog hover:bg-fog"
-                    }`}
-                  >
-                    Весь плейлист ({info.playlist_count ?? "?"})
-                  </button>
-                  <button
-                    onClick={() => setPlMode("range")}
-                    className={`flex-1 rounded-ui border-2 px-3 py-2 text-sm font-semibold transition-all ${
-                      plMode === "range" ? "border-ink bg-snow" : "border-fog hover:bg-fog"
-                    }`}
-                  >
-                    Диапазон
-                  </button>
+                  {(["all", "range"] as const).map((m) => {
+                    const active = plMode === m;
+                    return (
+                      <button
+                        key={m}
+                        onClick={() => setPlMode(m)}
+                        className={`relative flex-1 rounded-ui border-2 border-transparent px-3 py-2 text-sm font-semibold ${
+                          active ? "" : "hover:bg-fog"
+                        }`}
+                      >
+                        {active && (
+                          <motion.span
+                            layoutId="plPill"
+                            transition={{ type: "spring", stiffness: 500, damping: 38 }}
+                            className="mestia-anim absolute -inset-[2px] z-0 rounded-ui border-2 border-ink bg-snow"
+                          />
+                        )}
+                        <span className="relative z-10">
+                          {m === "all" ? `Весь плейлист (${info.playlist_count ?? "?"})` : "Диапазон"}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
                 {plMode === "range" && (
                   <input
@@ -238,12 +281,19 @@ export default function Downloader() {
                   <button
                     key={k}
                     onClick={() => pickKind(k)}
-                    className={`flex items-center gap-2 rounded-ui border-2 px-4 py-2 text-sm font-semibold transition-all ${
-                      active ? "border-ink bg-snow" : "border-fog hover:bg-fog"
+                    className={`relative flex items-center gap-2 rounded-ui border-2 border-transparent px-4 py-2 text-sm font-semibold ${
+                      active ? "" : "hover:bg-fog"
                     }`}
                   >
-                    <Icon className="h-4 w-4" strokeWidth={2.25} />
-                    {k === "video" ? "Видео" : "Аудио"}
+                    {active && (
+                      <motion.span
+                        layoutId="kindPill"
+                        transition={{ type: "spring", stiffness: 500, damping: 38 }}
+                        className="mestia-anim absolute -inset-[2px] z-0 rounded-ui border-2 border-ink bg-snow"
+                      />
+                    )}
+                    <Icon className="relative z-10 h-4 w-4" strokeWidth={2.25} />
+                    <span className="relative z-10">{k === "video" ? "Видео" : "Аудио"}</span>
                   </button>
                 );
               })}
@@ -257,11 +307,18 @@ export default function Downloader() {
                   <button
                     key={f.id}
                     onClick={() => setFmt(f)}
-                    className={`rounded-ui border-2 px-3 py-1.5 text-xs font-semibold transition-all ${
-                      active ? "border-accent bg-snow text-accent" : "border-fog hover:bg-fog"
+                    className={`relative rounded-ui border-2 border-transparent px-3 py-1.5 text-xs font-semibold ${
+                      active ? "text-accent" : "hover:bg-fog"
                     }`}
                   >
-                    {f.label}
+                    {active && (
+                      <motion.span
+                        layoutId="fmtPill"
+                        transition={{ type: "spring", stiffness: 500, damping: 38 }}
+                        className="mestia-anim absolute -inset-[2px] z-0 rounded-ui border-2 border-accent bg-snow"
+                      />
+                    )}
+                    <span className="relative z-10">{f.label}</span>
                   </button>
                 );
               })}
@@ -277,8 +334,9 @@ export default function Downloader() {
                 ? "Скачать плейлист"
                 : `Скачать ${mediaKind === "video" ? "видео" : "аудио"}`}
             </button>
-          </div>
+          </motion.div>
         )}
+        </AnimatePresence>
       </div>
     </div>
   );

@@ -130,6 +130,15 @@ body {
     color 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
 }
 
+/*
+  Элементы, чьи transform/opacity анимирует framer-motion: убираем их из
+  CSS-перехода, иначе браузерный transition борется с покадровой анимацией
+  motion и даёт рывки. Переходы цветов (смена темы) оставляем.
+*/
+.mestia-anim {
+  transition-property: background-color, border-color, color;
+}
+
 /* Тонкий скроллбар в тон темы */
 ::-webkit-scrollbar {
   width: 10px;
@@ -323,6 +332,31 @@ input[type="range"]::-webkit-slider-thumb {
   }
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* Скелетон-загрузка превью (бегущий блик в тон темы) */
+.mestia-skeleton {
+  background: linear-gradient(
+    100deg,
+    var(--c-fog) 30%,
+    var(--c-paper) 50%,
+    var(--c-fog) 70%
+  );
+  background-size: 200% 100%;
+  animation: mestia-shimmer 1.3s ease-in-out infinite;
+}
+@keyframes mestia-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mestia-skeleton {
+    animation: none;
   }
 }
 

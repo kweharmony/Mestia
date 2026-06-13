@@ -113,6 +113,11 @@ export function exitApp(): Promise<void> {
   return invoke("exit_app");
 }
 
+/** Удаляет приложение: данные (+опц. скачанный контент) и запуск деинсталляции ОС. */
+export function uninstallApp(deleteContent: boolean): Promise<void> {
+  return invoke("uninstall_app", { deleteContent });
+}
+
 /** Прочитать строковую настройку (или null). */
 export function getSetting(key: string): Promise<string | null> {
   return invoke<string | null>("get_setting", { key });
