@@ -79,7 +79,12 @@
     .btn:hover .go { transform: translateX(4px); }
 
     /* ── Hero ───────────────────────────────────────────────────────────────── */
-    .hero { text-align: center; padding: 64px 0 28px; }
+    .hero { position: relative; text-align: center; padding: 88px 0 32px; }
+    /* Мягкое свечение акцентом под макетом — глубина без шума */
+    .glow { position: absolute; left: 50%; top: 200px; width: min(720px, 90vw); height: 420px;
+      transform: translateX(-50%); z-index: -1; pointer-events: none; opacity: .22;
+      background: radial-gradient(ellipse at center, var(--accent), transparent 68%); filter: blur(64px); }
+    .eyebrow { font-size: 13px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); margin: 0 0 18px; }
     .badges { display: inline-flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 22px; }
     .pill { font-size: 12px; font-weight: 700; padding: 5px 11px; border-radius: 999px; border: 2px solid var(--fog); color: var(--smoke); }
     .hero h1 { font-size: clamp(36px, 6.5vw, 60px); line-height: 1.04; letter-spacing: -.035em; margin: 0 0 16px; font-weight: 800; }
@@ -110,16 +115,45 @@
     @media (max-width: 600px) { .mock .side { display: none; } }
 
     /* ── Секции ─────────────────────────────────────────────────────────────── */
-    .label { text-align: center; font-size: 12px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--smoke); margin: 0 0 18px; }
-    section.block { padding: 56px 0; }
+    .label { text-align: center; font-size: 12px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--smoke); margin: 0 0 22px; }
+    section.block { padding: 76px 0; }
 
-    .downloads { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
-    .dl { display: flex; align-items: center; gap: 14px; padding: 18px; border-radius: var(--radius); border: 2px solid var(--fog); background: var(--paper);
-      transition: transform .2s ease, border-color .25s ease, background-color .25s ease; }
-    .dl:hover { transform: translateY(-3px); border-color: var(--accent); background: var(--snow); }
+    .downloads { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+    .dl { display: flex; gap: 14px; padding: 18px; border-radius: var(--radius); border: 2px solid var(--fog); background: var(--paper);
+      transition: border-color .25s ease, background-color .25s ease; }
+    .dl:hover { border-color: var(--accent); }
     .dl .ic { width: 40px; height: 40px; border-radius: var(--radius); border: 2px solid var(--fog); display: grid; place-items: center; color: var(--accent); flex-shrink: 0; }
-    .dl .os { font-weight: 700; font-size: 16px; line-height: 1.1; }
-    .dl .fmt { font-size: 12.5px; color: var(--smoke); font-weight: 600; }
+    .dl .os { font-weight: 700; font-size: 16px; line-height: 1.1; display: block; margin-bottom: 9px; }
+    .fmts { display: flex; flex-wrap: wrap; gap: 7px; }
+    .fmt-btn { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; padding: 6px 10px; border-radius: 8px;
+      border: 2px solid var(--fog); color: var(--ink); background: var(--snow); cursor: pointer;
+      transition: border-color .2s, color .2s, transform .15s ease, background-color .25s; }
+    .fmt-btn:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+    .fmt-btn svg { width: 13px; height: 13px; }
+
+    /* Вкладки платформ — сегментированный селектор со скользящим индикатором */
+    .dl-tabs { position: relative; display: flex; gap: 4px; padding: 5px; max-width: 580px; margin: 0 auto 24px;
+      border: 2px solid var(--fog); border-radius: 13px; background: var(--paper); overflow-x: auto; }
+    .dl-pill { position: absolute; top: 5px; bottom: 5px; left: 5px; width: 0; z-index: 0; border-radius: 9px;
+      background: var(--snow); border: 2px solid var(--accent);
+      transition: left .3s cubic-bezier(.34,1.45,.6,1), width .3s cubic-bezier(.34,1.45,.6,1); }
+    .dl-tab { position: relative; z-index: 1; flex: 1 0 auto; display: inline-flex; align-items: center; justify-content: center;
+      gap: 8px; white-space: nowrap; padding: 9px 16px; border: none; background: transparent; cursor: pointer;
+      font-family: inherit; font-size: 14px; font-weight: 700; color: var(--smoke); border-radius: 9px; transition: color .2s; }
+    .dl-tab svg { width: 16px; height: 16px; }
+    .dl-tab:hover { color: var(--ink); }
+    .dl-tab.active { color: var(--accent); }
+    .dl-panels { max-width: 580px; margin: 0 auto; }
+    .dl-panel { display: none; }
+    .dl-panel.active { display: block; animation: panel-in .3s ease both; }
+    @keyframes panel-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    .dl-panel .fmts { justify-content: center; }
+    .dl-panel .fmt-btn { padding: 10px 16px; font-size: 14px; }
+    .fmt-btn .dlicon { width: 15px; height: 15px; }
+    .dl-hint { text-align: center; margin: 16px 0 0; font-size: 13px; color: var(--smoke); font-weight: 600; line-height: 1.55; }
+    .dl-hint code { font-family: ui-monospace, monospace; font-size: 12.5px; background: var(--paper); border: 1px solid var(--fog); border-radius: 6px; padding: 2px 6px; }
+    .dl-foot { text-align: center; margin: 22px 0 0; font-size: 13px; font-weight: 600; color: var(--smoke); }
+    .dl-foot a { color: var(--accent); font-weight: 700; }
 
     .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
     .feat { padding: 22px; border-radius: var(--radius); border: 2px solid var(--fog); background: var(--paper);
@@ -128,6 +162,18 @@
     .feat .ic { width: 40px; height: 40px; border-radius: var(--radius); background: var(--accent); color: #fff; display: grid; place-items: center; margin-bottom: 14px; }
     .feat h3 { margin: 0 0 6px; font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
     .feat p { margin: 0; font-size: 14px; color: var(--smoke); font-weight: 500; }
+    /* «Иконки с намерением» — оживают при наведении на карточку (как навигация в приложении) */
+    .feat .ic svg { transition: transform .2s ease; }
+    .feat:hover .ico-dl svg     { animation: f-bob .9s ease-in-out infinite; }
+    .feat:hover .ico-list svg   { animation: f-pop .9s ease-in-out infinite; }
+    .feat:hover .ico-folder svg { animation: f-pop .9s ease-in-out infinite; }
+    .feat:hover .ico-play svg   { animation: f-pop .9s ease-in-out infinite; }
+    .feat:hover .ico-palette svg{ animation: f-spin 2.6s linear infinite; }
+    .feat:hover .ico-bell svg   { animation: f-ring 1s ease-in-out infinite; }
+    @keyframes f-bob  { 0%,100%{transform:translateY(0)} 50%{transform:translateY(3px)} }
+    @keyframes f-pop  { 0%,100%{transform:scale(1)} 50%{transform:scale(1.18)} }
+    @keyframes f-spin { to{transform:rotate(360deg)} }
+    @keyframes f-ring { 0%,100%{transform:rotate(0)} 20%{transform:rotate(12deg)} 45%{transform:rotate(-9deg)} 70%{transform:rotate(5deg)} }
 
     /* Финальный CTA */
     .final { text-align: center; padding: 64px 0; }
@@ -143,7 +189,8 @@
     .reveal.in { opacity: 1; transform: none; }
     @media (prefers-reduced-motion: reduce) {
       .reveal { opacity: 1; transform: none; transition: none; }
-      .logo:hover .arrow, .caret { animation: none; }
+      .logo:hover .arrow, .caret, .feat:hover .ic svg, .dl-panel.active { animation: none; }
+      .dl-pill { transition: none; }
     }
   </style>
 </head>
@@ -171,14 +218,9 @@
 
   <!-- ── Hero ── -->
   <header class="hero wrap">
-    <div class="badges">
-      <span class="pill">1800+ площадок</span>
-      <span class="pill">8 тем</span>
-      <span class="pill">Open source · MIT</span>
-      <span class="pill">Windows · macOS · Linux · Steam Deck</span>
-    </div>
+    <div class="glow"></div>
     <h1>Скачивай видео.<br>Храни красиво.</h1>
-    <p class="sub" id="typed"><span class="caret">▍</span></p>
+    <p class="sub">Загрузчик видео и аудио с медиатекой и плеером. Windows, macOS, Linux, Steam Deck.</p>
     <div class="cta">
       <a class="btn" href="#download">Скачать бесплатно <span class="go">→</span></a>
       <a class="btn ghost" href="#features">Что умеет</a>
@@ -228,29 +270,56 @@
 
   <!-- ── Скачать ── -->
   <section class="block wrap reveal" id="download">
-    <p class="label">Скачать — выберите платформу</p>
-    <div class="downloads">
-      <a class="dl" data-match="setup\.exe$|\.exe$" href="https://github.com/kweharmony/Mestia/releases/latest">
-        <span class="ic"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M3 5.7 10.2 4.7v6.6H3Zm0 12.6 7.2 1V12.7H3Zm8.3 1.1L21 20.7v-8H11.3Zm0-15.4v7H21V3Z"/></svg></span>
-        <span><span class="os">Windows</span><br><span class="fmt">.exe · .msi</span></span>
-      </a>
-      <a class="dl" data-match="\.dmg$" href="https://github.com/kweharmony/Mestia/releases/latest">
-        <span class="ic"><svg viewBox="0 0 384 512" width="22" height="22" fill="currentColor"><path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg></span>
-        <span><span class="os">macOS</span><br><span class="fmt">.dmg (Apple Silicon / Intel)</span></span>
-      </a>
-      <a class="dl" data-match="\.AppImage$" href="https://github.com/kweharmony/Mestia/releases/latest">
-        <span class="ic"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 18v3"/></svg></span>
-        <span><span class="os">Linux</span><br><span class="fmt">AppImage · .deb</span></span>
-      </a>
-      <a class="dl" data-match="\.flatpak$" href="https://github.com/kweharmony/Mestia/releases/latest">
-        <span class="ic"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M6 11h4M8 9v4"/><circle cx="16" cy="10" r="1"/><circle cx="18.5" cy="13" r="1"/><rect x="2" y="6" width="20" height="12" rx="4"/></svg></span>
-        <span><span class="os">Steam Deck</span><br><span class="fmt">Flatpak (SteamOS)</span></span>
-      </a>
+    <p class="label">Скачать</p>
+
+    <!-- Вкладки платформ со скользящим индикатором -->
+    <div class="dl-tabs" id="dlTabs" role="tablist">
+      <span class="dl-pill" id="dlPill"></span>
+      <button class="dl-tab active" data-tab="win">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.7 10.2 4.7v6.6H3Zm0 12.6 7.2 1V12.7H3Zm8.3 1.1L21 20.7v-8H11.3Zm0-15.4v7H21V3Z"/></svg>Windows
+      </button>
+      <button class="dl-tab" data-tab="mac">
+        <svg viewBox="0 0 384 512" fill="currentColor"><path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg>macOS
+      </button>
+      <button class="dl-tab" data-tab="linux">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 18v3"/></svg>Linux
+      </button>
+      <button class="dl-tab" data-tab="deck">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M6 11h4M8 9v4"/><circle cx="16" cy="10" r="1"/><circle cx="18.5" cy="13" r="1"/><rect x="2" y="6" width="20" height="12" rx="4"/></svg>Steam Deck
+      </button>
     </div>
-    <p class="label" style="margin-top:18px; text-transform:none; letter-spacing:0; font-weight:600;">
-      <span data-ver></span>Все сборки и прошлые версии — на странице
-      <a href="https://github.com/kweharmony/Mestia/releases/latest" style="color:var(--accent)">релизов</a>.
-    </p>
+
+    <div class="dl-panels">
+      <div class="dl-panel active" data-panel="win">
+        <div class="fmts">
+          <a class="fmt-btn" data-match="setup\.exe$" href="https://github.com/kweharmony/Mestia/releases/latest"><svg class="dlicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 12l5 5 5-5M5 21h14"/></svg>Установщик .exe</a>
+          <a class="fmt-btn" data-match="\.msi$" href="https://github.com/kweharmony/Mestia/releases/latest"><svg class="dlicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 12l5 5 5-5M5 21h14"/></svg>.msi</a>
+        </div>
+        <p class="dl-hint">Обычная установка для Windows 10/11. Рекомендуем установщик .exe.</p>
+      </div>
+      <div class="dl-panel" data-panel="mac">
+        <div class="fmts">
+          <a class="fmt-btn" data-match="\.dmg$" href="https://github.com/kweharmony/Mestia/releases/latest"><svg class="dlicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 12l5 5 5-5M5 21h14"/></svg>.dmg (Apple Silicon)</a>
+        </div>
+        <p class="dl-hint">Откройте .dmg и перетащите Mestia в «Программы».</p>
+      </div>
+      <div class="dl-panel" data-panel="linux">
+        <div class="fmts">
+          <a class="fmt-btn" data-match="\.AppImage$" href="https://github.com/kweharmony/Mestia/releases/latest"><svg class="dlicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 12l5 5 5-5M5 21h14"/></svg>AppImage</a>
+          <a class="fmt-btn" data-match="\.deb$" href="https://github.com/kweharmony/Mestia/releases/latest"><svg class="dlicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 12l5 5 5-5M5 21h14"/></svg>.deb</a>
+          <a class="fmt-btn" data-match="\.rpm$" href="https://github.com/kweharmony/Mestia/releases/latest"><svg class="dlicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 12l5 5 5-5M5 21h14"/></svg>.rpm</a>
+        </div>
+        <p class="dl-hint">AppImage — портативно (chmod +x и запуск); .deb/.rpm — для Debian/Ubuntu и Fedora.</p>
+      </div>
+      <div class="dl-panel" data-panel="deck">
+        <div class="fmts">
+          <a class="fmt-btn" data-match="\.flatpak$" href="https://github.com/kweharmony/Mestia/releases/latest"><svg class="dlicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 12l5 5 5-5M5 21h14"/></svg>Flatpak (SteamOS)</a>
+        </div>
+        <p class="dl-hint">В режиме рабочего стола: <code>flatpak install ./Mestia*.flatpak</code>.</p>
+      </div>
+    </div>
+
+    <p class="dl-foot">Текущая версия <span data-ver>—</span> · <a href="https://github.com/kweharmony/Mestia/releases/latest">все релизы</a></p>
   </section>
 
   <!-- ── Возможности ── -->
@@ -258,32 +327,32 @@
     <p class="label">Возможности</p>
     <div class="features">
       <div class="feat">
-        <span class="ic"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></span>
+        <span class="ic ico-dl"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></span>
         <h3>1800+ площадок</h3>
         <p>YouTube, Rutube, VK, TikTok, Vimeo и другие. Видео 1080p…360p или аудио MP3/WAV/FLAC.</p>
       </div>
       <div class="feat">
-        <span class="ic"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18M3 12h18M3 19h12"/><path d="m17 16 4 3-4 3"/></svg></span>
+        <span class="ic ico-list"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18M3 12h18M3 19h12"/><path d="m17 16 4 3-4 3"/></svg></span>
         <h3>Плейлисты и очередь</h3>
         <p>Весь список или диапазон, параллельные фоновые загрузки с прогрессом и отменой.</p>
       </div>
       <div class="feat">
-        <span class="ic"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M20 17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2Z"/></svg></span>
+        <span class="ic ico-folder"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M20 17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2Z"/></svg></span>
         <h3>Медиатека</h3>
         <p>Папки, drag-and-drop, поиск, превью-кадры и слежение за файлами в реальном времени.</p>
       </div>
       <div class="feat">
-        <span class="ic"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 14 8-14 8Z"/></svg></span>
+        <span class="ic ico-play"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 14 8-14 8Z"/></svg></span>
         <h3>Встроенный плеер</h3>
         <p>Видео и аудио, перемотка, мини-плеер и возобновление с места остановки по каждому файлу.</p>
       </div>
       <div class="feat">
-        <span class="ic"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="19" cy="12" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="10" cy="18" r="2.5"/><path d="M12 2a10 10 0 1 0 0 20c1 0 1.5-.8 1.5-1.5 0-1.5-1.5-2-1.5-3.5"/></svg></span>
+        <span class="ic ico-palette"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="19" cy="12" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="10" cy="18" r="2.5"/><path d="M12 2a10 10 0 1 0 0 20c1 0 1.5-.8 1.5-1.5 0-1.5-1.5-2-1.5-3.5"/></svg></span>
         <h3>8 тем оформления</h3>
         <p>Цветные и нейтральные светлые/тёмные. Переключаются мгновенно — попробуйте справа вверху.</p>
       </div>
       <div class="feat">
-        <span class="ic"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></span>
+        <span class="ic ico-bell"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></span>
         <h3>Трей и уведомления</h3>
         <p>Сворачивание в фон, умное закрытие и уведомления о завершении загрузок на рабочем столе.</p>
       </div>
@@ -332,13 +401,7 @@
     if (saved && THEMES.includes(saved)) root.dataset.theme = saved;
     paint();
 
-    // ── Печатающийся подзаголовок (как Typewriter в приложении) ──
-    const PHRASES = [
-      "Кидай ссылку — дальше моя забота.",
-      "YouTube, Rutube, VK, TikTok… неси любую.",
-      "Плейлист на 100 видео? Без проблем.",
-      "Видео или аудио — как пожелаешь.",
-    ];
+    // ── Печатающийся плейсхолдер в макете окна (как Typewriter в приложении) ──
     const MOCK = [
       "Вставь ссылку и налей себе чаю ☕",
       "Спасём ролик, пока его не удалили…",
@@ -360,19 +423,33 @@
       tick();
     }
     if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      typewriter(document.getElementById("typed"), PHRASES, { caret: true });
       typewriter(document.getElementById("mock-ph"), MOCK, {});
     } else {
-      document.getElementById("typed").textContent = PHRASES[0];
       document.getElementById("mock-ph").textContent = MOCK[0];
     }
 
+    // ── Вкладки платформ: скользящий индикатор + переключение панелей ──
+    const dlTabs = document.getElementById("dlTabs");
+    const dlPill = document.getElementById("dlPill");
+    function movePill(tab) { dlPill.style.left = tab.offsetLeft + "px"; dlPill.style.width = tab.offsetWidth + "px"; }
+    function selectTab(name) {
+      dlTabs.querySelectorAll(".dl-tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
+      document.querySelectorAll(".dl-panel").forEach((p) => p.classList.toggle("active", p.dataset.panel === name));
+      const a = dlTabs.querySelector(".dl-tab.active");
+      if (a) movePill(a);
+    }
+    dlTabs.querySelectorAll(".dl-tab").forEach((t) => t.addEventListener("click", () => selectTab(t.dataset.tab)));
+    function initPill() { const a = dlTabs.querySelector(".dl-tab.active"); if (a) movePill(a); }
+    initPill();
+    window.addEventListener("load", initPill);
+    window.addEventListener("resize", initPill);
+
     // ── Прямые ссылки на скачивание (последний релиз через GitHub API) ──
-    // В именах файлов есть версия, поэтому хардкодить нельзя — берём из API.
+    // В именах файлов есть версия, поэтому хардкодим не имя, а маску — берём из API.
     // Если запрос не прошёл (лимит/офлайн), кнопки остаются на странице релизов.
     (async function wireDownloads() {
       const REPO = "kweharmony/Mestia";
-      const links = [...document.querySelectorAll(".dl[data-match]")];
+      const links = [...document.querySelectorAll("[data-match]")];
       try {
         const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
           headers: { Accept: "application/vnd.github+json" },
@@ -386,12 +463,14 @@
           if (hit) {
             a.href = hit.browser_download_url; // прямой файл → сразу качается
             a.setAttribute("download", "");
+          } else {
+            a.style.display = "none"; // формата нет в этом релизе — прячем кнопку
           }
         });
         const ver = document.querySelector("[data-ver]");
-        if (ver && rel.tag_name) ver.textContent = "Последняя версия: " + rel.tag_name + ". ";
+        if (ver && rel.tag_name) ver.textContent = rel.tag_name;
       } catch (e) {
-        /* оставляем ссылку на страницу релизов */
+        /* оставляем ссылки на страницу релизов */
       }
     })();
 

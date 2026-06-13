@@ -78,11 +78,13 @@ jobs:
           cp src-tauri/target/release/bundle/deb/*.deb flatpak/mestia.deb
           flatpak-builder --user --install-deps-from=flathub --force-clean \
             --repo=repo flatpak-build flatpak/com.mestia.app.yml
-          flatpak build-bundle repo Mestia.flatpak com.mestia.app \
+          # Имя с версией (из package.json), в стиле остальных артефактов.
+          VERSION=$(node -p "require('./package.json').version")
+          flatpak build-bundle repo "Mestia_${VERSION}_x86_64.flatpak" com.mestia.app \
             --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
 
       - name: Прикрепить Flatpak к релизу
         if: matrix.platform == 'ubuntu-22.04' && startsWith(github.ref, 'refs/tags/')
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ github.ref_name }}" Mestia.flatpak --clobber
+        run: gh release upload "${{ github.ref_name }}" Mestia_*_x86_64.flatpak --clobber
