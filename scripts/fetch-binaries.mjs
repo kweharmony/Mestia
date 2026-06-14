@@ -89,6 +89,7 @@ async function fetchYtDlp() {
     const fat = join(os.tmpdir(), "mestia-yt-dlp_macos");
     await download(url, fat);
     const archs = execFileSync("lipo", ["-archs", fat], { encoding: "utf8" }).trim().split(/\s+/);
+    // per-arch (для компиляции каждого среза).
     for (const { lipo, triple } of MAC_ARCHES) {
       const dest = join(BIN_DIR, `yt-dlp-${triple}`);
       if (archs.length > 1) {
@@ -101,6 +102,11 @@ async function fetchYtDlp() {
       execFileSync("chmod", ["+x", dest]);
       console.log(`  ✓ yt-dlp (${lipo}) → ${dest}`);
     }
+    // universal (fat) — нужен на шаге бандлинга .app.
+    const uni = join(BIN_DIR, "yt-dlp-universal-apple-darwin");
+    copyFileSync(fat, uni);
+    execFileSync("chmod", ["+x", uni]);
+    console.log(`  ✓ yt-dlp (universal) → ${uni}`);
     rmSync(fat, { force: true });
     return;
   }
@@ -181,7 +187,8 @@ async function downloadMacFfmpeg(name, arch) {
 async function fetchFfmpegMac() {
   for (const name of ["ffmpeg", "ffprobe"]) {
     if (MAC_UNIVERSAL) {
-      // Обе арки по отдельности — Tauri сам склеит их в universal при сборке.
+      // per-arch (для компиляции) + universal через lipo (для бандлинга).
+      const perArch = [];
       for (const { arch, triple } of MAC_ARCHES) {
         const bin = await downloadMacFfmpeg(name, arch);
         const dst = join(BIN_DIR, `${name}-${triple}`);
@@ -189,7 +196,12 @@ async function fetchFfmpegMac() {
         rmSync(bin, { force: true });
         execFileSync("chmod", ["+x", dst]);
         console.log(`  ✓ ${name} (${arch}) → ${dst}`);
+        perArch.push(dst);
       }
+      const uni = join(BIN_DIR, `${name}-universal-apple-darwin`);
+      execFileSync("lipo", ["-create", ...perArch, "-output", uni]);
+      execFileSync("chmod", ["+x", uni]);
+      console.log(`  ✓ ${name} (universal) → ${uni}`);
     } else {
       const arch = os.arch() === "arm64" ? "arm64" : "amd64";
       const bin = await downloadMacFfmpeg(name, arch);
