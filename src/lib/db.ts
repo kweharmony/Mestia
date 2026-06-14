@@ -98,6 +98,23 @@ export async function insertVideo(v: {
   folder_id?: number | null;
 }): Promise<void> {
   const d = await db();
+  // Upsert по пути файла: если запись с таким file_path уже есть (повторное
+  // скачивание/пере-скан) — обновляем её, а не плодим дубликат. Обложку
+  // сохраняем прежнюю (вдруг пользователь поставил свою).
+  const existing = await d.select<{ id: number }[]>(
+    "SELECT id FROM videos WHERE file_path = $1 LIMIT 1",
+    [v.file_path]
+  );
+  if (existing[0]) {
+    await d.execute(
+      `UPDATE videos
+         SET title = $1, url = $2, duration = $3, size = $4,
+             thumbnail_path = COALESCE(thumbnail_path, $5), platform = $6, folder_id = $7
+       WHERE id = $8`,
+      [v.title, v.url, v.duration, v.size, v.thumbnail_path, v.platform, v.folder_id ?? null, existing[0].id]
+    );
+    return;
+  }
   await d.execute(
     `INSERT INTO videos (title, url, file_path, duration, size, thumbnail_path, platform, folder_id)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,

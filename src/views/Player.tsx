@@ -3,6 +3,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
+  ExternalLink,
   FastForward,
   Maximize,
   Music,
@@ -18,7 +19,7 @@ import {
   X,
 } from "lucide-react";
 import type { VideoRow } from "../types";
-import { existingPaths, formatDuration, isAudioPath } from "../lib/ipc";
+import { existingPaths, formatDuration, isAudioPath, openPath } from "../lib/ipc";
 
 // Linux (webkit2gtk) без Android — на нём чаще всего не хватает GStreamer-кодеков.
 const IS_LINUX = /Linux/i.test(navigator.userAgent) && !/Android/i.test(navigator.userAgent);
@@ -278,10 +279,20 @@ export default function Player({
           {title}
         </span>
         <span className={`text-white/60 ${compact ? "text-xs" : "text-sm"}`}>{hint}</span>
+        {/* Запасной вариант: открыть в системном плеере (со своими кодеками). */}
+        {failKind !== "missing" && (
+          <button
+            onClick={() => openPath(video.file_path).catch(() => {})}
+            className="mt-2 flex items-center gap-2 rounded-ui bg-white/15 px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/25"
+          >
+            <ExternalLink className="h-4 w-4" strokeWidth={2.25} />
+            Открыть во внешнем плеере
+          </button>
+        )}
         {failKind === "decode" && IS_LINUX && (
-          <code className="mt-1 select-all break-all rounded bg-white/10 px-2 py-1 text-[11px] text-white/80">
-            sudo apt install gstreamer1.0-libav gstreamer1.0-plugins-good
-            gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly
+          <code className="mt-1 select-all break-all rounded bg-white/10 px-2 py-1 text-[11px] text-white/70">
+            …или установите кодеки: sudo apt install gstreamer1.0-libav
+            gstreamer1.0-plugins-good gstreamer1.0-plugins-bad
           </code>
         )}
         {!compact && (
@@ -564,6 +575,16 @@ export default function Player({
                 }%, var(--c-fog) 0%)`,
               }}
             />
+          )}
+
+          {!embedded && (
+            <button
+              onClick={() => openPath(video.file_path).catch(() => {})}
+              title="Открыть во внешнем плеере"
+              className={btn}
+            >
+              <ExternalLink className={ic} strokeWidth={2.25} />
+            </button>
           )}
 
           {!embedded && (

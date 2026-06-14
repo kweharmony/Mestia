@@ -15,12 +15,27 @@ runtime-version: "47"
 sdk: org.gnome.Sdk
 command: mestia
 
+# Полный набор кодеков ffmpeg для GStreamer/WebKitGTK — иначе встроенный плеер
+# не декодирует H.264/AAC (в базовом рантайме их нет из-за патентов). Расширение
+# подтягивается автоматически при установке. Версия совпадает с базой GNOME 47
+# (freedesktop 24.08).
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    version: "24.08"
+    add-ld-path: .
+    no-autodownload: false
+    autodelete: false
+
 finish-args:
   - --share=ipc
   - --share=network              # yt-dlp / проверка обновлений
   - --socket=wayland
   - --socket=fallback-x11
   - --device=dri                 # аппаратный рендер (важно для AMD GPU Деки)
+  # WebKitGTK на SteamOS (AMD) падает при старте из-за DMABUF-рендерера —
+  # отключаем его, иначе приложение вылетает сразу при открытии окна.
+  - --env=WEBKIT_DISABLE_DMABUF_RENDERER=1
   - --socket=pulseaudio          # звук в плеере
   - --filesystem=home            # папка загрузок / медиатека (по умолчанию в ~)
   - --filesystem=/run/media      # microSD / внешние диски (Steam Deck монтирует сюда)
@@ -38,6 +53,8 @@ modules:
       - ar x *.deb
       - tar xf data.tar.*
       - mkdir -p /app/bin
+      # Точка монтирования расширения ffmpeg-full (кодеки для плеера).
+      - mkdir -p /app/lib/ffmpeg
       # Главный бинарь + sidecar'ы (yt-dlp/ffmpeg/ffprobe) лежат в usr/bin.
       - cp -a usr/bin/. /app/bin/
       # Имя главного бинаря зависит от productName — приводим к фиксированному.

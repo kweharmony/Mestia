@@ -1,19 +1,24 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   isPermissionGranted,
   requestPermission,
+  sendNotification,
 } from "@tauri-apps/plugin-notification";
 import {
   AlertTriangle,
   Bell,
+  Captions,
+  Cookie,
   FolderCog,
+  Gauge,
   FolderOpen,
   Layers,
   Loader2,
   Palette,
   RefreshCw,
+  Scissors,
   Trash2,
   X,
 } from "lucide-react";
@@ -43,6 +48,11 @@ export default function Settings({
   const [path, setPath] = useState("");
   const [notifications, setNotifications] = useState(false);
   const [parallel, setParallel] = useState(2);
+  const [fragments, setFragments] = useState(5);
+  const [cookiesBrowser, setCookiesBrowser] = useState("");
+  const [subtitles, setSubtitles] = useState(false);
+  const [subtitlesLang, setSubtitlesLang] = useState("ru,en");
+  const [sponsorblock, setSponsorblock] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [confirmUninstall, setConfirmUninstall] = useState(false);
   const [deleteContent, setDeleteContent] = useState(false);
@@ -57,6 +67,16 @@ export default function Settings({
         setParallel(Number.isNaN(n) ? 2 : Math.min(5, Math.max(1, n)));
       })
       .catch(() => {});
+    getSetting("concurrentFragments")
+      .then((v) => {
+        const n = parseInt(v ?? "5", 10);
+        setFragments(Number.isNaN(n) ? 5 : Math.min(16, Math.max(1, n)));
+      })
+      .catch(() => {});
+    getSetting("cookiesBrowser").then((v) => setCookiesBrowser(v ?? "")).catch(() => {});
+    getSetting("subtitles").then((v) => setSubtitles(v === "1")).catch(() => {});
+    getSetting("subtitlesLang").then((v) => v && setSubtitlesLang(v)).catch(() => {});
+    getSetting("sponsorblock").then((v) => setSponsorblock(v === "1")).catch(() => {});
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -92,11 +112,53 @@ export default function Settings({
     }
     setNotifications(next);
     await setSetting("notifications", next ? "1" : "0").catch(() => {});
+    if (next) void testNotification(); // сразу показываем, что работает
+  }
+
+  async function testNotification() {
+    try {
+      let granted = await isPermissionGranted().catch(() => false);
+      if (!granted) granted = (await requestPermission().catch(() => "denied")) === "granted";
+      if (!granted) {
+        notify("Уведомления запрещены в системе", "error");
+        return;
+      }
+      sendNotification({ title: "Mestia", body: "Уведомления работают 🎉" });
+    } catch (e) {
+      notify(`Не удалось отправить уведомление: ${e}`, "error");
+    }
   }
 
   async function changeParallel(n: number) {
     setParallel(n);
     await setSetting("maxParallel", String(n)).catch(() => {});
+  }
+
+  async function changeFragments(n: number) {
+    setFragments(n);
+    await setSetting("concurrentFragments", String(n)).catch(() => {});
+  }
+
+  async function changeCookies(b: string) {
+    setCookiesBrowser(b);
+    await setSetting("cookiesBrowser", b).catch(() => {});
+  }
+
+  async function toggleSubtitles() {
+    const next = !subtitles;
+    setSubtitles(next);
+    await setSetting("subtitles", next ? "1" : "0").catch(() => {});
+  }
+
+  async function changeSubtitlesLang(v: string) {
+    setSubtitlesLang(v);
+    await setSetting("subtitlesLang", v.trim() || "ru,en").catch(() => {});
+  }
+
+  async function toggleSponsorblock() {
+    const next = !sponsorblock;
+    setSponsorblock(next);
+    await setSetting("sponsorblock", next ? "1" : "0").catch(() => {});
   }
 
   async function handleUninstall() {
@@ -218,6 +280,45 @@ export default function Settings({
           </p>
         </section>
 
+        {/* Скорость загрузки (потоки на видео) */}
+        <section className="space-y-3">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <Gauge className="h-4 w-4 text-accent" strokeWidth={2.25} />
+            Скорость загрузки
+          </div>
+          <div className="flex gap-1.5">
+            {[
+              { label: "Обычная", v: 3 },
+              { label: "Быстрая", v: 5 },
+              { label: "Максимум", v: 10 },
+            ].map((t) => {
+              const active = fragments === t.v;
+              return (
+                <button
+                  key={t.v}
+                  onClick={() => changeFragments(t.v)}
+                  className={`relative flex-1 rounded-ui border-2 border-transparent py-1.5 text-sm font-semibold ${
+                    active ? "text-accent" : "hover:bg-fog"
+                  }`}
+                >
+                  {active && (
+                    <motion.span
+                      layoutId="speedPill"
+                      transition={{ type: "spring", stiffness: 500, damping: 38 }}
+                      className="mestia-anim absolute -inset-[2px] z-0 rounded-ui border-2 border-accent bg-snow"
+                    />
+                  )}
+                  <span className="relative z-10">{t.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs font-semibold text-smoke">
+            Сколько фрагментов качать параллельно. Выше — быстрее, но больше нагрузка
+            на сеть и диск.
+          </p>
+        </section>
+
         {/* Уведомления */}
         <section className="space-y-3">
           <div className="flex items-center justify-between">
@@ -225,21 +326,95 @@ export default function Settings({
               <Bell className="h-4 w-4 text-accent" strokeWidth={2.25} />
               Уведомления на рабочий стол
             </span>
-            <button
-              onClick={toggleNotifications}
-              className={`relative h-6 w-11 rounded-full border-2 transition-all ${
-                notifications ? "border-accent bg-accent" : "border-fog bg-fog"
-              }`}
-            >
-              <motion.span
-                animate={{ x: notifications ? 20 : 0 }}
-                transition={{ type: "spring", stiffness: 500, damping: 32 }}
-                className="mestia-anim absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-snow"
-              />
-            </button>
+            <div className="flex items-center gap-2">
+              {notifications && (
+                <button
+                  onClick={testNotification}
+                  className="rounded-ui border-2 border-fog px-3 py-1 text-xs font-semibold hover:bg-fog"
+                >
+                  Проверить
+                </button>
+              )}
+              <button
+                onClick={toggleNotifications}
+                className={`relative h-6 w-11 rounded-full border-2 transition-all ${
+                  notifications ? "border-accent bg-accent" : "border-fog bg-fog"
+                }`}
+              >
+                <motion.span
+                  animate={{ x: notifications ? 20 : 0 }}
+                  transition={{ type: "spring", stiffness: 500, damping: 32 }}
+                  className="mestia-anim absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-snow"
+                />
+              </button>
+            </div>
           </div>
           <p className="text-xs font-semibold text-smoke">
-            Сообщать о завершении загрузки, даже когда окно свёрнуто.
+            Сообщать о завершении загрузки, даже когда окно свёрнуто. На Windows
+            всплывающие уведомления видны только в установленной версии и при
+            выключенном режиме «Не беспокоить».
+          </p>
+        </section>
+
+        {/* Куки из браузера */}
+        <section className="space-y-3">
+          <div className="flex items-center justify-between text-sm font-semibold">
+            <span className="flex items-center gap-2">
+              <Cookie className="h-4 w-4 text-accent" strokeWidth={2.25} />
+              Куки из браузера
+            </span>
+            <select
+              value={cookiesBrowser}
+              onChange={(e) => changeCookies(e.target.value)}
+              className="rounded-ui border-2 border-fog bg-snow px-2 py-1.5 text-sm font-semibold text-ink outline-none focus:border-accent"
+            >
+              <option value="">Выключено</option>
+              <option value="chrome">Chrome</option>
+              <option value="firefox">Firefox</option>
+              <option value="edge">Edge</option>
+              <option value="brave">Brave</option>
+              <option value="opera">Opera</option>
+              <option value="vivaldi">Vivaldi</option>
+              <option value="chromium">Chromium</option>
+            </select>
+          </div>
+          <p className="text-xs font-semibold text-smoke">
+            Нужно для приватных, возрастных и доступных по подписке видео. Браузер
+            при скачивании лучше закрыть.
+          </p>
+        </section>
+
+        {/* Субтитры */}
+        <section className="space-y-3">
+          <Toggle
+            icon={<Captions className="h-4 w-4 text-accent" strokeWidth={2.25} />}
+            label="Скачивать субтитры"
+            on={subtitles}
+            onToggle={toggleSubtitles}
+          />
+          {subtitles && (
+            <input
+              value={subtitlesLang}
+              onChange={(e) => changeSubtitlesLang(e.target.value)}
+              placeholder="ru,en или all"
+              className="w-full rounded-ui border-2 border-fog bg-snow px-3 py-2 text-sm font-semibold text-ink placeholder-smoke outline-none focus:border-accent"
+            />
+          )}
+          <p className="text-xs font-semibold text-smoke">
+            Встраиваются в видео. Языки через запятую (или «all» — все доступные).
+          </p>
+        </section>
+
+        {/* SponsorBlock */}
+        <section className="space-y-3">
+          <Toggle
+            icon={<Scissors className="h-4 w-4 text-accent" strokeWidth={2.25} />}
+            label="Вырезать спонсорские вставки"
+            on={sponsorblock}
+            onToggle={toggleSponsorblock}
+          />
+          <p className="text-xs font-semibold text-smoke">
+            SponsorBlock удаляет спонсорские сегменты и интро (по базе сообщества).
           </p>
         </section>
 
@@ -395,5 +570,39 @@ export default function Settings({
         )}
       </AnimatePresence>
     </motion.div>
+  );
+}
+
+/** Переключатель «вкл/выкл» с иконкой и подписью (общий вид для секций). */
+function Toggle({
+  icon,
+  label,
+  on,
+  onToggle,
+}: {
+  icon: ReactNode;
+  label: string;
+  on: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="flex items-center gap-2 text-sm font-semibold">
+        {icon}
+        {label}
+      </span>
+      <button
+        onClick={onToggle}
+        className={`relative h-6 w-11 rounded-full border-2 transition-all ${
+          on ? "border-accent bg-accent" : "border-fog bg-fog"
+        }`}
+      >
+        <motion.span
+          animate={{ x: on ? 20 : 0 }}
+          transition={{ type: "spring", stiffness: 500, damping: 32 }}
+          className="mestia-anim absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-snow"
+        />
+      </button>
+    </div>
   );
 }

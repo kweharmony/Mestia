@@ -84,8 +84,28 @@ fn configured_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
 /// Возвращает строковое значение произвольной настройки.
 #[tauri::command]
 pub fn get_setting(app: tauri::AppHandle, key: String) -> Option<String> {
-    read_settings(&app)
-        .get(&key)
+    setting(&app, &key)
+}
+
+/// Поддерживает ли текущая сборка самообновление через tauri-updater.
+/// Windows/macOS — да. Linux — только AppImage; для .deb/.rpm/Flatpak бинарь
+/// приложения недоступен для перезаписи, обновление идёт через пакетный менеджер.
+#[tauri::command]
+pub fn updater_supported() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        std::env::var_os("APPIMAGE").is_some()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        true
+    }
+}
+
+/// Внутреннее чтение строковой настройки (для использования из Rust-кода).
+pub(crate) fn setting(app: &tauri::AppHandle, key: &str) -> Option<String> {
+    read_settings(app)
+        .get(key)
         .and_then(Value::as_str)
         .map(String::from)
 }
@@ -460,6 +480,37 @@ pub fn open_folder(path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Открывает файл во внешнем приложении по умолчанию (системный плеер и т.п.).
+/// Полезно как запасной вариант, когда встроенному плееру не хватает кодеков.
+#[tauri::command]
+pub fn open_path(path: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        // `start` — встроенная команда cmd; первый "" — это заголовок окна.
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", &path])
+            .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// Открывает системный проводник с выделенным файлом.
 #[tauri::command]
 pub fn reveal_in_explorer(file_path: String) -> Result<(), String> {
@@ -492,4 +543,167 @@ pub fn reveal_in_explorer(file_path: String) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    /// Уникальный временный каталог, удаляемый по выходу из области видимости
+    /// (без внешних crate'ов вроде tempfile).
+    struct TempDir {
+        path: PathBuf,
+    }
+
+    impl TempDir {
+        fn new() -> Self {
+            static N: AtomicU64 = AtomicU64::new(0);
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            let uniq = N.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir()
+                .join(format!("mestia_test_{}_{nanos}_{uniq}", std::process::id()));
+            std::fs::create_dir_all(&path).unwrap();
+            TempDir { path }
+        }
+
+        fn join(&self, p: &str) -> PathBuf {
+            self.path.join(p)
+        }
+
+        fn str(&self) -> String {
+            self.path.to_string_lossy().to_string()
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn touch(p: &std::path::Path) {
+        std::fs::write(p, b"x").unwrap();
+    }
+
+    #[test]
+    fn sanitize_replaces_forbidden_and_trims() {
+        assert_eq!(sanitize("  a/b:c*?<>|\"d  "), "a_b_c______d");
+        assert_eq!(sanitize("обычное имя"), "обычное имя");
+        assert_eq!(sanitize("   "), "");
+    }
+
+    #[test]
+    fn scan_dirs_skips_files_and_hidden() {
+        let t = TempDir::new();
+        std::fs::create_dir(t.join("alpha")).unwrap();
+        std::fs::create_dir(t.join(".hidden")).unwrap();
+        touch(&t.join("note.txt"));
+
+        let mut names: Vec<String> = scan_dirs(t.str()).unwrap().into_iter().map(|d| d.name).collect();
+        names.sort();
+        assert_eq!(names, vec!["alpha"]);
+    }
+
+    #[test]
+    fn scan_dirs_missing_dir_is_empty() {
+        assert!(scan_dirs("Z:/нет/такой/папки".into()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn scan_media_filters_by_extension_and_uses_stem() {
+        let t = TempDir::new();
+        touch(&t.join("clip.mp4"));
+        touch(&t.join("song.MP3")); // регистр расширения не важен
+        touch(&t.join("doc.txt")); // не медиа
+        std::fs::create_dir(t.join("sub")).unwrap(); // папки не считаем
+
+        let mut names: Vec<String> = scan_media(t.str()).unwrap().into_iter().map(|m| m.name).collect();
+        names.sort();
+        assert_eq!(names, vec!["clip", "song"]);
+    }
+
+    #[test]
+    fn existing_paths_reports_per_path() {
+        let t = TempDir::new();
+        let here = t.join("here.txt");
+        touch(&here);
+        let res = existing_paths(vec![
+            here.to_string_lossy().to_string(),
+            t.join("nope.txt").to_string_lossy().to_string(),
+        ]);
+        assert_eq!(res, vec![true, false]);
+    }
+
+    #[test]
+    fn move_video_file_moves_and_keeps_name() {
+        let t = TempDir::new();
+        let src = t.join("video.mp4");
+        touch(&src);
+        let dest_dir = t.join("dest");
+
+        let new_path = move_video_file(
+            src.to_string_lossy().to_string(),
+            dest_dir.to_string_lossy().to_string(),
+        )
+        .unwrap();
+
+        assert!(!src.exists());
+        assert!(dest_dir.join("video.mp4").is_file());
+        assert!(new_path.ends_with("video.mp4"));
+    }
+
+    #[test]
+    fn move_video_file_missing_src_errors() {
+        let t = TempDir::new();
+        let err = move_video_file(
+            t.join("ghost.mp4").to_string_lossy().to_string(),
+            t.str(),
+        )
+        .unwrap_err();
+        assert!(err.contains("не найден"));
+    }
+
+    #[test]
+    fn rename_folder_sanitizes_and_moves_in_parent() {
+        let t = TempDir::new();
+        let old = t.join("old");
+        std::fs::create_dir(&old).unwrap();
+
+        let new_path = rename_folder(old.to_string_lossy().to_string(), "new:name".into()).unwrap();
+
+        assert!(!old.exists());
+        assert!(t.join("new_name").is_dir());
+        assert!(new_path.ends_with("new_name"));
+    }
+
+    #[test]
+    fn rename_folder_empty_name_errors() {
+        let t = TempDir::new();
+        let old = t.join("x");
+        std::fs::create_dir(&old).unwrap();
+        assert!(rename_folder(old.to_string_lossy().to_string(), "  ".into()).is_err());
+    }
+
+    #[test]
+    fn delete_file_and_folder() {
+        let t = TempDir::new();
+        let f = t.join("f.txt");
+        touch(&f);
+        delete_file(f.to_string_lossy().to_string()).unwrap();
+        assert!(!f.exists());
+
+        let d = t.join("d");
+        std::fs::create_dir(&d).unwrap();
+        touch(&d.join("inner.txt"));
+        delete_folder(d.to_string_lossy().to_string()).unwrap();
+        assert!(!d.exists());
+
+        // Удаление несуществующего — не ошибка.
+        delete_file(t.join("missing").to_string_lossy().to_string()).unwrap();
+        delete_folder(t.join("missing").to_string_lossy().to_string()).unwrap();
+    }
 }

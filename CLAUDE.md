@@ -30,12 +30,15 @@ and themes.
 | Dev (full app) | `npm run tauri dev` |
 | Dev (frontend only) | `npm run dev` |
 | Build frontend + typecheck | `npm run build` (`tsc --noEmit && vite build`) |
+| Frontend tests | `npm test` (Vitest; files `src/**/*.test.ts`) |
+| Rust tests | `cargo test` (run in `src-tauri/`) |
 | Build installers | `npm run tauri build` |
 | Tauri CLI | `npm run tauri -- <args>` |
 
 Notes:
 - `predev` hook frees port 1420 before `npm run dev`.
-- No test runner or linter is configured. Type-checking is `tsc --noEmit` (via `npm run build`).
+- Tests: Vitest for frontend pure logic (`npm test`), `cargo test` for Rust. No linter configured.
+  Type-checking is `tsc --noEmit` (via `npm run build`).
 - Sidecar binaries must be fetched **before** `tauri build`.
 
 ## Architecture

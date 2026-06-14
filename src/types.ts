@@ -22,6 +22,15 @@ export interface FetchResult {
   platform: string | null; // extractor_key
   webpage_url: string | null;
   playlist_count: number | null; // кол-во видео (для плейлиста)
+  sizes: FormatSizes | null; // прикидка размеров по пресетам (только одиночное видео)
+}
+
+/** Прикидка размера (байты) по пресетам качества видео. */
+export interface FormatSizes {
+  v1080: number | null;
+  v720: number | null;
+  v480: number | null;
+  vbest: number | null;
 }
 
 /** Вариант формата для скачивания. */
@@ -56,6 +65,7 @@ export interface ItemPayload {
   duration: number | null;
   thumbnail: string | null;
   platform: string | null;
+  size: number | null; // размер готового файла на диске, байты
 }
 
 /** Финальное событие `download://done`. */

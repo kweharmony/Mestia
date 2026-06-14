@@ -48,6 +48,11 @@ export function openFolder(path: string): Promise<void> {
   return invoke("open_folder", { path });
 }
 
+/** Открыть файл во внешнем приложении по умолчанию (запасной плеер). */
+export function openPath(path: string): Promise<void> {
+  return invoke("open_path", { path });
+}
+
 /** Удалить файл с диска. */
 export function deleteFileOnDisk(path: string): Promise<void> {
   return invoke("delete_file", { path });
@@ -113,6 +118,11 @@ export function exitApp(): Promise<void> {
   return invoke("exit_app");
 }
 
+/** Поддерживает ли сборка самообновление (Win/macOS — да, Linux — только AppImage). */
+export function updaterSupported(): Promise<boolean> {
+  return invoke<boolean>("updater_supported");
+}
+
 /** Удаляет приложение: данные (+опц. скачанный контент) и запуск деинсталляции ОС. */
 export function uninstallApp(deleteContent: boolean): Promise<void> {
   return invoke("uninstall_app", { deleteContent });
@@ -173,8 +183,9 @@ export const VIDEO_FORMATS: DownloadFormat[] = [
   {
     id: "v1080",
     label: "1080p · MP4",
+    // Предпочитаем H.264/AAC: только такой mp4 гарантированно играется в Windows.
     format:
-      "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4][height<=1080]/best[height<=1080]",
+      "bestvideo[vcodec^=avc1][height<=1080]+bestaudio[ext=m4a]/bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4][height<=1080]/best[height<=1080]",
     ext: "mp4",
     isAudio: false,
   },
@@ -182,7 +193,7 @@ export const VIDEO_FORMATS: DownloadFormat[] = [
     id: "v720",
     label: "720p · MP4",
     format:
-      "bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best[ext=mp4][height<=720]/best[height<=720]",
+      "bestvideo[vcodec^=avc1][height<=720]+bestaudio[ext=m4a]/bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best[ext=mp4][height<=720]/best[height<=720]",
     ext: "mp4",
     isAudio: false,
   },
@@ -190,14 +201,16 @@ export const VIDEO_FORMATS: DownloadFormat[] = [
     id: "v480",
     label: "480p · MP4",
     format:
-      "bestvideo[ext=mp4][height<=480]+bestaudio[ext=m4a]/best[ext=mp4][height<=480]/best[height<=480]",
+      "bestvideo[vcodec^=avc1][height<=480]+bestaudio[ext=m4a]/bestvideo[ext=mp4][height<=480]+bestaudio[ext=m4a]/best[ext=mp4][height<=480]/best[height<=480]",
     ext: "mp4",
     isAudio: false,
   },
   {
     id: "vbest",
     label: "Лучшее качество",
-    format: "bestvideo+bestaudio/best",
+    // Сначала H.264/AAC (совместимо везде), и только если их нет — любое лучшее.
+    format:
+      "bestvideo[vcodec^=avc1]+bestaudio[ext=m4a]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
     ext: "mp4",
     isAudio: false,
   },
@@ -208,6 +221,23 @@ export const AUDIO_FORMATS: DownloadFormat[] = [
   { id: "mp3_128", label: "MP3 · 128 kbps", format: "bestaudio/best", ext: "mp3_128", isAudio: true },
   { id: "wav", label: "WAV · без потерь", format: "bestaudio/best", ext: "wav", isAudio: true },
 ];
+
+// Битрейт результирующего аудио (бит/с) по пресету — размер считается из длительности.
+const AUDIO_BITRATE: Record<string, number> = {
+  mp3_320: 320_000,
+  mp3_128: 128_000,
+  wav: 1_411_200, // 16 бит · 44.1 кГц · стерео
+};
+
+/** Оценка размера аудиофайла (байты) по длительности и пресету; null если не посчитать. */
+export function estimateAudioBytes(
+  durationSec: number | null | undefined,
+  formatId: string
+): number | null {
+  const bitrate = AUDIO_BITRATE[formatId];
+  if (!bitrate || !durationSec || durationSec <= 0) return null;
+  return (bitrate / 8) * durationSec;
+}
 
 // ── Утилиты форматирования ─────────────────────────────────────────────────────
 

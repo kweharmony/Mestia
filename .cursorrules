@@ -17,7 +17,7 @@ Cross-platform desktop video downloader & media library.
 - Dev: `npm run tauri dev` (frontend only: `npm run dev`)
 - Build + typecheck: `npm run build` (`tsc --noEmit && vite build`)
 - Build installers: `npm run tauri build`
-- No tests/linter configured; typecheck via `tsc --noEmit`.
+- Tests: `npm test` (Vitest, frontend), `cargo test` (Rust). No linter; typecheck via `tsc --noEmit`.
 
 ## Architecture
 - `src/context/` — ThemeContext, DownloadsContext (queue/events), DragContext

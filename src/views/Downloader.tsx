@@ -6,10 +6,20 @@ import {
   ListVideo,
   Loader2,
   Music,
+  RotateCcw,
   Video,
 } from "lucide-react";
-import { AUDIO_FORMATS, VIDEO_FORMATS, fetchMetadata, formatDuration } from "../lib/ipc";
-import type { DownloadFormat, FetchResult } from "../types";
+import {
+  AUDIO_FORMATS,
+  VIDEO_FORMATS,
+  estimateAudioBytes,
+  existingPaths,
+  fetchMetadata,
+  formatBytes,
+  formatDuration,
+} from "../lib/ipc";
+import { findVideoByUrl } from "../lib/db";
+import type { DownloadFormat, FetchResult, FormatSizes } from "../types";
 import { useToast } from "../components/Toast";
 import { useDownloads } from "../context/DownloadsContext";
 import Typewriter from "../components/Typewriter";
@@ -39,6 +49,8 @@ export default function Downloader() {
   const [focused, setFocused] = useState(false);
   const [plMode, setPlMode] = useState<PlMode>("all");
   const [range, setRange] = useState("");
+  // Видео уже в медиатеке — модалка подтверждения повторной загрузки.
+  const [dup, setDup] = useState<{ title: string; onConfirm: () => void } | null>(null);
 
   function reset() {
     setInfo(null);
@@ -82,7 +94,7 @@ export default function Downloader() {
     setFmt(kind === "video" ? VIDEO_FORMATS[0] : AUDIO_FORMATS[0]);
   }
 
-  function handleDownload() {
+  async function handleDownload() {
     if (!info) return;
     const isPlaylist = info.is_playlist;
     const mode: "single" | "all" | "range" = isPlaylist ? plMode : "single";
@@ -92,27 +104,59 @@ export default function Downloader() {
       return;
     }
 
-    // Запуск в фоне — можно сразу искать следующее.
-    void start({
-      url: url.trim(),
-      format: fmt.format,
-      isAudio: fmt.isAudio,
-      audioFormat: fmt.isAudio ? fmt.ext : null,
-      mode,
-      items,
-      meta: {
-        title: info.title,
-        platform: info.platform,
-        webpage_url: info.webpage_url,
-        isPlaylist,
-      },
-    });
-    notify(isPlaylist ? "Плейлист добавлен в загрузки" : "Добавлено в загрузки");
-    reset();
+    // Запуск в фоне — можно сразу искать следующее. recovery="restart"
+    // перезаписывает существующий файл (для повторного скачивания).
+    const launch = (recovery?: "restart") => {
+      void start({
+        url: url.trim(),
+        format: fmt.format,
+        isAudio: fmt.isAudio,
+        audioFormat: fmt.isAudio ? fmt.ext : null,
+        mode,
+        items,
+        recovery,
+        meta: {
+          title: info.title,
+          platform: info.platform,
+          webpage_url: info.webpage_url,
+          isPlaylist,
+        },
+      });
+      notify(isPlaylist ? "Плейлист добавлен в загрузки" : "Добавлено в загрузки");
+      reset();
+    };
+
+    // Конфликт: одиночное видео уже есть в медиатеке (и файл на месте).
+    if (!isPlaylist && info.webpage_url) {
+      try {
+        const existing = await findVideoByUrl(info.webpage_url);
+        if (existing) {
+          const [onDisk] = await existingPaths([existing.file_path]);
+          if (onDisk) {
+            setDup({ title: existing.title, onConfirm: () => launch("restart") });
+            return;
+          }
+        }
+      } catch {
+        /* проверка дубликата необязательна — не блокируем загрузку */
+      }
+    }
+
+    launch();
   }
 
   const formats = mediaKind === "video" ? VIDEO_FORMATS : AUDIO_FORMATS;
   const isPlaylist = info?.is_playlist ?? false;
+
+  // Подпись с прикидкой размера для чипа формата (пусто, если неизвестно).
+  function sizeLabel(f: DownloadFormat): string {
+    if (f.isAudio) {
+      const b = estimateAudioBytes(info?.duration, f.id);
+      return b ? `~${formatBytes(b)}` : "";
+    }
+    const s = info?.sizes ? info.sizes[f.id as keyof FormatSizes] : null;
+    return s ? formatBytes(s) : "";
+  }
 
   return (
     <div className="mestia-fade-in flex flex-1 flex-col items-center justify-center p-8">
@@ -318,7 +362,16 @@ export default function Downloader() {
                         className="mestia-anim absolute -inset-[2px] z-0 rounded-ui border-2 border-accent bg-snow"
                       />
                     )}
-                    <span className="relative z-10">{f.label}</span>
+                    <span className="relative z-10 flex items-center gap-1.5">
+                      {f.label}
+                      {sizeLabel(f) && (
+                        <span
+                          className={`text-[10px] font-bold ${active ? "text-accent/70" : "text-smoke"}`}
+                        >
+                          {sizeLabel(f)}
+                        </span>
+                      )}
+                    </span>
                   </button>
                 );
               })}
@@ -333,11 +386,62 @@ export default function Downloader() {
               {isPlaylist
                 ? "Скачать плейлист"
                 : `Скачать ${mediaKind === "video" ? "видео" : "аудио"}`}
+              {!isPlaylist && sizeLabel(fmt) && (
+                <span className="font-bold opacity-80">· {sizeLabel(fmt)}</span>
+              )}
             </button>
           </motion.div>
         )}
         </AnimatePresence>
       </div>
+
+      {/* Конфликт: видео уже в медиатеке */}
+      <AnimatePresence>
+        {dup && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="mestia-anim fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-8 backdrop-blur-sm"
+            onClick={() => setDup(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              className="mestia-anim w-full max-w-[400px] space-y-5 rounded-ui border-2 border-ink bg-snow p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-base font-semibold tracking-tight">Уже в медиатеке</h3>
+              <p className="text-sm font-semibold leading-snug text-smoke">
+                «{dup.title}» уже скачано. Скачать заново? Существующий файл будет
+                перезаписан.
+              </p>
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setDup(null)}
+                  className="rounded-ui border-2 border-fog px-4 py-2 text-sm font-semibold hover:bg-fog"
+                >
+                  Отмена
+                </button>
+                <button
+                  onClick={() => {
+                    const fn = dup.onConfirm;
+                    setDup(null);
+                    fn();
+                  }}
+                  className="flex items-center gap-2 rounded-ui border-2 border-ink bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+                >
+                  <RotateCcw className="h-4 w-4" strokeWidth={2.25} />
+                  Скачать заново
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

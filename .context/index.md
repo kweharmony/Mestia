@@ -77,6 +77,8 @@ Build-time Node helpers.
 
 - **Download**: `Downloader` view → `ipc.ts` → `downloader.rs` (spawns `yt-dlp`) →
   progress events → `DownloadsContext` → UI. Records land in SQLite via `db.ts`.
+  `downloader.rs` reads opt-in settings (`storage::setting`) for browser cookies,
+  subtitles and SponsorBlock, and always embeds metadata/thumbnail.
 - **Library**: files live in the user's downloads folder; `storage.rs` watches the
   folder and emits change events so the `Locker` grid stays in sync. Thumbnails are
   generated on demand and cached in the app data dir.
@@ -86,4 +88,4 @@ Build-time Node helpers.
 ## Conventions
 - Code comments and UI strings are in **Russian**.
 - Versions in `package.json` and `src-tauri/tauri.conf.json` must stay in sync.
-- No test/lint setup; type safety is enforced by `tsc --noEmit`.
+- Tests: Vitest (`npm test`, frontend pure logic) and `cargo test` (Rust). No linter; type safety via `tsc --noEmit`.

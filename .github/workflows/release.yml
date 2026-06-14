@@ -16,8 +16,12 @@ jobs:
       matrix:
         include:
           - platform: windows-latest
+            args: ""
+          # macOS — единый universal-бинарник (Intel + Apple Silicon).
           - platform: macos-latest
+            args: "--target universal-apple-darwin"
           - platform: ubuntu-22.04
+            args: ""
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -39,6 +43,11 @@ jobs:
       - name: Rust
         uses: dtolnay/rust-toolchain@stable
 
+      # Для universal-сборки нужны обе цели macOS.
+      - name: Rust targets (macOS universal)
+        if: matrix.platform == 'macos-latest'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
       - name: Кэш Rust
         uses: swatinem/rust-cache@v2
         with:
@@ -49,6 +58,9 @@ jobs:
 
       - name: Sidecar-бинарники (yt-dlp + ffmpeg)
         run: npm run fetch-binaries
+        env:
+          # На macOS собираем universal-сайдкары (lipo arm64 + x86_64).
+          MESTIA_MAC_UNIVERSAL: ${{ matrix.platform == 'macos-latest' && '1' || '' }}
 
       - name: Сборка и релиз
         uses: tauri-apps/tauri-action@v0
@@ -62,6 +74,8 @@ jobs:
           releaseName: "Mestia ${{ github.ref_name }}"
           releaseDraft: true
           prerelease: false
+          # Для macOS — universal; на остальных пусто.
+          args: ${{ matrix.args }}
           # Генерировать и прикладывать latest.json к релизу (нужно апдейтеру).
           includeUpdaterJson: true
 

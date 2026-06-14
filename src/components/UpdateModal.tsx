@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { Download, RefreshCw, X } from "lucide-react";
+import { updaterSupported } from "../lib/ipc";
 
 type Phase = "prompt" | "downloading" | "error";
 
@@ -21,14 +22,19 @@ export default function UpdateModal() {
   // Проверяем обновления один раз при запуске.
   useEffect(() => {
     let cancelled = false;
-    check()
-      .then((u) => {
-        // u === null — версия актуальна. В dev-сборке (без подписи) check бросит
-        // ошибку — её глушим в catch, чтобы не мешать разработке.
-        if (!cancelled && u) setUpdate(u);
+    // Самообновление есть не везде: Win/macOS — да, Linux — только AppImage
+    // (.deb/.rpm/Flatpak обновляются пакетным менеджером). Иначе не проверяем.
+    updaterSupported()
+      .then((supported) => {
+        if (!supported || cancelled) return;
+        return check().then((u) => {
+          // u === null — версия актуальна. В dev-сборке (без подписи) check бросит
+          // ошибку — её глушим в catch, чтобы не мешать разработке.
+          if (!cancelled && u) setUpdate(u);
+        });
       })
       .catch(() => {
-        /* нет сети / dev-сборка / endpoint недоступен — молча игнорируем */
+        /* нет сети / dev-сборка / Flatpak / endpoint недоступен — молча игнорируем */
       });
     return () => {
       cancelled = true;

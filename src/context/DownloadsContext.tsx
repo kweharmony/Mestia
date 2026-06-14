@@ -105,6 +105,10 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
   const [libraryVersion, setLibraryVersion] = useState(0);
   const metaMap = useRef(new Map<string, Meta>());
   const queueRef = useRef<QueuedInvoke[]>([]);
+  // Единый счётчик процессов «в полёте» (запущенных, но ещё не завершённых).
+  // Источник правды для лимита параллелизма — в отличие от downloadsRef он
+  // меняется синхронно при старте, без задержки рендера.
+  const activeRef = useRef(0);
 
   // Зеркало downloads для колбэков без пересоздания подписок.
   const downloadsRef = useRef<ActiveDownload[]>([]);
@@ -117,32 +121,45 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
     markInterrupted().catch(() => {});
   }, []);
 
+  // Когда активных загрузок не осталось — убираем карточки, чтобы кружок
+  // загрузок пропал после завершения (о результате уже сообщает тост).
+  useEffect(() => {
+    if (downloads.length === 0) return;
+    const anyActive = downloads.some(
+      (d) => d.status === "downloading" || d.status === "queued"
+    );
+    if (!anyActive) {
+      const t = window.setTimeout(() => setDownloads([]), 1500);
+      return () => window.clearTimeout(t);
+    }
+  }, [downloads]);
+
   function setStatus(id: string, patch: Partial<ActiveDownload>) {
     setDownloads((ds) => ds.map((d) => (d.id === id ? { ...d, ...patch } : d)));
+  }
+
+  /** Помечает задачу проваленной, освобождает слот и пробует запустить следующую. */
+  function failTask(id: string, e: unknown) {
+    activeRef.current = Math.max(0, activeRef.current - 1);
+    const m = metaMap.current.get(id);
+    if (m?.historyId) void updateHistoryStatus(m.historyId, "error", null);
+    metaMap.current.delete(id);
+    setStatus(id, { status: "error", error: String(e) });
+    void pumpQueue();
   }
 
   /** Запускает задачи из очереди, пока есть свободные слоты. */
   async function pumpQueue() {
     const limit = await maxParallel();
-    while (queueRef.current.length > 0) {
-      const active = downloadsRef.current.filter((d) => d.status === "downloading").length;
-      const queuedShown = downloadsRef.current.filter((d) => d.status === "queued").length;
-      // active считаем по ref + только что запущенные ещё могут не отразиться;
-      // защищаемся минимально: выходим, если слотов нет.
-      if (active >= limit) break;
+    while (queueRef.current.length > 0 && activeRef.current < limit) {
       const next = queueRef.current.shift();
       if (!next) break;
+      activeRef.current += 1; // занимаем слот синхронно — без гонки на лимите
       setStatus(next.id, { status: "downloading" });
       downloadsRef.current = downloadsRef.current.map((d) =>
         d.id === next.id ? { ...d, status: "downloading" } : d
       );
-      void queuedShown;
-      ipcStartDownload(next).catch((e) => {
-        const m = metaMap.current.get(next.id);
-        if (m?.historyId) void updateHistoryStatus(m.historyId, "error", null);
-        metaMap.current.delete(next.id);
-        setStatus(next.id, { status: "error", error: String(e) });
-      });
+      ipcStartDownload(next).catch((e) => failTask(next.id, e));
     }
   }
 
@@ -176,7 +193,9 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
           url: it.url,
           file_path: it.filePath,
           duration: it.duration,
-          size: !m.isPlaylist ? m.lastTotal : null,
+          // Реальный размер файла с диска (есть для всех, включая плейлисты);
+          // запасной вариант — total из прогресса для одиночного видео.
+          size: it.size ?? (!m.isPlaylist ? m.lastTotal : null),
           thumbnail_path: it.thumbnail,
           platform: it.platform,
           folder_id: m.folderId,
@@ -190,6 +209,8 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
 
     reg(
       onDone(async (d) => {
+        // Процесс завершился (успех/ошибка/после kill при отмене) — освобождаем слот.
+        activeRef.current = Math.max(0, activeRef.current - 1);
         const m = metaMap.current.get(d.id);
         if (m?.historyId) {
           await updateHistoryStatus(m.historyId, d.ok ? "success" : "error", null);
@@ -282,8 +303,7 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
       };
 
       const limit = await maxParallel();
-      const active = downloadsRef.current.filter((x) => x.status === "downloading").length;
-      const willQueue = active >= limit;
+      const willQueue = activeRef.current >= limit;
 
       setDownloads((ds) => [
         ...ds,
@@ -302,7 +322,8 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
       if (willQueue) {
         queueRef.current.push(invokeArgs);
       } else {
-        await ipcStartDownload(invokeArgs);
+        activeRef.current += 1; // занимаем слот синхронно
+        ipcStartDownload(invokeArgs).catch((e) => failTask(id, e));
       }
     } catch (e) {
       const m = metaMap.current.get(id);

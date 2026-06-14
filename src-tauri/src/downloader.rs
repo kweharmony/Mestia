@@ -31,6 +31,8 @@ pub struct FetchResult {
     platform: Option<String>,
     webpage_url: Option<String>,
     playlist_count: Option<u64>,
+    /// Прикидка размеров по пресетам качества (только для одиночного видео).
+    sizes: Option<FormatSizes>,
 }
 
 #[derive(Deserialize)]
@@ -78,6 +80,8 @@ struct ItemPayload {
     duration: Option<f64>,
     thumbnail: Option<String>,
     platform: Option<String>,
+    /// Размер готового файла на диске, байты (для отображения в медиатеке).
+    size: Option<f64>,
 }
 
 #[derive(Serialize, Clone)]
@@ -88,17 +92,47 @@ struct DonePayload {
     error: Option<String>,
 }
 
+/// Аргументы доступа к источнику (куки браузера) — общие для метаданных и загрузки.
+/// Пусто, если в настройках браузер не выбран.
+fn cookies_args(app: &AppHandle) -> Vec<String> {
+    match crate::storage::setting(app, "cookiesBrowser") {
+        Some(b) if !b.trim().is_empty() => vec!["--cookies-from-browser".into(), b],
+        _ => Vec::new(),
+    }
+}
+
+/// Сколько фрагментов качать параллельно (главный фактор скорости на DASH/HLS).
+/// Настройка `concurrentFragments`, по умолчанию 5; ограничено 1..=16.
+fn concurrent_fragments(app: &AppHandle) -> String {
+    crate::storage::setting(app, "concurrentFragments")
+        .and_then(|s| s.trim().parse::<u32>().ok())
+        .unwrap_or(5)
+        .clamp(1, 16)
+        .to_string()
+}
+
 // ── Команда: метаданные (видео или плейлист) ───────────────────────────────────
 
 #[tauri::command]
 pub async fn fetch_metadata(app: AppHandle, url: String) -> Result<FetchResult, String> {
+    // --flat-playlist: не выкачиваем метаданные каждого видео плейлиста (быстро).
+    // --socket-timeout: не виснем бесконечно на недоступном хосте.
+    let mut meta_args: Vec<String> = vec![
+        "--dump-single-json".into(),
+        "--flat-playlist".into(),
+        "--no-warnings".into(),
+        "--socket-timeout".into(),
+        "20".into(),
+    ];
+    meta_args.extend(cookies_args(&app)); // приватные/возрастные — по кукам браузера
+    meta_args.push(url);
+
     let output = app
         .shell()
         .command(binary_path("yt-dlp"))
         .env("PYTHONUTF8", "1")
         .env("PYTHONIOENCODING", "utf-8")
-        // --flat-playlist: не выкачиваем метаданные каждого видео плейлиста (быстро).
-        .args(["--dump-single-json", "--flat-playlist", "--no-warnings", &url])
+        .args(meta_args)
         .output()
         .await
         .map_err(|e| e.to_string())?;
@@ -130,6 +164,7 @@ pub async fn fetch_metadata(app: AppHandle, url: String) -> Result<FetchResult, 
             platform,
             webpage_url,
             playlist_count: count,
+            sizes: None,
         })
     } else {
         Ok(FetchResult {
@@ -141,7 +176,79 @@ pub async fn fetch_metadata(app: AppHandle, url: String) -> Result<FetchResult, 
             platform,
             webpage_url,
             playlist_count: None,
+            // formats есть и при --flat-playlist для одиночного видео — считаем сразу.
+            sizes: Some(compute_sizes(&v)),
         })
+    }
+}
+
+// ── Оценка размера по форматам (для одиночного видео) ──────────────────────────
+
+/// Прикидка итогового размера для пресетов качества (видео+аудио), байты.
+#[derive(Serialize)]
+pub struct FormatSizes {
+    v1080: Option<f64>,
+    v720: Option<f64>,
+    v480: Option<f64>,
+    vbest: Option<f64>,
+}
+
+fn is_video(f: &Value) -> bool {
+    f.get("vcodec").and_then(Value::as_str).map_or(false, |c| c != "none")
+}
+fn is_audio(f: &Value) -> bool {
+    f.get("acodec").and_then(Value::as_str).map_or(false, |c| c != "none")
+}
+fn fmt_size(f: &Value) -> Option<f64> {
+    f.get("filesize")
+        .and_then(Value::as_f64)
+        .or_else(|| f.get("filesize_approx").and_then(Value::as_f64))
+}
+
+/// Размер лучшей аудиодорожки (audio-only) — добавляется к видео без звука.
+fn best_audio_size(formats: &[Value]) -> Option<f64> {
+    formats
+        .iter()
+        .filter(|f| is_audio(f) && !is_video(f))
+        .filter_map(fmt_size)
+        .fold(None, |acc, s| Some(acc.map_or(s, |a: f64| a.max(s))))
+}
+
+/// Итоговый размер видео при ограничении высоты `cap` (None — без ограничения):
+/// берём поток с наибольшей высотой/размером в пределах cap и добавляем аудио,
+/// если поток без звука.
+fn video_total(formats: &[Value], cap: Option<u64>, audio: Option<f64>) -> Option<f64> {
+    let mut best: Option<(u64, f64, bool)> = None; // (высота, размер, есть_звук)
+    for f in formats {
+        if !is_video(f) {
+            continue;
+        }
+        let h = f.get("height").and_then(Value::as_u64).unwrap_or(0);
+        if let Some(c) = cap {
+            if h > c {
+                continue;
+            }
+        }
+        let Some(sz) = fmt_size(f) else { continue };
+        let better = match best {
+            None => true,
+            Some((bh, bsz, _)) => h > bh || (h == bh && sz > bsz),
+        };
+        if better {
+            best = Some((h, sz, is_audio(f)));
+        }
+    }
+    best.map(|(_, sz, has_audio)| if has_audio { sz } else { sz + audio.unwrap_or(0.0) })
+}
+
+fn compute_sizes(v: &Value) -> FormatSizes {
+    let formats = v.get("formats").and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]);
+    let audio = best_audio_size(formats);
+    FormatSizes {
+        v1080: video_total(formats, Some(1080), audio),
+        v720: video_total(formats, Some(720), audio),
+        v480: video_total(formats, Some(480), audio),
+        vbest: video_total(formats, None, audio),
     }
 }
 
@@ -170,13 +277,35 @@ pub async fn start_download(app: AppHandle, args: DownloadArgs) -> Result<(), St
         "--progress".into(),
         "--no-color".into(),
         "--no-warnings".into(),
+        // Большие/длинные видео не должны обрываться из-за единичного сбоя сети —
+        // иначе на диск падает усечённый («повреждённый») файл.
+        "--retries".into(),
+        "infinite".into(),
+        "--fragment-retries".into(),
+        "infinite".into(),
+        // Параллельная загрузка фрагментов DASH/HLS — главный фактор скорости.
+        "--concurrent-fragments".into(),
+        concurrent_fragments(&app),
+        // Больший буфер чтения сети ускоряет запись крупных потоков.
+        "--buffer-size".into(),
+        "16M".into(),
+        // Не упираться в файловые блокировки на медленных дисках/microSD.
+        "--file-access-retries".into(),
+        "10".into(),
+        // Имена файлов, безопасные для Windows/FAT — медиатека часто живёт на microSD.
+        "--windows-filenames".into(),
+        // Слишком длинные имена бьются о лимит пути Windows (260) — подрезаем.
+        "--trim-filenames".into(),
+        "200".into(),
+        // Метаданные (название/автор/дата) внутрь контейнера.
+        "--embed-metadata".into(),
         "--progress-template".into(),
         format!(
             "{MARK_PROGRESS}%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s|%(info.playlist_index)s|%(info.n_entries)s"
         ),
         "--print".into(),
         // JSON-объект по каждому перемещённому файлу (не-ASCII → \uXXXX).
-        format!("after_move:{MARK_FILE}%(.{{title,filepath,webpage_url,duration,thumbnail,extractor_key}})j"),
+        format!("after_move:{MARK_FILE}%(.{{title,filepath,webpage_url,duration,thumbnail,extractor_key,filesize,filesize_approx}})j"),
         "-o".into(),
         out_tmpl,
         "--merge-output-format".into(),
@@ -232,6 +361,32 @@ pub async fn start_download(app: AppHandle, args: DownloadArgs) -> Result<(), St
         yt_args.push(codec.into());
         yt_args.push("--audio-quality".into());
         yt_args.push(quality.into());
+        // Обложка как album art в файл (mp3/m4a/flac). Для wav контейнер её
+        // не поддерживает — yt-dlp просто пропустит этот шаг.
+        if codec != "wav" {
+            yt_args.push("--embed-thumbnail".into());
+        }
+    }
+
+    // Куки браузера — для приватных/возрастных/members-видео.
+    yt_args.extend(cookies_args(&app));
+
+    // Субтитры (только видео): скачиваем и встраиваем в контейнер.
+    if !args.is_audio && crate::storage::setting(&app, "subtitles").as_deref() == Some("1") {
+        let lang = crate::storage::setting(&app, "subtitlesLang")
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| "ru,en".into());
+        yt_args.push("--write-subs".into());
+        yt_args.push("--write-auto-subs".into());
+        yt_args.push("--sub-langs".into());
+        yt_args.push(lang);
+        yt_args.push("--embed-subs".into());
+    }
+
+    // SponsorBlock — вырезать спонсорские/интро сегменты.
+    if crate::storage::setting(&app, "sponsorblock").as_deref() == Some("1") {
+        yt_args.push("--sponsorblock-remove".into());
+        yt_args.push("default".into());
     }
 
     let (mut rx, child) = app
@@ -354,7 +509,12 @@ fn handle_line(line: &str, id: &str, app: &AppHandle, count: &mut u32, last_err:
             let _ = app.emit("download://progress", p);
         }
     } else if let Some(rest) = line.strip_prefix(MARK_FILE) {
-        if let Some(item) = parse_item(id, rest) {
+        if let Some(mut item) = parse_item(id, rest) {
+            // Реальный размер итогового файла (после merge/конвертации) — точнее,
+            // чем filesize из метаданных yt-dlp, который для merged-видео часто пуст.
+            if let Ok(meta) = std::fs::metadata(&item.file_path) {
+                item.size = Some(meta.len() as f64);
+            }
             *count += 1;
             let _ = app.emit("download://item", item);
         }
@@ -375,6 +535,11 @@ fn parse_item(id: &str, rest: &str) -> Option<ItemPayload> {
         duration: v.get("duration").and_then(Value::as_f64),
         thumbnail: v.get("thumbnail").and_then(Value::as_str).map(String::from),
         platform: v.get("extractor_key").and_then(Value::as_str).map(String::from),
+        // Из метаданных (как запасной вариант); реальный размер проставит handle_line.
+        size: v
+            .get("filesize")
+            .and_then(Value::as_f64)
+            .or_else(|| v.get("filesize_approx").and_then(Value::as_f64)),
     })
 }
 
@@ -466,11 +631,145 @@ fn ffmpeg_dir(app: &AppHandle) -> Option<String> {
     None
 }
 
-/// Первая содержательная строка из stderr yt-dlp (для понятной ошибки).
+/// Понятная ошибка из stderr yt-dlp: сначала ищем строку с «ERROR» (там суть),
+/// иначе — первую непустую (трейсбэк/прочий вывод).
 fn first_meaningful_line(text: &str) -> String {
-    text.lines()
-        .map(str::trim)
-        .find(|l| !l.is_empty())
-        .unwrap_or("Не удалось получить данные по ссылке")
-        .to_string()
+    let lines: Vec<&str> = text.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    lines
+        .iter()
+        .find(|l| l.contains("ERROR"))
+        .or_else(|| lines.first())
+        .map(|l| l.to_string())
+        .unwrap_or_else(|| "Не удалось получить данные по ссылке".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn progress_basic() {
+        // downloaded|total|total_est|speed|eta|index|n_entries
+        let p = parse_progress("t1", "1000|2000|NA|500|10|2|5").unwrap();
+        assert_eq!(p.downloaded, Some(1000.0));
+        assert_eq!(p.total, Some(2000.0));
+        assert_eq!(p.speed, Some(500.0));
+        assert_eq!(p.eta, Some(10.0));
+        assert_eq!(p.percent, 50.0);
+        assert_eq!(p.index, Some(2.0));
+        assert_eq!(p.total_items, Some(5.0));
+    }
+
+    #[test]
+    fn progress_total_falls_back_to_estimate() {
+        // total = NA → берём total_bytes_estimate (третье поле)
+        let p = parse_progress("t1", "1000|NA|4000|0|0").unwrap();
+        assert_eq!(p.total, Some(4000.0));
+        assert_eq!(p.percent, 25.0);
+    }
+
+    #[test]
+    fn progress_handles_na_and_none() {
+        let p = parse_progress("t1", "NA|None|NA|None|NA").unwrap();
+        assert_eq!(p.downloaded, None);
+        assert_eq!(p.total, None);
+        assert_eq!(p.percent, 0.0); // без total процент не считаем
+    }
+
+    #[test]
+    fn progress_too_few_fields_is_none() {
+        assert!(parse_progress("t1", "1|2|3").is_none());
+    }
+
+    #[test]
+    fn item_parses_json() {
+        let json = r#"{"title":"Видео","filepath":"/m/v.mp4","webpage_url":"https://x","duration":12.5,"thumbnail":"https://t","extractor_key":"YouTube","filesize":2048}"#;
+        let item = parse_item("t1", json).unwrap();
+        assert_eq!(item.title, "Видео");
+        assert_eq!(item.file_path, "/m/v.mp4");
+        assert_eq!(item.url.as_deref(), Some("https://x"));
+        assert_eq!(item.duration, Some(12.5));
+        assert_eq!(item.platform.as_deref(), Some("YouTube"));
+        assert_eq!(item.size, Some(2048.0));
+    }
+
+    #[test]
+    fn item_size_falls_back_to_approx_then_none() {
+        let approx = parse_item("t1", r#"{"filepath":"/m/v.mp4","filesize_approx":999}"#).unwrap();
+        assert_eq!(approx.size, Some(999.0));
+        let none = parse_item("t1", r#"{"filepath":"/m/v.mp4"}"#).unwrap();
+        assert_eq!(none.size, None);
+    }
+
+    #[test]
+    fn item_without_filepath_is_none() {
+        // filepath обязателен — без него считать файл готовым нельзя
+        assert!(parse_item("t1", r#"{"title":"Без файла"}"#).is_none());
+    }
+
+    #[test]
+    fn item_title_defaults_when_missing() {
+        let item = parse_item("t1", r#"{"filepath":"/m/v.mp4"}"#).unwrap();
+        assert_eq!(item.title, "Без названия");
+    }
+
+    #[test]
+    fn meaningful_line_skips_blanks() {
+        assert_eq!(first_meaningful_line("\n  \n  ERROR: boom\nnext"), "ERROR: boom");
+        assert_eq!(first_meaningful_line("   "), "Не удалось получить данные по ссылке");
+    }
+
+    #[test]
+    fn meaningful_line_prefers_error_over_earlier_noise() {
+        let text = "WARNING: что-то\nTraceback ...\nERROR: видео недоступно\nfoo";
+        assert_eq!(first_meaningful_line(text), "ERROR: видео недоступно");
+    }
+
+    #[test]
+    fn meaningful_line_falls_back_to_first_when_no_error() {
+        assert_eq!(first_meaningful_line("просто строка\nвторая"), "просто строка");
+    }
+
+    #[test]
+    fn sizes_combine_video_and_audio_within_caps() {
+        let json = serde_json::json!({
+            "formats": [
+                {"vcodec":"avc1","acodec":"none","height":480,"filesize":40},
+                {"vcodec":"avc1","acodec":"none","height":1080,"filesize":100},
+                {"vcodec":"vp9","acodec":"none","height":2160,"filesize":500},
+                {"vcodec":"none","acodec":"mp4a","filesize":10},
+                {"vcodec":"none","acodec":"opus","filesize":8}
+            ]
+        });
+        let s = compute_sizes(&json);
+        assert_eq!(s.v480, Some(50.0));   // 40 видео + 10 лучшее аудио
+        assert_eq!(s.v1080, Some(110.0)); // 100 + 10
+        assert_eq!(s.vbest, Some(510.0)); // 500 (2160p) + 10
+    }
+
+    #[test]
+    fn sizes_progressive_stream_not_double_counted() {
+        // Прогрессивный поток уже со звуком — аудио не прибавляем.
+        let json = serde_json::json!({
+            "formats": [
+                {"vcodec":"avc1","acodec":"mp4a","height":360,"filesize":70},
+                {"vcodec":"none","acodec":"mp4a","filesize":10}
+            ]
+        });
+        let s = compute_sizes(&json);
+        assert_eq!(s.v480, Some(70.0));
+    }
+
+    #[test]
+    fn sizes_uses_filesize_approx_and_handles_empty() {
+        let json = serde_json::json!({
+            "formats": [
+                {"vcodec":"avc1","acodec":"none","height":720,"filesize_approx":200}
+            ]
+        });
+        // аудио нет — возвращаем только видео
+        assert_eq!(compute_sizes(&json).v720, Some(200.0));
+        // без formats — всё None
+        assert_eq!(compute_sizes(&serde_json::json!({})).vbest, None);
+    }
 }

@@ -332,7 +332,9 @@ export default function Locker({
   }, [query]);
 
   function enterFolder(folder: FolderRow) {
-    setTrail((t) => [...t, folder]);
+    // Защита от двойного/быстрого клика: не заталкиваем одну и ту же папку
+    // в крошки повторно (иначе путь дублируется: …→ Папка → Папка).
+    setTrail((t) => (t.length && t[t.length - 1].id === folder.id ? t : [...t, folder]));
   }
   function goToCrumb(index: number) {
     setTrail((t) => (index < 0 ? [] : t.slice(0, index + 1)));
@@ -363,9 +365,11 @@ export default function Locker({
     }
   }
 
+  const creatingBusy = useRef(false);
   async function handleCreateFolder() {
     const name = newName.trim();
-    if (!name) return;
+    if (!name || creatingBusy.current) return; // защита от повторного сабмита
+    creatingBusy.current = true;
     try {
       const path = await createFolderOnDisk(name, current?.path ?? null);
       await createFolder(name, path, currentId);
@@ -375,6 +379,8 @@ export default function Locker({
       notify(`Папка «${name}» создана`);
     } catch (e) {
       notify(String(e), "error");
+    } finally {
+      creatingBusy.current = false;
     }
   }
 
@@ -934,14 +940,18 @@ function VideoCard(props: {
           selected
             ? "border-accent bg-accent text-white"
             : "border-fog bg-snow/90 text-transparent"
-        } ${selectionMode || selected ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+        } ${
+          selectionMode || selected
+            ? "opacity-100"
+            : "opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
+        }`}
       >
         <Check className="h-4 w-4" strokeWidth={3} />
       </button>
 
-      {/* Действия */}
+      {/* Действия — на тач-устройствах (Steam Deck) видны без наведения. */}
       {!renaming && (
-        <div className="absolute right-3 top-3 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="absolute right-3 top-3 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100">
           <CardAction icon={ImageIcon} title="Сменить обложку" onClick={props.onCover} solid />
           <CardAction icon={Pencil} title="Переименовать" onClick={props.onRename} solid />
           <CardAction icon={Trash2} title="Удалить" onClick={props.onDelete} danger solid />

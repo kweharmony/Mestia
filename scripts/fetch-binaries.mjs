@@ -4,8 +4,9 @@
  *
  *   node scripts/fetch-binaries.mjs
  *
- * Windows: автоматически качает yt-dlp.exe и ffmpeg/ffprobe (сборка BtbN).
- * macOS/Linux: качает yt-dlp; ffmpeg попросит установить вручную.
+ * Качает yt-dlp + ffmpeg/ffprobe под текущую ОС и архитектуру:
+ *   Windows — BtbN; macOS — martin-riedl.de (нативно arm64/amd64), запасной evermeet;
+ *   Linux — johnvansickle/BtbN. yt-dlp на macOS — универсальный бинарь.
  */
 import { execFileSync } from "node:child_process";
 import { mkdirSync, existsSync, copyFileSync, rmSync, readdirSync, createWriteStream } from "node:fs";
@@ -19,8 +20,15 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 const BIN_DIR = join(ROOT, "src-tauri", "binaries");
 
+// Universal-сборка macOS (Intel + Apple Silicon в одном бинарнике) — включается
+// переменной окружения в CI (MESTIA_MAC_UNIVERSAL=1). Локально не трогаем.
+const MAC_UNIVERSAL =
+  os.platform() === "darwin" && process.env.MESTIA_MAC_UNIVERSAL === "1";
+
 // ── Определяем target triple (как у `rustc -Vv` host) ─────────────────────────
 function targetTriple() {
+  // В universal-режиме triple фиксирован — host (arm64) тут не подходит.
+  if (MAC_UNIVERSAL) return "universal-apple-darwin";
   try {
     const out = execFileSync("rustc", ["-Vv"], { encoding: "utf8" });
     const m = out.match(/host:\s*(\S+)/);
@@ -103,25 +111,64 @@ async function fetchFfmpegWindows() {
   rmSync(tmpDir, { recursive: true, force: true });
 }
 
+// Скачивает ffmpeg/ffprobe одной архитектуры ("arm64"|"amd64") во временный
+// файл и возвращает путь к бинарю. martin-riedl.de даёт обе архитектуры; для
+// Intel есть запасной evermeet.cx.
+async function downloadMacFfmpeg(name, arch) {
+  const urls = [
+    `https://ffmpeg.martin-riedl.de/redirect/latest/macos/${arch}/release/${name}.zip`,
+  ];
+  if (arch === "amd64") {
+    urls.push(
+      name === "ffmpeg"
+        ? "https://evermeet.cx/ffmpeg/getrelease/zip"
+        : "https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip"
+    );
+  }
+  let lastErr;
+  for (const url of urls) {
+    const tmpZip = join(os.tmpdir(), `mestia-${name}-${arch}.zip`);
+    const tmpDir = join(os.tmpdir(), `mestia-${name}-${arch}`);
+    try {
+      await download(url, tmpZip);
+      rmSync(tmpDir, { recursive: true, force: true });
+      mkdirSync(tmpDir, { recursive: true });
+      execFileSync("unzip", ["-o", tmpZip, "-d", tmpDir]);
+      const src = findFile(tmpDir, name);
+      if (!src) throw new Error(`${name} не найден в архиве`);
+      const out = join(os.tmpdir(), `mestia-${name}-${arch}.bin`);
+      copyFileSync(src, out);
+      return out;
+    } catch (e) {
+      lastErr = e;
+    } finally {
+      rmSync(tmpZip, { force: true });
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  }
+  throw lastErr ?? new Error(`не удалось получить ${name} (${arch}) для macOS`);
+}
+
 async function fetchFfmpegMac() {
-  // evermeet.cx — статичные сборки ffmpeg/ffprobe для macOS (zip с одним бинарником).
-  for (const [name, url] of [
-    ["ffmpeg", "https://evermeet.cx/ffmpeg/getrelease/zip"],
-    ["ffprobe", "https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip"],
-  ]) {
-    const tmpZip = join(os.tmpdir(), `mestia-${name}.zip`);
-    const tmpDir = join(os.tmpdir(), `mestia-${name}`);
-    await download(url, tmpZip);
-    rmSync(tmpDir, { recursive: true, force: true });
-    mkdirSync(tmpDir, { recursive: true });
-    execFileSync("unzip", ["-o", tmpZip, "-d", tmpDir]);
-    const src = join(tmpDir, name);
+  for (const name of ["ffmpeg", "ffprobe"]) {
     const dst = join(BIN_DIR, `${name}-${TRIPLE}`);
-    copyFileSync(src, dst);
+    if (MAC_UNIVERSAL) {
+      // Склеиваем arm64 + x86_64 в один universal-бинарь — это требование Tauri
+      // для сборки --target universal-apple-darwin.
+      const arm = await downloadMacFfmpeg(name, "arm64");
+      const intel = await downloadMacFfmpeg(name, "amd64");
+      execFileSync("lipo", ["-create", arm, intel, "-output", dst]);
+      rmSync(arm, { force: true });
+      rmSync(intel, { force: true });
+      console.log(`  ✓ ${name} (universal) → ${dst}`);
+    } else {
+      const arch = os.arch() === "arm64" ? "arm64" : "amd64";
+      const bin = await downloadMacFfmpeg(name, arch);
+      copyFileSync(bin, dst);
+      rmSync(bin, { force: true });
+      console.log(`  ✓ ${name} (${arch}) → ${dst}`);
+    }
     execFileSync("chmod", ["+x", dst]);
-    console.log(`  ✓ ${name} → ${dst}`);
-    rmSync(tmpZip, { force: true });
-    rmSync(tmpDir, { recursive: true, force: true });
   }
 }
 

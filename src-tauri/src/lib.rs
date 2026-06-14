@@ -46,6 +46,12 @@ pub fn run() {
                   ALTER TABLE history ADD COLUMN out_dir TEXT;",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 3,
+            description: "index videos.url (findVideoByUrl)",
+            sql: "CREATE INDEX IF NOT EXISTS idx_videos_url ON videos(url);",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -113,11 +119,13 @@ pub fn run() {
             storage::set_storage_root,
             storage::get_setting,
             storage::set_setting,
+            storage::updater_supported,
             storage::scan_media,
             storage::scan_dirs,
             storage::create_folder_dir,
             storage::move_video_file,
             storage::open_folder,
+            storage::open_path,
             storage::delete_file,
             storage::delete_folder,
             storage::rename_folder,
