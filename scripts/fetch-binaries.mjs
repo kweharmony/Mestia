@@ -20,15 +20,21 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 const BIN_DIR = join(ROOT, "src-tauri", "binaries");
 
-// Universal-сборка macOS (Intel + Apple Silicon в одном бинарнике) — включается
-// переменной окружения в CI (MESTIA_MAC_UNIVERSAL=1). Локально не трогаем.
+// Universal-сборка macOS (Intel + Apple Silicon) — включается переменной
+// окружения в CI (MESTIA_MAC_UNIVERSAL=1). Tauri для --target universal-apple-darwin
+// собирает каждую арку ОТДЕЛЬНО и сам склеивает их (lipo), поэтому сайдкары нужны
+// с per-arch именами обеих архитектур. Локально (без флага) — ничего не меняем.
 const MAC_UNIVERSAL =
   os.platform() === "darwin" && process.env.MESTIA_MAC_UNIVERSAL === "1";
 
+// arch — для источников ffmpeg; lipo — имя среза для lipo; triple — суффикс файла.
+const MAC_ARCHES = [
+  { arch: "arm64", lipo: "arm64", triple: "aarch64-apple-darwin" },
+  { arch: "amd64", lipo: "x86_64", triple: "x86_64-apple-darwin" },
+];
+
 // ── Определяем target triple (как у `rustc -Vv` host) ─────────────────────────
 function targetTriple() {
-  // В universal-режиме triple фиксирован — host (arm64) тут не подходит.
-  if (MAC_UNIVERSAL) return "universal-apple-darwin";
   try {
     const out = execFileSync("rustc", ["-Vv"], { encoding: "utf8" });
     const m = out.match(/host:\s*(\S+)/);
@@ -76,6 +82,29 @@ async function fetchYtDlp() {
     ? "yt-dlp_macos"
     : "yt-dlp_linux";
   const url = `https://github.com/yt-dlp/yt-dlp/releases/latest/download/${asset}`;
+
+  // Universal: yt-dlp_macos — это fat-бинарь (arm64 + x86_64). «Утоньшаем» его в
+  // два per-arch файла, чтобы Tauri собрал каждую арку и сам склеил обратно.
+  if (MAC_UNIVERSAL) {
+    const fat = join(os.tmpdir(), "mestia-yt-dlp_macos");
+    await download(url, fat);
+    const archs = execFileSync("lipo", ["-archs", fat], { encoding: "utf8" }).trim().split(/\s+/);
+    for (const { lipo, triple } of MAC_ARCHES) {
+      const dest = join(BIN_DIR, `yt-dlp-${triple}`);
+      if (archs.length > 1) {
+        execFileSync("lipo", [fat, "-thin", lipo, "-output", dest]);
+      } else if (archs[0] === lipo) {
+        copyFileSync(fat, dest); // уже одноархитектурный нужной арки
+      } else {
+        throw new Error(`yt-dlp_macos не содержит ${lipo} (есть: ${archs.join(",")})`);
+      }
+      execFileSync("chmod", ["+x", dest]);
+      console.log(`  ✓ yt-dlp (${lipo}) → ${dest}`);
+    }
+    rmSync(fat, { force: true });
+    return;
+  }
+
   const dest = join(BIN_DIR, `yt-dlp-${TRIPLE}${EXE}`);
   await download(url, dest);
   if (!IS_WIN) execFileSync("chmod", ["+x", dest]);
@@ -151,24 +180,25 @@ async function downloadMacFfmpeg(name, arch) {
 
 async function fetchFfmpegMac() {
   for (const name of ["ffmpeg", "ffprobe"]) {
-    const dst = join(BIN_DIR, `${name}-${TRIPLE}`);
     if (MAC_UNIVERSAL) {
-      // Склеиваем arm64 + x86_64 в один universal-бинарь — это требование Tauri
-      // для сборки --target universal-apple-darwin.
-      const arm = await downloadMacFfmpeg(name, "arm64");
-      const intel = await downloadMacFfmpeg(name, "amd64");
-      execFileSync("lipo", ["-create", arm, intel, "-output", dst]);
-      rmSync(arm, { force: true });
-      rmSync(intel, { force: true });
-      console.log(`  ✓ ${name} (universal) → ${dst}`);
+      // Обе арки по отдельности — Tauri сам склеит их в universal при сборке.
+      for (const { arch, triple } of MAC_ARCHES) {
+        const bin = await downloadMacFfmpeg(name, arch);
+        const dst = join(BIN_DIR, `${name}-${triple}`);
+        copyFileSync(bin, dst);
+        rmSync(bin, { force: true });
+        execFileSync("chmod", ["+x", dst]);
+        console.log(`  ✓ ${name} (${arch}) → ${dst}`);
+      }
     } else {
       const arch = os.arch() === "arm64" ? "arm64" : "amd64";
       const bin = await downloadMacFfmpeg(name, arch);
+      const dst = join(BIN_DIR, `${name}-${TRIPLE}`);
       copyFileSync(bin, dst);
       rmSync(bin, { force: true });
+      execFileSync("chmod", ["+x", dst]);
       console.log(`  ✓ ${name} (${arch}) → ${dst}`);
     }
-    execFileSync("chmod", ["+x", dst]);
   }
 }
 
