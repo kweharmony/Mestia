@@ -17,6 +17,17 @@ flatpak/flatpak-build/
 .flatpak-builder/
 *.flatpak
 
+# Скачанные/собранные артефакты релиза (в корне) — НЕ коммитим
+/latest.json
+Mestia_*.app.tar.gz
+Mestia_*.app.tar.gz.sig
+*.AppImage
+*.dmg
+*.deb
+*.msi
+*.rpm
+*-setup.exe
+
 # Ключи подписи апдейтера (приватный ключ — НИКОГДА не коммитим)
 *.key
 *.key.pub

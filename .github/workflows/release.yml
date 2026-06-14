@@ -102,3 +102,40 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "${{ github.ref_name }}" Mestia_*_x86_64.flatpak --clobber
+
+  # ── Версионное имя updater-артефакта macOS ────────────────────────────────────
+  # Tauri называет его без версии (Mestia_universal.app.tar.gz). Приводим к стилю
+  # остальных ассетов (Mestia_<ver>_universal.app.tar.gz) и СИНХРОННО правим ссылку
+  # в latest.json — иначе автообновление на macOS сломётся (404). Запускаем после
+  # всех сборок, чтобы latest.json уже был полностью собран по всем платформам.
+  rename-mac-updater:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - name: Переименовать и поправить latest.json
+        run: |
+          set -euo pipefail
+          VER="${TAG#v}"
+          OLD="Mestia_universal.app.tar.gz"
+          NEW="Mestia_${VER}_universal.app.tar.gz"
+          # Артефакта нет (mac-нога не собиралась) или уже переименован — выходим спокойно.
+          if ! gh release view "$TAG" --json assets -q '.assets[].name' | grep -Fqx "$OLD"; then
+            echo "::notice::$OLD не найден — пропускаю переименование."
+            exit 0
+          fi
+          gh release download "$TAG" --pattern "$OLD" --pattern "$OLD.sig" --pattern "latest.json"
+          mv "$OLD" "$NEW"
+          mv "$OLD.sig" "$NEW.sig"
+          # В latest.json правим только имя архива (подпись лежит inline, имя .sig не упоминается).
+          sed -i "s/Mestia_universal\.app\.tar\.gz/${NEW}/g" latest.json
+          gh release upload "$TAG" "$NEW" "$NEW.sig" latest.json --clobber
+          gh release delete-asset "$TAG" "$OLD" -y
+          gh release delete-asset "$TAG" "$OLD.sig" -y
+          echo "::notice::Готово: $NEW + обновлён latest.json."
