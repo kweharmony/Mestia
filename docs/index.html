@@ -101,16 +101,38 @@
     .mock .bar .t { margin-left: 8px; font-size: 12px; font-weight: 700; color: var(--smoke); }
     .mock .body { display: flex; min-height: 340px; }
     .mock .side { width: 200px; background: var(--paper); padding: 16px; display: flex; flex-direction: column; gap: 18px; }
-    .mock .nav-i { display: flex; align-items: center; gap: 11px; padding: 9px 11px; border-radius: var(--radius); font-size: 13px; font-weight: 600; color: var(--ink); opacity: .8; }
+    .mnav { display: flex; flex-direction: column; gap: 2px; }
+    .mock .nav-i { display: flex; align-items: center; gap: 11px; padding: 9px 11px; border-radius: var(--radius); font-size: 13px; font-weight: 600; color: var(--ink); opacity: .8;
+      width: 100%; border: none; background: transparent; font-family: inherit; text-align: left; cursor: pointer; transition: background-color .2s, opacity .2s; }
+    .mock .nav-i:hover { opacity: 1; background: color-mix(in srgb, var(--fog) 60%, transparent); }
     .mock .nav-i.on { background: var(--fog); opacity: 1; font-weight: 700; }
-    .mock .main { flex: 1; padding: 34px 28px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; }
+    .mock .main { flex: 1; padding: 28px 26px; display: flex; min-width: 0; }
+    /* Разделы демо */
+    .mview { display: none; flex: 1; min-width: 0; }
+    .mview.active { display: flex; flex-direction: column; animation: panel-in .3s ease both; }
+    .mview[data-view="dl"].active { align-items: center; justify-content: center; gap: 22px; }
+    .mgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .mcard { border: 2px solid var(--fog); border-radius: 10px; padding: 8px; background: var(--snow); cursor: pointer;
+      transition: border-color .2s, transform .2s; }
+    .mcard:hover { border-color: var(--accent); transform: translateY(-2px); }
+    .mcard .thumb { display: grid; place-items: center; aspect-ratio: 16/9; border-radius: 7px; background: var(--fog); color: var(--accent); margin-bottom: 7px; }
+    .mcard .mt { font-size: 12px; font-weight: 700; display: block; }
+    .mrows { display: flex; flex-direction: column; gap: 8px; }
+    .mrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 13px;
+      border: 2px solid var(--fog); border-radius: 9px; background: var(--snow); font-size: 12.5px; font-weight: 600; }
+    .mrow .ok { color: var(--accent); font-weight: 700; font-size: 11px; }
+    .mrow .badge { font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 999px; border: 2px solid var(--fog); color: var(--smoke); }
+    .demo-tag { margin-left: auto; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+      color: var(--smoke); border: 2px solid var(--fog); border-radius: 999px; padding: 1px 8px; }
     .mock .main h3 { font-size: 22px; font-weight: 700; letter-spacing: -.02em; margin: 0; }
     .mock .input { width: 100%; max-width: 380px; display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px;
       border: 2px solid var(--fog); border-radius: var(--radius); background: var(--snow); }
     .mock .input .ph { flex: 1; font-size: 14px; font-weight: 600; color: var(--smoke); white-space: nowrap; overflow: hidden; }
     .mock .input .send { width: 38px; height: 38px; border-radius: var(--radius); background: var(--accent); display: grid; place-items: center; flex-shrink: 0; }
     .mock .chips { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
-    .mock .chip { font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: var(--radius); border: 2px solid var(--fog); color: var(--smoke); }
+    .mock .chip { font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: var(--radius); border: 2px solid var(--fog); color: var(--smoke);
+      background: transparent; font-family: inherit; cursor: pointer; transition: border-color .2s, color .2s; }
+    .mock .chip:hover { border-color: var(--accent); }
     .mock .chip.on { border-color: var(--accent); color: var(--accent); background: var(--snow); }
     @media (max-width: 600px) { .mock .side { display: none; } }
 
@@ -175,6 +197,33 @@
     @keyframes f-spin { to{transform:rotate(360deg)} }
     @keyframes f-ring { 0%,100%{transform:rotate(0)} 20%{transform:rotate(12deg)} 45%{transform:rotate(-9deg)} 70%{transform:rotate(5deg)} }
 
+    /* Галерея тем — клик применяет тему ко всей странице */
+    .themes-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    @media (max-width: 560px) { .themes-grid { grid-template-columns: repeat(2, 1fr); } }
+    .theme-card { padding: 10px; border: 2px solid var(--fog); border-radius: 12px; background: var(--paper); cursor: pointer;
+      font-family: inherit; text-align: left; transition: border-color .2s, transform .2s, box-shadow .2s; }
+    .theme-card:hover { transform: translateY(-3px); border-color: var(--accent); }
+    .theme-card.active { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent); }
+    .tc-prev { display: flex; height: 62px; border-radius: 8px; overflow: hidden; border: 2px solid var(--fog); background: var(--snow); margin-bottom: 9px; }
+    .tc-side { width: 30%; background: var(--paper); border-right: 2px solid var(--fog); }
+    .tc-main { flex: 1; padding: 9px; display: flex; flex-direction: column; gap: 6px; justify-content: center; }
+    .tc-bar { height: 10px; width: 72%; border-radius: 4px; background: var(--accent); }
+    .tc-line { height: 7px; width: 46%; border-radius: 4px; background: var(--fog); }
+    .tc-name { font-size: 12.5px; font-weight: 700; color: var(--ink); }
+
+    /* FAQ-аккордеон (плавное раскрытие через grid-rows) */
+    .faq { max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
+    .faq-item { border: 2px solid var(--fog); border-radius: 12px; background: var(--paper); transition: border-color .2s; }
+    .faq-item.open { border-color: var(--accent); }
+    .faq-q { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px;
+      border: none; background: transparent; font-family: inherit; font-size: 15px; font-weight: 700; color: var(--ink); cursor: pointer; text-align: left; }
+    .faq-q .chev { flex-shrink: 0; color: var(--smoke); transition: transform .25s ease, color .2s; }
+    .faq-item.open .faq-q .chev { transform: rotate(180deg); color: var(--accent); }
+    .faq-a { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .28s ease; }
+    .faq-item.open .faq-a { grid-template-rows: 1fr; }
+    .faq-a > div { overflow: hidden; }
+    .faq-a p { margin: 0; padding: 0 18px 16px; font-size: 14px; color: var(--smoke); font-weight: 500; line-height: 1.55; }
+
     /* Финальный CTA */
     .final { text-align: center; padding: 64px 0; }
     .final h2 { font-size: clamp(26px, 4vw, 38px); letter-spacing: -.03em; margin: 0 0 22px; font-weight: 800; }
@@ -189,8 +238,8 @@
     .reveal.in { opacity: 1; transform: none; }
     @media (prefers-reduced-motion: reduce) {
       .reveal { opacity: 1; transform: none; transition: none; }
-      .logo:hover .arrow, .caret, .feat:hover .ic svg, .dl-panel.active { animation: none; }
-      .dl-pill { transition: none; }
+      .logo:hover .arrow, .caret, .feat:hover .ic svg, .dl-panel.active, .mview.active { animation: none; }
+      .dl-pill, .faq-a, .faq-q .chev { transition: none; }
     }
   </style>
 </head>
@@ -208,8 +257,7 @@
       <div class="nav-links">
         <a class="hide-sm" href="#features">Возможности</a>
         <a href="#download">Скачать</a>
-        <a class="hide-sm" href="https://github.com/kweharmony/Mestia">GitHub</a>
-        <div class="themes" id="themes" aria-label="Тема оформления"></div>
+        <a href="https://github.com/kweharmony/Mestia">GitHub</a>
       </div>
     </div>
   </nav>
@@ -226,42 +274,62 @@
       <a class="btn ghost" href="#features">Что умеет</a>
     </div>
 
-    <!-- Макет окна приложения -->
-    <div class="mock reveal" aria-hidden="true">
-      <div class="bar"><i></i><i></i><i></i><span class="t">Mestia</span></div>
+    <!-- Интерактивный макет окна приложения (живое демо UI) -->
+    <div class="mock reveal" id="mock">
+      <div class="bar"><i></i><i></i><i></i><span class="t">Mestia</span><span class="demo-tag">демо</span></div>
       <div class="body">
         <aside class="side">
-          <a class="logo" href="#top" style="pointer-events:none">
+          <span class="logo">
             <span class="mark">
               <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 v10 M7 10 l5 5 5-5"/></svg>
               <span class="tray"></span>
             </span>
             <span class="name">Mestia</span>
-          </a>
-          <div>
-            <div class="nav-i on">
+          </span>
+          <div class="mnav">
+            <button class="nav-i on" data-view="dl">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
               Загрузчик
-            </div>
-            <div class="nav-i">
+            </button>
+            <button class="nav-i" data-view="lib">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M20 17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2Z"/></svg>
               Медиатека
-            </div>
-            <div class="nav-i">
+            </button>
+            <button class="nav-i" data-view="hist">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>
               История
-            </div>
+            </button>
           </div>
         </aside>
         <div class="main">
-          <h3>Что будем скачивать?</h3>
-          <div class="input">
-            <span class="ph" id="mock-ph"></span>
-            <span class="send"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+          <!-- Загрузчик -->
+          <div class="mview active" data-view="dl">
+            <h3>Что будем скачивать?</h3>
+            <div class="input">
+              <span class="ph" id="mock-ph"></span>
+              <span class="send"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+            </div>
+            <div class="chips">
+              <button class="chip on">1080p</button><button class="chip">720p</button>
+              <button class="chip">MP3 320</button><button class="chip">FLAC</button>
+            </div>
           </div>
-          <div class="chips">
-            <span class="chip on">1080p</span><span class="chip">720p</span>
-            <span class="chip">MP3 320</span><span class="chip">FLAC</span>
+          <!-- Медиатека -->
+          <div class="mview" data-view="lib">
+            <div class="mgrid">
+              <div class="mcard"><span class="thumb"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 14 8-14 8Z"/></svg></span><span class="mt">Лекция по физике</span></div>
+              <div class="mcard"><span class="thumb"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 14 8-14 8Z"/></svg></span><span class="mt">Концерт — live</span></div>
+              <div class="mcard"><span class="thumb"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M10 9l5 3-5 3z"/></svg></span><span class="mt">Подкаст, выпуск 12</span></div>
+              <div class="mcard"><span class="thumb"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 14 8-14 8Z"/></svg></span><span class="mt">Туториал по Rust</span></div>
+            </div>
+          </div>
+          <!-- История -->
+          <div class="mview" data-view="hist">
+            <div class="mrows">
+              <div class="mrow"><span>Концерт — live</span><span class="ok">готово</span></div>
+              <div class="mrow"><span>Плейлист «Дорога» · 24</span><span class="ok">готово</span></div>
+              <div class="mrow"><span>Лекция по физике</span><span class="badge">идёт…</span></div>
+            </div>
           </div>
         </div>
       </div>
@@ -359,6 +427,48 @@
     </div>
   </section>
 
+  <!-- ── Примерь тему ── -->
+  <section class="block wrap reveal" id="themes-section">
+    <p class="label">Примерь тему — переключается мгновенно</p>
+    <div class="themes-grid" id="themesGrid">
+      <button class="theme-card" data-theme="mono" data-set="mono"><span class="tc-prev"><span class="tc-side"></span><span class="tc-main"><span class="tc-bar"></span><span class="tc-line"></span></span></span><span class="tc-name">Clean Mono</span></button>
+      <button class="theme-card" data-theme="lavender" data-set="lavender"><span class="tc-prev"><span class="tc-side"></span><span class="tc-main"><span class="tc-bar"></span><span class="tc-line"></span></span></span><span class="tc-name">Sunset Lavender</span></button>
+      <button class="theme-card" data-theme="midnight" data-set="midnight"><span class="tc-prev"><span class="tc-side"></span><span class="tc-main"><span class="tc-bar"></span><span class="tc-line"></span></span></span><span class="tc-name">Velvet Midnight</span></button>
+      <button class="theme-card" data-theme="matcha" data-set="matcha"><span class="tc-prev"><span class="tc-side"></span><span class="tc-main"><span class="tc-bar"></span><span class="tc-line"></span></span></span><span class="tc-name">Matcha Oasis</span></button>
+      <button class="theme-card" data-theme="graphite" data-set="graphite"><span class="tc-prev"><span class="tc-side"></span><span class="tc-main"><span class="tc-bar"></span><span class="tc-line"></span></span></span><span class="tc-name">Graphite</span></button>
+      <button class="theme-card" data-theme="ember" data-set="ember"><span class="tc-prev"><span class="tc-side"></span><span class="tc-main"><span class="tc-bar"></span><span class="tc-line"></span></span></span><span class="tc-name">Warm Ember</span></button>
+      <button class="theme-card" data-theme="indigo" data-set="indigo"><span class="tc-prev"><span class="tc-side"></span><span class="tc-main"><span class="tc-bar"></span><span class="tc-line"></span></span></span><span class="tc-name">Midnight Indigo</span></button>
+      <button class="theme-card" data-theme="forest" data-set="forest"><span class="tc-prev"><span class="tc-side"></span><span class="tc-main"><span class="tc-bar"></span><span class="tc-line"></span></span></span><span class="tc-name">Deep Forest</span></button>
+    </div>
+  </section>
+
+  <!-- ── FAQ ── -->
+  <section class="block wrap reveal" id="faq">
+    <p class="label">Частые вопросы</p>
+    <div class="faq" id="faqList">
+      <div class="faq-item">
+        <button class="faq-q">С каких сайтов можно скачивать?<svg class="chev" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+        <div class="faq-a"><div><p>Более 1800 площадок: YouTube, Rutube, VK, TikTok, Vimeo и другие — ссылка определяется автоматически. Доступно видео (1080p…360p) и аудио (MP3, WAV, FLAC).</p></div></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">Это бесплатно?<svg class="chev" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+        <div class="faq-a"><div><p>Да, полностью. Mestia — open source под лицензией MIT, без рекламы и подписок.</p></div></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">Безопасно ли это?<svg class="chev" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+        <div class="faq-a"><div><p>Это локальное настольное приложение с открытым исходным кодом — всё работает на вашем компьютере. Под капотом — проверенный yt-dlp.</p></div></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">Нужно ли ставить что-то ещё?<svg class="chev" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+        <div class="faq-a"><div><p>Нет. yt-dlp и ffmpeg уже встроены в установщик — достаточно скачать и запустить.</p></div></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">Работает ли на Steam Deck?<svg class="chev" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+        <div class="faq-a"><div><p>Да. Для SteamOS есть сборка Flatpak — она несёт всё необходимое и ставится в пользовательском режиме, переживая обновления системы.</p></div></div>
+      </div>
+    </div>
+  </section>
+
   <!-- ── Финальный CTA ── -->
   <section class="final wrap reveal">
     <h2>Готово к установке за минуту</h2>
@@ -382,24 +492,21 @@
     // ── Переключатель тем (те же 8 тем, что в приложении; выбор запоминается) ──
     const THEMES = ["mono","graphite","lavender","midnight","matcha","ember","indigo","forest"];
     const root = document.documentElement;
-    const box = document.getElementById("themes");
+    function applyTheme(t) { root.dataset.theme = t; localStorage.setItem("mestia.site.theme", t); paint(); }
     function paint() {
-      box.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.t === root.dataset.theme)));
+      const cur = root.dataset.theme;
+      document.querySelectorAll(".theme-card").forEach((c) => c.classList.toggle("active", c.dataset.set === cur));
     }
-    THEMES.forEach((t) => {
-      const b = document.createElement("button");
-      b.dataset.t = t; b.title = t;
-      const probe = document.createElement("div");
-      probe.setAttribute("data-theme", t); probe.style.display = "none";
-      document.body.appendChild(probe);
-      b.style.background = getComputedStyle(probe).getPropertyValue("--accent");
-      probe.remove();
-      b.onclick = () => { root.dataset.theme = t; localStorage.setItem("mestia.site.theme", t); paint(); };
-      box.appendChild(b);
-    });
     const saved = localStorage.getItem("mestia.site.theme");
     if (saved && THEMES.includes(saved)) root.dataset.theme = saved;
     paint();
+
+    // Галерея тем — клик по карточке применяет тему ко всей странице
+    document.querySelectorAll(".theme-card").forEach((c) =>
+      c.addEventListener("click", () => applyTheme(c.dataset.set)));
+    // FAQ-аккордеон — раскрытие/сворачивание ответа
+    document.querySelectorAll(".faq-q").forEach((q) =>
+      q.addEventListener("click", () => q.closest(".faq-item").classList.toggle("open")));
 
     // ── Печатающийся плейсхолдер в макете окна (как Typewriter в приложении) ──
     const MOCK = [
@@ -426,6 +533,21 @@
       typewriter(document.getElementById("mock-ph"), MOCK, {});
     } else {
       document.getElementById("mock-ph").textContent = MOCK[0];
+    }
+
+    // ── Интерактив макета: переключение разделов и выбор качества ──
+    const mock = document.getElementById("mock");
+    if (mock) {
+      const navs = mock.querySelectorAll(".nav-i");
+      const views = mock.querySelectorAll(".mview");
+      navs.forEach((n) => n.addEventListener("click", () => {
+        navs.forEach((x) => x.classList.toggle("on", x === n));
+        views.forEach((v) => v.classList.toggle("active", v.dataset.view === n.dataset.view));
+      }));
+      const chips = mock.querySelectorAll(".chip");
+      chips.forEach((c) => c.addEventListener("click", () => {
+        chips.forEach((x) => x.classList.toggle("on", x === c));
+      }));
     }
 
     // ── Вкладки платформ: скользящий индикатор + переключение панелей ──
