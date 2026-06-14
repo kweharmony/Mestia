@@ -40,7 +40,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis", "app", "dmg", "deb", "appimage"],
     "createUpdaterArtifacts": true,
     "publisher": "Mestia",
     "copyright": "© Mestia",
