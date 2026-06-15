@@ -4,6 +4,7 @@
 # libwebkit2gtk (его нет на SteamOS из коробки).
 #
 # Локальная сборка:
+#   git submodule update --init flatpak/shared-modules   # рецепт libappindicator
 #   cp src-tauri/target/release/bundle/deb/*.deb flatpak/mestia.deb
 #   flatpak-builder --user --install-deps-from=flathub --force-clean \
 #     --repo=repo flatpak-build flatpak/com.mestia.app.yml
@@ -42,6 +43,12 @@ finish-args:
   - --talk-name=org.freedesktop.Notifications
 
 modules:
+  # libappindicator3.so.1 для системного трея. В рантайме GNOME его нет, а Tauri
+  # (фича tray-icon) грузит его динамически и паникует при отсутствии — приложение
+  # падает при старте ещё до открытия окна (видно на SteamOS). Рецепт из flathub
+  # shared-modules (submodule) собирает библиотеку со всеми зависимостями.
+  - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+
   - name: mestia
     buildsystem: simple
     sources:

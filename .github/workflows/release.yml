@@ -26,6 +26,9 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # flatpak/shared-modules — рецепт libappindicator для трея (нужен Linux-ноге).
+          submodules: recursive
 
       - name: Системные зависимости (Linux)
         if: matrix.platform == 'ubuntu-22.04'
