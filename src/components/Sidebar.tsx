@@ -6,6 +6,7 @@ import {
   Settings,
 } from "lucide-react";
 import type { TabId } from "../types";
+import { useDownloads } from "../context/DownloadsContext";
 import { useI18n } from "../context/LanguageContext";
 import Logo from "./Logo";
 
@@ -36,6 +37,11 @@ export default function Sidebar({
   onHideToTray,
 }: SidebarProps) {
   const { t } = useI18n();
+  const { downloads } = useDownloads();
+  // Счётчик активных загрузок — бейдж на пункте «Загрузчик», виден без открытия панели.
+  const activeCount = downloads.filter(
+    (d) => d.status === "downloading" || d.status === "queued"
+  ).length;
   return (
     <aside className="flex w-[260px] shrink-0 flex-col justify-between bg-paper no-select">
       <div className="space-y-6 p-4">
@@ -57,7 +63,12 @@ export default function Sidebar({
                 }`}
               >
                 <Icon className={`h-4 w-4 ${anim}`} strokeWidth={2.25} />
-                {t(labelKey)}
+                <span className="flex-1 text-left">{t(labelKey)}</span>
+                {id === "downloader" && activeCount > 0 && (
+                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1.5 text-[10px] font-bold text-white">
+                    {activeCount}
+                  </span>
+                )}
               </button>
             );
           })}

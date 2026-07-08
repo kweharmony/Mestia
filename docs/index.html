@@ -368,14 +368,14 @@
         <div class="fmts">
           <a class="fmt-btn" data-match="\.dmg$" href="https://github.com/kweharmony/Mestia/releases/latest"><svg class="dlicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 12l5 5 5-5M5 21h14"/></svg>.dmg (Intel + Apple Silicon)</a>
         </div>
-        <p class="dl-hint"><strong>⚠️ Экспериментально.</strong> Протестировано только на Windows; на macOS работоспособность не гарантируется. Откройте .dmg и перетащите Mestia в «Программы». При первом запуске — ПКМ по приложению → «Открыть».</p>
+        <p class="dl-hint"><strong>⚠️ Экспериментально.</strong> Протестировано только на Windows; на macOS работоспособность не гарантируется. Откройте .dmg и перетащите Mestia в «Программы». Сборка не нотаризована, поэтому при первом запуске macOS может написать «повреждён» — снимите карантин командой в Терминале: <code>xattr -cr /Applications/Mestia.app</code></p>
       </div>
       <div class="dl-panel" data-panel="linux">
         <div class="fmts">
           <a class="fmt-btn" data-match="\.AppImage$" href="https://github.com/kweharmony/Mestia/releases/latest"><svg class="dlicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 12l5 5 5-5M5 21h14"/></svg>AppImage</a>
           <a class="fmt-btn" data-match="\.deb$" href="https://github.com/kweharmony/Mestia/releases/latest"><svg class="dlicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 12l5 5 5-5M5 21h14"/></svg>.deb</a>
         </div>
-        <p class="dl-hint"><strong>⚠️ Экспериментально.</strong> Протестировано только на Windows; на Linux работоспособность не гарантируется. AppImage — портативно (chmod +x и запуск); .deb — для Debian/Ubuntu.</p>
+        <p class="dl-hint"><strong>⚠️ Экспериментально.</strong> Протестировано только на Windows; на Linux работоспособность не гарантируется. Нужны <strong>glibc ≥ 2.35 и webkit2gtk-4.1</strong> (Ubuntu 22.04+/Debian 12+) — на старых дистрибутивах не запустится. AppImage — портативно (<code>chmod +x</code> и запуск), но кодеки GStreamer ставятся вручную; .deb — для Debian/Ubuntu (кодеки тянутся автоматически). Для любого дистрибутива без нужной glibc — берите Flatpak.</p>
       </div>
       <div class="dl-panel" data-panel="deck">
         <div class="fmts">

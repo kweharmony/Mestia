@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import {
   AUDIO_FORMATS,
   VIDEO_FORMATS,
+  classifyError,
   estimateAudioBytes,
   formatBytes,
   formatDuration,
@@ -137,5 +138,23 @@ describe("humanizeError", () => {
   it("пустое и неизвестное → общий дружелюбный текст", () => {
     expect(humanizeError("")).toMatch(/что-то пошло не так/i);
     expect(humanizeError("RuntimeError: weird internal failure xyz")).toMatch(/что-то пошло не так/i);
+  });
+
+  it("новые сигнатуры yt-dlp: rate-limit/403 → сеть, битый экстрактор → ссылка", () => {
+    expect(humanizeError("ERROR: HTTP Error 429: Too Many Requests")).toMatch(/сет/i);
+    expect(humanizeError("ERROR: unable to download webpage: HTTP Error 403: Forbidden")).toMatch(/сет/i);
+    expect(humanizeError("ERROR: nsig extraction failed: Some formats may be missing")).toMatch(/ссылк/i);
+    expect(humanizeError("ERROR: Requested format is not available")).toMatch(/ссылк/i);
+  });
+});
+
+describe("classifyError", () => {
+  it("относит новые сигнатуры к нужному типу CTA", () => {
+    expect(classifyError("ERROR: HTTP Error 429: Too Many Requests")).toBe("network");
+    expect(classifyError("ERROR: HTTP Error 403: Forbidden")).toBe("network");
+    expect(classifyError("ERROR: nsig extraction failed")).toBe("unsupported");
+    expect(classifyError("ERROR: unable to extract player response")).toBe("unsupported");
+    expect(classifyError("DRM:netflix")).toBe("drm");
+    expect(classifyError("ERROR: Sign in to confirm you're not a bot")).toBe("auth");
   });
 });

@@ -71,12 +71,36 @@ yt-dlp + ffmpeg (как sidecar).
 ### macOS
 - `xcode-select --install`.
 
+> **Первый запуск (важно).** Готовые сборки подписаны **ad-hoc** и **не нотаризованы**
+> Apple, поэтому Gatekeeper на чужом Mac скажет «"Mestia" is damaged / повреждён и не
+> может быть открыт». Это не поломка — снимите карантин один раз:
+> ```bash
+> xattr -cr /Applications/Mestia.app
+> ```
+> (ПКМ → «Открыть» на macOS 15+ уже не помогает для не-нотаризованных приложений —
+> нужен именно `xattr`.) Сборка universal — работает и на Intel, и на Apple Silicon.
+>
+> **Как выпускать нотаризованные сборки (для мейнтейнера).** Нужен платный Apple
+> Developer ID. Добавьте в секреты репозитория `APPLE_CERTIFICATE` (base64 `.p12`),
+> `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY` («Developer ID Application: …»),
+> `APPLE_ID`, `APPLE_PASSWORD` (app-specific) и `APPLE_TEAM_ID`. CI сам подменит
+> `signingIdentity` и включит подпись + нотаризацию (`.github/workflows/release.yml`);
+> тогда `xattr` пользователям не понадобится, и апдейтер перестанет ловить карантин.
+
 ### Linux (Debian/Ubuntu)
 ```bash
 sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file \
   libssl-dev libayatana-appindicator3-dev librsvg2-dev
 ```
 (для других дистрибутивов — аналоги; см. https://tauri.app/start/prerequisites/)
+
+> **Поддерживаемые версии (важно).** Официальные `.deb`/AppImage собираются на
+> **Ubuntu 22.04**, поэтому требуют **glibc ≥ 2.35** и **webkit2gtk-4.1**. Это значит:
+> на Ubuntu 20.04 и старше (или дистрибутивах без webkit2gtk-4.1) они **не запустятся**
+> (`GLIBC_2.xx not found` / не найдена библиотека). Собрать «вниз» под старую glibc из
+> новой сборочной системы нельзя — это ограничение Tauri/Linux. Если нужен запуск на
+> произвольном дистрибутиве — используйте **Flatpak** (тот же пакет, что и для Steam
+> Deck): он несёт свой рантайм GNOME с WebKitGTK и не зависит от системной glibc.
 
 > **Воспроизведение видео на Linux.** Встроенный плеер использует webkit2gtk
 > (GStreamer). На «чистой» Ubuntu обычно нет кодеков H.264/AAC, из-за чего MP4 не
@@ -86,6 +110,13 @@ sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file \
 >   gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly
 > ```
 > Приложение само подскажет эту команду, если файл существует, но не декодируется.
+> **В AppImage** зависимости не ставятся автоматически (в отличие от `.deb`, где кодеки
+> прописаны в зависимостях пакета) — поставьте пакеты GStreamer вручную по команде выше.
+
+> **Значок в трее на Linux.** Трей рисуется через `libayatana-appindicator3`. В
+> окружениях без поддержки AppIndicator (например «ванильный» GNOME) иконки в трее может
+> не быть — на функциональность это не влияет, окно доступно как обычно; «свернуть в
+> трей» просто прячет окно.
 
 ### Steam Deck (SteamOS)
 

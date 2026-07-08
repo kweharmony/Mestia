@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { LogOut, PictureInPicture2, X } from "lucide-react";
 import Sidebar from "./components/Sidebar";
 import Settings from "./components/Settings";
+import Modal from "./components/Modal";
 import Splash from "./components/Splash";
 import UpdateModal from "./components/UpdateModal";
 import DownloadsPanel from "./components/DownloadsPanel";
@@ -75,8 +75,10 @@ export default function App() {
 
       <main className="relative flex flex-1 flex-col overflow-y-auto">
         {tab === "downloader" && <Downloader onOpenSettings={() => setSettingsOpen(true)} />}
-        {tab === "locker" && <Locker key={storageVersion} onPlay={openPlayer} />}
-        {tab === "history" && <History onPlay={openPlayer} />}
+        {tab === "locker" && (
+          <Locker key={storageVersion} onPlay={openPlayer} onGoToDownloader={() => setTab("downloader")} />
+        )}
+        {tab === "history" && <History onPlay={openPlayer} onGoToDownloader={() => setTab("downloader")} />}
       </main>
 
       <DownloadsPanel onOpenSettings={() => setSettingsOpen(true)} />
@@ -91,70 +93,47 @@ export default function App() {
         />
       )}
 
-      <AnimatePresence>
-        {settingsOpen && (
-          <Settings
-            onClose={() => setSettingsOpen(false)}
-            onFolderChanged={() => setStorageVersion((v) => v + 1)}
-          />
-        )}
-      </AnimatePresence>
+      <Settings
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onFolderChanged={() => setStorageVersion((v) => v + 1)}
+      />
 
       {/* Диалог закрытия */}
-      <AnimatePresence>
-      {closePrompt && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.15 }}
-          className="mestia-anim fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-8 backdrop-blur-sm"
-          onClick={() => setClosePrompt(false)}
-        >
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 8 }}
-            transition={{ type: "spring", stiffness: 400, damping: 30 }}
-            className="mestia-anim w-full max-w-[400px] space-y-5 rounded-ui border-2 border-ink bg-snow p-6"
-            onClick={(e) => e.stopPropagation()}
+      <Modal open={closePrompt} onClose={() => setClosePrompt(false)} z={60}>
+        <div>
+          <h3 className="text-base font-semibold tracking-tight">{t("app.closeTitle")}</h3>
+          <p className="mt-1 text-sm font-semibold text-smoke">
+            {t("app.closeText")}
+          </p>
+        </div>
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={() => {
+              setClosePrompt(false);
+              hideToTray();
+            }}
+            className="flex items-center justify-center gap-2 rounded-ui border-2 border-ink bg-snow px-4 py-2.5 text-sm font-semibold hover:bg-fog"
           >
-            <div>
-              <h3 className="text-base font-semibold tracking-tight">{t("app.closeTitle")}</h3>
-              <p className="mt-1 text-sm font-semibold text-smoke">
-                {t("app.closeText")}
-              </p>
-            </div>
-            <div className="flex flex-col gap-2">
-              <button
-                onClick={() => {
-                  setClosePrompt(false);
-                  hideToTray();
-                }}
-                className="flex items-center justify-center gap-2 rounded-ui border-2 border-ink bg-snow px-4 py-2.5 text-sm font-semibold hover:bg-fog"
-              >
-                <PictureInPicture2 className="h-4 w-4" strokeWidth={2.25} />
-                {t("app.tray")}
-              </button>
-              <button
-                onClick={() => exitApp()}
-                className="flex items-center justify-center gap-2 rounded-ui bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90"
-              >
-                <LogOut className="h-4 w-4" strokeWidth={2.25} />
-                {t("app.exit")}
-              </button>
-              <button
-                onClick={() => setClosePrompt(false)}
-                className="flex items-center justify-center gap-2 rounded-ui px-4 py-2 text-sm font-semibold text-smoke hover:text-ink"
-              >
-                <X className="h-4 w-4" strokeWidth={2.25} />
-                {t("common.cancel")}
-              </button>
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
-      </AnimatePresence>
+            <PictureInPicture2 className="h-4 w-4" strokeWidth={2.25} />
+            {t("app.tray")}
+          </button>
+          <button
+            onClick={() => exitApp()}
+            className="flex items-center justify-center gap-2 rounded-ui bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90"
+          >
+            <LogOut className="h-4 w-4" strokeWidth={2.25} />
+            {t("app.exit")}
+          </button>
+          <button
+            onClick={() => setClosePrompt(false)}
+            className="flex items-center justify-center gap-2 rounded-ui px-4 py-2 text-sm font-semibold text-smoke hover:text-ink"
+          >
+            <X className="h-4 w-4" strokeWidth={2.25} />
+            {t("common.cancel")}
+          </button>
+        </div>
+      </Modal>
 
       {booting && <Splash fading={splashFading} />}
 

@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
   isPermissionGranted,
   requestPermission,
@@ -36,6 +36,7 @@ import {
   uninstallApp,
   updateYtdlp,
 } from "../lib/ipc";
+import Modal from "./Modal";
 import ThemeSwitcher from "./ThemeSwitcher";
 import { useToast } from "./Toast";
 import { useDownloads } from "../context/DownloadsContext";
@@ -43,9 +44,11 @@ import { useI18n } from "../context/LanguageContext";
 import { LANGS, LANG_LABELS } from "../lib/i18n";
 
 export default function Settings({
+  open,
   onClose,
   onFolderChanged,
 }: {
+  open: boolean;
   onClose: () => void;
   onFolderChanged: () => void;
 }) {
@@ -68,6 +71,7 @@ export default function Settings({
   const [uninstalling, setUninstalling] = useState(false);
 
   useEffect(() => {
+    if (!open) return; // подгружаем настройки только при открытии окна
     getStorageRoot().then(setPath).catch(() => {});
     getSetting("notifications").then((v) => setNotifications(v === "1")).catch(() => {});
     getSetting("maxParallel")
@@ -93,10 +97,7 @@ export default function Settings({
     getSetting("subtitles").then((v) => setSubtitles(v === "1")).catch(() => {});
     getSetting("subtitlesLang").then((v) => v && setSubtitlesLang(v)).catch(() => {});
     getSetting("sponsorblock").then((v) => setSponsorblock(v === "1")).catch(() => {});
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [open]);
 
   async function pickFolder() {
     if (hasActive) {
@@ -104,7 +105,7 @@ export default function Settings({
       return;
     }
     try {
-      const dir = await open({ directory: true, multiple: false, defaultPath: path || undefined });
+      const dir = await openDialog({ directory: true, multiple: false, defaultPath: path || undefined });
       if (typeof dir === "string") {
         const applied = await setStorageRoot(dir);
         setPath(applied);
@@ -211,22 +212,12 @@ export default function Settings({
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.15 }}
-      className="mestia-anim fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-8 backdrop-blur-sm"
-      onClick={onClose}
+    <>
+    <Modal
+      open={open}
+      onClose={onClose}
+      cardClassName="mestia-anim max-h-[88vh] w-full max-w-[520px] space-y-7 overflow-y-auto rounded-ui border-2 border-ink bg-snow p-7"
     >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 8 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 8 }}
-        transition={{ type: "spring", stiffness: 400, damping: 30 }}
-        className="mestia-anim max-h-[88vh] w-full max-w-[520px] space-y-7 overflow-y-auto rounded-ui border-2 border-ink bg-snow p-7"
-        onClick={(e) => e.stopPropagation()}
-      >
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-semibold tracking-tight">{t("set.title")}</h2>
           <button
@@ -591,79 +582,61 @@ export default function Settings({
             {t("set.uninstallHint")}
           </p>
         </section>
-      </motion.div>
+    </Modal>
 
       {/* Подтверждение удаления приложения */}
-      <AnimatePresence>
-        {confirmUninstall && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            className="mestia-anim fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-8 backdrop-blur-sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!uninstalling) setConfirmUninstall(false);
-            }}
+      <Modal
+        open={confirmUninstall}
+        onClose={() => !uninstalling && setConfirmUninstall(false)}
+        z={60}
+        cardClassName="mestia-anim w-full max-w-[420px] space-y-5 rounded-ui border-2 border-rose-500 bg-snow p-6"
+      >
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-rose-500" strokeWidth={2.25} />
+          <h3 className="text-base font-semibold tracking-tight">{t("set.uninstallTitle")}</h3>
+        </div>
+        <p className="text-sm font-semibold text-smoke">
+          {t("set.uninstallText")}
+        </p>
+
+        <label className="flex cursor-pointer items-start gap-2.5 rounded-ui border-2 border-fog bg-paper/40 p-3">
+          <input
+            type="checkbox"
+            checked={deleteContent}
+            onChange={(e) => setDeleteContent(e.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-rose-500"
+          />
+          <span className="text-sm font-semibold">
+            {t("set.alsoDeleteFiles")}
+            <span className="mt-0.5 block text-xs font-semibold text-smoke">
+              {t("set.alsoDeleteFilesHint")}
+            </span>
+          </span>
+        </label>
+
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={() => setConfirmUninstall(false)}
+            disabled={uninstalling}
+            className="rounded-ui border-2 border-fog px-4 py-2 text-sm font-semibold hover:bg-fog disabled:opacity-50"
           >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 8 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 8 }}
-              transition={{ type: "spring", stiffness: 400, damping: 30 }}
-              className="mestia-anim w-full max-w-[420px] space-y-5 rounded-ui border-2 border-rose-500 bg-snow p-6"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 shrink-0 text-rose-500" strokeWidth={2.25} />
-                <h3 className="text-base font-semibold tracking-tight">{t("set.uninstallTitle")}</h3>
-              </div>
-              <p className="text-sm font-semibold text-smoke">
-                {t("set.uninstallText")}
-              </p>
-
-              <label className="flex cursor-pointer items-start gap-2.5 rounded-ui border-2 border-fog bg-paper/40 p-3">
-                <input
-                  type="checkbox"
-                  checked={deleteContent}
-                  onChange={(e) => setDeleteContent(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 shrink-0 accent-rose-500"
-                />
-                <span className="text-sm font-semibold">
-                  {t("set.alsoDeleteFiles")}
-                  <span className="mt-0.5 block text-xs font-semibold text-smoke">
-                    {t("set.alsoDeleteFilesHint")}
-                  </span>
-                </span>
-              </label>
-
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => setConfirmUninstall(false)}
-                  disabled={uninstalling}
-                  className="rounded-ui border-2 border-fog px-4 py-2 text-sm font-semibold hover:bg-fog disabled:opacity-50"
-                >
-                  {t("common.cancel")}
-                </button>
-                <button
-                  onClick={handleUninstall}
-                  disabled={uninstalling}
-                  className="flex items-center gap-2 rounded-ui border-2 border-rose-600 bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
-                >
-                  {uninstalling ? (
-                    <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.25} />
-                  ) : (
-                    <Trash2 className="h-4 w-4" strokeWidth={2.25} />
-                  )}
-                  {t("set.uninstall")}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
+            {t("common.cancel")}
+          </button>
+          <button
+            onClick={handleUninstall}
+            disabled={uninstalling}
+            className="flex items-center gap-2 rounded-ui border-2 border-rose-600 bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+          >
+            {uninstalling ? (
+              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.25} />
+            ) : (
+              <Trash2 className="h-4 w-4" strokeWidth={2.25} />
+            )}
+            {t("set.uninstall")}
+          </button>
+        </div>
+      </Modal>
+    </>
   );
 }
 

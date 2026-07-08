@@ -110,6 +110,12 @@ const DICT: Record<string, Entry> = {
     en: "The link also points to a playlist — open it",
     zh: "链接也指向一个播放列表 — 打开它",
   },
+  "dl.playlistFolder": { ru: "Папка для загрузки", en: "Download folder", zh: "下载文件夹" },
+  "dl.playlistFolderHint": {
+    ru: "Плейлист скачается в папку с этим именем — можно переименовать.",
+    en: "The playlist downloads into a folder with this name — you can rename it.",
+    zh: "播放列表将下载到以此命名的文件夹中 — 可以重命名。",
+  },
   "dl.wholePlaylist": { ru: "Весь плейлист ({count})", en: "Whole playlist ({count})", zh: "整个播放列表（{count}）" },
   "dl.range": { ru: "Диапазон", en: "Range", zh: "范围" },
   "dl.rangePlaceholder": { ru: "Например: 1-5, 8, 10-12", en: "e.g. 1-5, 8, 10-12", zh: "例如：1-5, 8, 10-12" },
@@ -136,6 +142,9 @@ const DICT: Record<string, Entry> = {
   "dl.playlistAdded": { ru: "Плейлист добавлен в загрузки", en: "Playlist added to downloads", zh: "播放列表已加入下载" },
   "dl.added": { ru: "Добавлено в загрузки", en: "Added to downloads", zh: "已加入下载" },
   "dl.fetchError": { ru: "Не удалось получить данные по ссылке", en: "Couldn't fetch data for the link", zh: "无法获取该链接的数据" },
+  "dl.quality": { ru: "Качество", en: "Quality", zh: "质量" },
+  "dl.customize": { ru: "Настроить", en: "Customize", zh: "自定义" },
+  "dl.pasteDetected": { ru: "Вставить из буфера", en: "Paste from clipboard", zh: "从剪贴板粘贴" },
 
   // ── Плеер ────────────────────────────────────────────────────────────────
   "player.prev": { ru: "Предыдущий", en: "Previous", zh: "上一个" },
@@ -178,6 +187,7 @@ const DICT: Record<string, Entry> = {
   "hist.title": { ru: "История загрузок", en: "Download history", zh: "下载历史" },
   "hist.clear": { ru: "Очистить историю", en: "Clear history", zh: "清除历史" },
   "hist.empty": { ru: "История пуста.", en: "History is empty.", zh: "历史记录为空。" },
+  "hist.emptyCta": { ru: "Скачать первое видео", en: "Download your first video", zh: "下载第一个视频" },
   "hist.interrupted": { ru: "Прервано", en: "Interrupted", zh: "已中断" },
   "hist.openFolder": { ru: "Открыть папку", en: "Open folder", zh: "打开文件夹" },
   "hist.play": { ru: "Воспроизвести", en: "Play", zh: "播放" },
@@ -232,6 +242,7 @@ const DICT: Record<string, Entry> = {
     en: "Empty. Download videos from the Downloader tab.",
     zh: "空空如也。请在“下载”标签页下载视频。",
   },
+  "lib.emptyRootCta": { ru: "Вставить ссылку", en: "Paste a link", zh: "粘贴链接" },
   "lib.folder": { ru: "Папка", en: "Folder", zh: "文件夹" },
   "lib.openFolderArrow": { ru: "Открыть папку →", en: "Open folder →", zh: "打开文件夹 →" },
   "lib.rename": { ru: "Переименовать", en: "Rename", zh: "重命名" },

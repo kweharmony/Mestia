@@ -62,6 +62,7 @@ import type { FolderRow, VideoRow } from "../types";
 import { useDrag } from "../context/DragContext";
 import { useDownloads } from "../context/DownloadsContext";
 import { useToast } from "../components/Toast";
+import Modal from "../components/Modal";
 import { useI18n } from "../context/LanguageContext";
 import Typewriter from "../components/Typewriter";
 
@@ -87,8 +88,10 @@ type DropTarget = { id: number | null; path: string; name: string };
 
 export default function Locker({
   onPlay,
+  onGoToDownloader,
 }: {
   onPlay: (v: VideoRow, queue?: VideoRow[]) => void;
+  onGoToDownloader: () => void;
 }) {
   const { dragging, startDrag, endDrag } = useDrag();
   const { libraryVersion } = useDownloads();
@@ -773,42 +776,43 @@ export default function Locker({
           </div>
         )}
 
-        {/* Панель выбора */}
-        <AnimatePresence>
-        {selectionMode && (
-          <motion.div
-            initial={{ opacity: 0, y: -10, height: 0 }}
-            animate={{ opacity: 1, y: 0, height: "auto" }}
-            exit={{ opacity: 0, y: -10, height: 0 }}
-            transition={{ duration: 0.2 }}
-            className="mestia-anim flex flex-wrap items-center justify-between gap-3 overflow-hidden rounded-ui border-2 border-accent bg-accent/10 px-4 py-2.5"
-          >
-            <span className="text-sm font-semibold">{t("lib.selected", { count: selected.size })}</span>
-            <div className="flex items-center gap-2 text-sm font-semibold">
-              <span className="hidden text-smoke md:inline">{t("lib.dragHint")}</span>
-              <button
-                onClick={() => setSelected(new Set(shownVideos.map((v) => v.id)))}
-                className="rounded-ui border-2 border-ink px-3 py-1.5 hover:bg-fog"
+        {/* Плавающая панель выбора — всегда на виду внизу экрана (портал в body,
+            чтобы не зависеть от трансформ-предка Медиатеки и не требовать прокрутки). */}
+        {createPortal(
+          <AnimatePresence>
+            {selectionMode && (
+              <motion.div
+                initial={{ opacity: 0, y: 24, x: "-50%" }}
+                animate={{ opacity: 1, y: 0, x: "-50%" }}
+                exit={{ opacity: 0, y: 24, x: "-50%" }}
+                transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                className="fixed bottom-6 left-1/2 z-40 flex items-center gap-2 rounded-ui border-2 border-ink bg-snow px-3 py-2 text-sm font-semibold shadow-lg no-select"
               >
-                {t("lib.selectAll")}
-              </button>
-              <button
-                onClick={askDeleteSelected}
-                className="flex items-center gap-1.5 rounded-ui border-2 border-ink bg-rose-600 px-3 py-1.5 text-white hover:opacity-90"
-              >
-                <Trash2 className="h-4 w-4" strokeWidth={2.25} />
-                {t("lib.delete")}
-              </button>
-              <button
-                onClick={() => setSelected(new Set())}
-                className="rounded-ui border-2 border-fog px-3 py-1.5 hover:bg-fog"
-              >
-                {t("lib.deselect")}
-              </button>
-            </div>
-          </motion.div>
+                <span className="px-1">{t("lib.selected", { count: selected.size })}</span>
+                <button
+                  onClick={() => setSelected(new Set(shownVideos.map((v) => v.id)))}
+                  className="rounded-ui border-2 border-ink px-3 py-1.5 hover:bg-fog"
+                >
+                  {t("lib.selectAll")}
+                </button>
+                <button
+                  onClick={askDeleteSelected}
+                  className="flex items-center gap-1.5 rounded-ui border-2 border-ink bg-rose-600 px-3 py-1.5 text-white hover:opacity-90"
+                >
+                  <Trash2 className="h-4 w-4" strokeWidth={2.25} />
+                  {t("lib.delete")}
+                </button>
+                <button
+                  onClick={() => setSelected(new Set())}
+                  className="rounded-ui border-2 border-fog px-3 py-1.5 hover:bg-fog"
+                >
+                  {t("lib.deselect")}
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>,
+          document.body
         )}
-        </AnimatePresence>
 
         {/* Контент — с выделением рамкой */}
         <div ref={gridRef} onMouseDown={onGridMouseDown} className="relative min-h-[300px]">
@@ -848,7 +852,12 @@ export default function Locker({
           trail.length ? (
             <EmptyState icon={FolderOpen} text={t("lib.emptyFolder")} />
           ) : (
-            <EmptyState icon={Download} text={t("lib.emptyRoot")} />
+            <EmptyState
+              icon={Download}
+              text={t("lib.emptyRoot")}
+              actionLabel={t("lib.emptyRootCta")}
+              onAction={onGoToDownloader}
+            />
           )
         ) : (
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3">
@@ -926,24 +935,9 @@ export default function Locker({
       </div>
 
       {/* Подтверждение удаления */}
-      <AnimatePresence>
-      {confirm && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.15 }}
-          className="mestia-anim fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-8 backdrop-blur-sm"
-          onClick={() => setConfirm(null)}
-        >
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 8 }}
-            transition={{ type: "spring", stiffness: 400, damping: 30 }}
-            className="mestia-anim w-full max-w-[380px] space-y-5 rounded-ui border-2 border-ink bg-snow p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
+      <Modal open={!!confirm} onClose={() => setConfirm(null)} maxWidth={380}>
+        {confirm && (
+          <>
             <p className="text-sm font-semibold leading-snug">{confirm.text}</p>
             <div className="flex justify-end gap-2">
               <button
@@ -968,10 +962,9 @@ export default function Locker({
                 {t("lib.delete")}
               </button>
             </div>
-          </motion.div>
-        </motion.div>
-      )}
-      </AnimatePresence>
+          </>
+        )}
+      </Modal>
     </div>
   );
 }
@@ -1208,7 +1201,17 @@ function VideoCard(props: {
 }
 
 // ── Пустое состояние ─────────────────────────────────────────────────────────
-function EmptyState({ icon: Icon, text }: { icon: typeof Folder; text: string }) {
+function EmptyState({
+  icon: Icon,
+  text,
+  actionLabel,
+  onAction,
+}: {
+  icon: typeof Folder;
+  text: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -1220,6 +1223,15 @@ function EmptyState({ icon: Icon, text }: { icon: typeof Folder; text: string })
         <Icon className="h-6 w-6" strokeWidth={2} />
       </div>
       <p className="max-w-[280px] text-sm font-semibold text-smoke">{text}</p>
+      {actionLabel && onAction && (
+        <button
+          onClick={onAction}
+          className="mt-1 flex items-center gap-2 rounded-ui bg-accent px-4 py-2 text-sm font-semibold text-white transition-all hover:opacity-90 active:scale-95"
+        >
+          <Download className="h-4 w-4" strokeWidth={2.25} />
+          {actionLabel}
+        </button>
+      )}
     </motion.div>
   );
 }

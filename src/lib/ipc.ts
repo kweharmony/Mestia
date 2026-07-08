@@ -352,7 +352,9 @@ export function humanizeError(e: unknown): string {
   if (isAuthError(raw)) return t("err.auth");
   if (has("timed out", "timeout", "connection", "getaddrinfo", "temporary failure",
           "network is unreachable", "connection refused", "unable to download webpage",
-          "failed to resolve", "name or service not known", "socket", "ssl", "winerror 100"))
+          "failed to resolve", "name or service not known", "socket", "ssl", "winerror 100",
+          "http error 403", "http error 429", "too many requests", "http error 500",
+          "http error 502", "http error 503"))
     return t("err.network");
   if (has("no space left", "not enough space", "os error 112", "disk full", "enospc"))
     return t("err.disk");
@@ -368,7 +370,9 @@ export function humanizeError(e: unknown): string {
   if (has("not available in your country", "geo restrict", "geo-restricted", "in your country"))
     return t("err.geo");
   if (has("unsupported url", "is not a valid url", "unable to extract", "no video formats",
-          "unable to download json metadata", "ничего не найдено"))
+          "unable to download json metadata", "unable to extract player", "unable to extract initial data",
+          "nsig extraction failed", "requested format is not available", "requested format not available",
+          "player response", "ничего не найдено"))
     return t("err.unsupported");
 
   // Сообщение бэкенда на русском (Rust отдаёт по-русски) — оставляем как есть.
@@ -406,11 +410,15 @@ export function classifyError(e: unknown): DownloadFailureKind {
           "account has been terminated", "no longer available", "video does not exist"))
     return "unavailable";
   if (has("unsupported url", "is not a valid url", "unable to extract", "no video formats",
-          "unable to download json metadata"))
+          "unable to download json metadata", "unable to extract player", "unable to extract initial data",
+          "nsig extraction failed", "requested format is not available", "requested format not available",
+          "player response"))
     return "unsupported";
   if (has("timed out", "timeout", "connection", "getaddrinfo", "temporary failure",
           "network is unreachable", "connection refused", "unable to download webpage",
-          "failed to resolve", "name or service not known", "socket", "ssl", "winerror 100"))
+          "failed to resolve", "name or service not known", "socket", "ssl", "winerror 100",
+          "http error 403", "http error 429", "too many requests", "http error 500",
+          "http error 502", "http error 503"))
     return "network";
   return "unknown";
 }

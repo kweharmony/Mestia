@@ -20,9 +20,10 @@ import { useI18n } from "../context/LanguageContext";
 
 interface HistoryProps {
   onPlay: (v: VideoRow) => void;
+  onGoToDownloader: () => void;
 }
 
-export default function History({ onPlay }: HistoryProps) {
+export default function History({ onPlay, onGoToDownloader }: HistoryProps) {
   const { notify } = useToast();
   const { start, libraryVersion } = useDownloads();
   const { t } = useI18n();
@@ -110,8 +111,18 @@ export default function History({ onPlay }: HistoryProps) {
         </div>
 
         {rows.length === 0 ? (
-          <div className="py-20 text-center text-sm font-semibold text-smoke">
-            {t("hist.empty")}
+          <div className="flex flex-col items-center gap-3 py-20 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-fog bg-paper/40 text-smoke">
+              <ArrowDownToLine className="h-6 w-6" strokeWidth={2} />
+            </div>
+            <p className="max-w-[280px] text-sm font-semibold text-smoke">{t("hist.empty")}</p>
+            <button
+              onClick={onGoToDownloader}
+              className="mt-1 flex items-center gap-2 rounded-ui bg-accent px-4 py-2 text-sm font-semibold text-white transition-all hover:opacity-90 active:scale-95"
+            >
+              <ArrowDownToLine className="h-4 w-4" strokeWidth={2.25} />
+              {t("hist.emptyCta")}
+            </button>
           </div>
         ) : (
           <div className="space-y-3">

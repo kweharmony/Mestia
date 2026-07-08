@@ -1,8 +1,12 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { readText } from "@tauri-apps/plugin-clipboard-manager";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   ArrowDownToLine,
   ArrowRight,
+  ChevronDown,
+  Clipboard,
   Cookie,
   ListVideo,
   Loader2,
@@ -11,6 +15,7 @@ import {
   Search,
   Settings as SettingsIcon,
   Video,
+  X,
 } from "lucide-react";
 import {
   AUDIO_FORMATS,
@@ -29,6 +34,7 @@ import {
 import { findVideoByUrl } from "../lib/db";
 import type { DownloadFormat, FetchResult, FormatSizes } from "../types";
 import { useToast } from "../components/Toast";
+import Modal from "../components/Modal";
 import { useDownloads } from "../context/DownloadsContext";
 import { useI18n } from "../context/LanguageContext";
 import Typewriter from "../components/Typewriter";
@@ -72,10 +78,14 @@ export default function Downloader({ onOpenSettings }: { onOpenSettings: () => v
   const [info, setInfo] = useState<FetchResult | null>(null);
   const [mediaKind, setMediaKind] = useState<"video" | "audio">("video");
   const [fmt, setFmt] = useState<DownloadFormat>(DEFAULT_VIDEO_FORMAT);
+  // Раскрыт ли полный список форматов (по умолчанию скрыт за «Настроить»).
+  const [showFormats, setShowFormats] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [focused, setFocused] = useState(false);
   const [plMode, setPlMode] = useState<PlMode>("all");
   const [range, setRange] = useState("");
+  // Имя папки для плейлиста — предзаполняется названием плейлиста, редактируется пользователем.
+  const [folderName, setFolderName] = useState("");
   // Видео уже в медиатеке — модалка подтверждения повторной загрузки.
   const [dup, setDup] = useState<{ title: string; onConfirm: () => void } | null>(null);
   // Большой плейлист — подтверждение перед массовой загрузкой.
@@ -87,6 +97,45 @@ export default function Downloader({ onOpenSettings }: { onOpenSettings: () => v
   const [searchUrl, setSearchUrl] = useState<string | null>(null);
   // Подсказка про куки, когда ошибка похожа на «нужен вход» (cookiesOn — включены ли куки).
   const [authHint, setAuthHint] = useState<{ cookiesOn: boolean; detail: string } | null>(null);
+  // Ссылка из буфера обмена — предложение вставить в один клик.
+  const [clipHint, setClipHint] = useState<string | null>(null);
+  // Отклонённая пользователем ссылка из буфера — больше не предлагаем её.
+  const dismissedClip = useRef<string | null>(null);
+
+  // Считываем буфер обмена при запуске и при возврате фокуса на окно: если там
+  // ссылка — ненавязчиво предлагаем вставить. Доступа может не быть — тихо игнорируем.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    const check = async () => {
+      try {
+        const txt = (await readText())?.trim();
+        if (txt && looksLikeUrl(txt) && txt !== dismissedClip.current) setClipHint(txt);
+        else setClipHint(null);
+      } catch {
+        /* нет доступа к буферу — молча */
+      }
+    };
+    void check();
+    getCurrentWindow()
+      .onFocusChanged(({ payload: focused }) => {
+        if (focused) void check();
+      })
+      .then((u) => {
+        unlisten = u;
+      })
+      .catch(() => {});
+    return () => unlisten?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Вставить предложенную из буфера ссылку и сразу получить по ней данные.
+  function acceptClip() {
+    if (!clipHint) return;
+    const c = clipHint;
+    setClipHint(null);
+    setUrl(c);
+    void doFetch(looksLikeUrl(c) ? c : `ytsearch1:${c}`);
+  }
 
   function reset() {
     setInfo(null);
@@ -95,6 +144,8 @@ export default function Downloader({ onOpenSettings }: { onOpenSettings: () => v
     setPhase("idle");
     setRange("");
     setPlMode("all");
+    setShowFormats(false);
+    setFolderName("");
     setManual(null);
     setManualQuery("");
     setSearchUrl(null);
@@ -151,6 +202,8 @@ export default function Downloader({ onOpenSettings }: { onOpenSettings: () => v
     try {
       const r = await fetchMetadata(trimmed);
       setInfo(r);
+      // Для плейлиста предзаполняем имя папки его названием (пользователь может изменить).
+      setFolderName(r.is_playlist ? r.title : "");
       // Точная ссылка найденного видео (Spotify/Apple/поиск) — качаем ровно её, без
       // повторного резолва в бэкенде.
       setSearchUrl(r.resolved_url ?? null);
@@ -188,6 +241,7 @@ export default function Downloader({ onOpenSettings }: { onOpenSettings: () => v
     try {
       const r = await fetchMetadata(su);
       setInfo(r);
+      setFolderName(r.is_playlist ? r.title : "");
       // Предпочитаем точную ссылку найденного видео; иначе — сам поисковый запрос.
       setSearchUrl(r.resolved_url ?? su);
       setManual(null);
@@ -216,6 +270,7 @@ export default function Downloader({ onOpenSettings }: { onOpenSettings: () => v
   function pickKind(kind: "video" | "audio") {
     setMediaKind(kind);
     setFmt(kind === "video" ? defaultVideoFor(info?.sizes?.max_height ?? null) : AUDIO_FORMATS[0]);
+    setShowFormats(false); // снова сворачиваем к «Авто» при смене типа
   }
 
   async function handleDownload() {
@@ -240,7 +295,8 @@ export default function Downloader({ onOpenSettings }: { onOpenSettings: () => v
         items,
         recovery,
         meta: {
-          title: info.title,
+          // Для плейлиста имя папки берём из редактируемого поля (или названия плейлиста).
+          title: isPlaylist ? folderName.trim() || info.title : info.title,
           platform: info.platform,
           webpage_url: info.webpage_url,
           isPlaylist,
@@ -345,6 +401,38 @@ export default function Downloader({ onOpenSettings }: { onOpenSettings: () => v
             </AnimatePresence>
           </button>
         </div>
+
+        {/* Ссылка из буфера — предложение вставить в один клик */}
+        <AnimatePresence>
+          {clipHint && !url && phase === "idle" && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2 }}
+              className="mestia-anim flex w-full items-center gap-2 rounded-ui border-2 border-fog bg-paper/40 py-1.5 pl-3 pr-2"
+            >
+              <button
+                onClick={acceptClip}
+                className="flex min-w-0 flex-1 items-center gap-2 text-left text-sm font-semibold text-ink"
+              >
+                <Clipboard className="h-4 w-4 shrink-0 text-accent" strokeWidth={2.25} />
+                <span className="shrink-0 text-smoke">{t("dl.pasteDetected")}:</span>
+                <span className="truncate text-accent">{clipHint}</span>
+              </button>
+              <button
+                onClick={() => {
+                  dismissedClip.current = clipHint;
+                  setClipHint(null);
+                }}
+                aria-label={t("common.cancel")}
+                className="shrink-0 rounded-ui p-1 text-smoke hover:bg-fog hover:text-ink"
+              >
+                <X className="h-4 w-4" strokeWidth={2.25} />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Ошибка */}
         <AnimatePresence>
@@ -507,6 +595,19 @@ export default function Downloader({ onOpenSettings }: { onOpenSettings: () => v
             {/* Режим плейлиста */}
             {isPlaylist && (
               <div className="space-y-2">
+                {/* Имя папки — предзаполнено названием плейлиста, редактируется */}
+                <div className="space-y-1">
+                  <label className="block text-xs font-semibold text-smoke">
+                    {t("dl.playlistFolder")}
+                  </label>
+                  <input
+                    value={folderName}
+                    onChange={(e) => setFolderName(e.target.value)}
+                    placeholder={info.title}
+                    className="w-full rounded-ui border-2 border-fog bg-snow px-3 py-2 text-sm font-semibold text-ink placeholder-smoke outline-none focus:border-accent"
+                  />
+                  <p className="text-[11px] font-semibold text-smoke">{t("dl.playlistFolderHint")}</p>
+                </div>
                 <div className="flex gap-2">
                   {(["all", "range"] as const).map((m) => {
                     const active = plMode === m;
@@ -570,45 +671,62 @@ export default function Downloader({ onOpenSettings }: { onOpenSettings: () => v
               })}
             </div>
 
-            {/* Качество/формат — показываем только разрешения, которые есть в источнике
-                (если высота неизвестна — показываем все, чтобы не спрятать всё). */}
-            <div className="flex flex-wrap gap-2">
-              {formats
-                .filter((f) => {
-                  const max = info.sizes?.max_height ?? null;
-                  return !f.minHeight || max == null || max >= f.minHeight;
-                })
-                .map((f) => {
-                const active = fmt.id === f.id;
-                return (
-                  <button
-                    key={f.id}
-                    onClick={() => setFmt(f)}
-                    className={`relative rounded-ui border-2 border-transparent px-3 py-1.5 text-xs font-semibold ${
-                      active ? "text-accent" : "hover:bg-fog"
-                    }`}
-                  >
-                    {active && (
-                      <motion.span
-                        layoutId="fmtPill"
-                        transition={{ type: "spring", stiffness: 500, damping: 38 }}
-                        className="mestia-anim absolute -inset-[2px] z-0 rounded-ui border-2 border-accent bg-snow"
-                      />
-                    )}
-                    <span className="relative z-10 flex items-center gap-1.5">
-                      {formatLabel(f)}
-                      {sizeLabel(f) && (
-                        <span
-                          className={`text-[10px] font-bold ${active ? "text-accent/70" : "text-smoke"}`}
-                        >
-                          {sizeLabel(f)}
-                        </span>
+            {/* Качество/формат. По умолчанию — компактная строка «Авто» с текущим
+                пресетом; полный список раскрывается по «Настроить», чтобы не шуметь. */}
+            {!showFormats ? (
+              <button
+                onClick={() => setShowFormats(true)}
+                className="flex w-full items-center justify-between rounded-ui border-2 border-fog px-3 py-2 text-xs font-semibold transition-colors hover:border-accent"
+              >
+                <span className="flex items-center gap-1.5 text-smoke">
+                  {t("dl.quality")}
+                  <span className="text-ink">{formatLabel(fmt)}</span>
+                  {sizeLabel(fmt) && <span className="text-smoke">· {sizeLabel(fmt)}</span>}
+                </span>
+                <span className="flex items-center gap-1 text-accent">
+                  {t("dl.customize")}
+                  <ChevronDown className="h-3.5 w-3.5" strokeWidth={2.5} />
+                </span>
+              </button>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {formats
+                  .filter((f) => {
+                    const max = info.sizes?.max_height ?? null;
+                    return !f.minHeight || max == null || max >= f.minHeight;
+                  })
+                  .map((f) => {
+                  const active = fmt.id === f.id;
+                  return (
+                    <button
+                      key={f.id}
+                      onClick={() => setFmt(f)}
+                      className={`relative rounded-ui border-2 border-transparent px-3 py-1.5 text-xs font-semibold ${
+                        active ? "text-accent" : "hover:bg-fog"
+                      }`}
+                    >
+                      {active && (
+                        <motion.span
+                          layoutId="fmtPill"
+                          transition={{ type: "spring", stiffness: 500, damping: 38 }}
+                          className="mestia-anim absolute -inset-[2px] z-0 rounded-ui border-2 border-accent bg-snow"
+                        />
                       )}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+                      <span className="relative z-10 flex items-center gap-1.5">
+                        {formatLabel(f)}
+                        {sizeLabel(f) && (
+                          <span
+                            className={`text-[10px] font-bold ${active ? "text-accent/70" : "text-smoke"}`}
+                          >
+                            {sizeLabel(f)}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Кнопка скачивания (запускается в фон) */}
             <button
@@ -631,98 +749,66 @@ export default function Downloader({ onOpenSettings }: { onOpenSettings: () => v
       </div>
 
       {/* Конфликт: видео уже в медиатеке */}
-      <AnimatePresence>
+      <Modal open={!!dup} onClose={() => setDup(null)}>
         {dup && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            className="mestia-anim fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-8 backdrop-blur-sm"
-            onClick={() => setDup(null)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 8 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 8 }}
-              transition={{ type: "spring", stiffness: 400, damping: 30 }}
-              className="mestia-anim w-full max-w-[400px] space-y-5 rounded-ui border-2 border-ink bg-snow p-6"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h3 className="text-base font-semibold tracking-tight">{t("dl.dupTitle")}</h3>
-              <p className="text-sm font-semibold leading-snug text-smoke">
-                {t("dl.dupText", { title: dup.title })}
-              </p>
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => setDup(null)}
-                  className="rounded-ui border-2 border-fog px-4 py-2 text-sm font-semibold hover:bg-fog"
-                >
-                  {t("common.cancel")}
-                </button>
-                <button
-                  onClick={() => {
-                    const fn = dup.onConfirm;
-                    setDup(null);
-                    fn();
-                  }}
-                  className="flex items-center gap-2 rounded-ui border-2 border-ink bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
-                >
-                  <RotateCcw className="h-4 w-4" strokeWidth={2.25} />
-                  {t("dl.redownload")}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
+          <>
+            <h3 className="text-base font-semibold tracking-tight">{t("dl.dupTitle")}</h3>
+            <p className="text-sm font-semibold leading-snug text-smoke">
+              {t("dl.dupText", { title: dup.title })}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setDup(null)}
+                className="rounded-ui border-2 border-fog px-4 py-2 text-sm font-semibold hover:bg-fog"
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                onClick={() => {
+                  const fn = dup.onConfirm;
+                  setDup(null);
+                  fn();
+                }}
+                className="flex items-center gap-2 rounded-ui border-2 border-ink bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+              >
+                <RotateCcw className="h-4 w-4" strokeWidth={2.25} />
+                {t("dl.redownload")}
+              </button>
+            </div>
+          </>
         )}
-      </AnimatePresence>
+      </Modal>
 
       {/* Предупреждение: большой плейлист */}
-      <AnimatePresence>
+      <Modal open={!!bigWarn} onClose={() => setBigWarn(null)}>
         {bigWarn && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            className="mestia-anim fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-8 backdrop-blur-sm"
-            onClick={() => setBigWarn(null)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 8 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 8 }}
-              transition={{ type: "spring", stiffness: 400, damping: 30 }}
-              className="mestia-anim w-full max-w-[400px] space-y-5 rounded-ui border-2 border-ink bg-snow p-6"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h3 className="text-base font-semibold tracking-tight">{t("dl.bigTitle")}</h3>
-              <p className="text-sm font-semibold leading-snug text-smoke">
-                {t("dl.bigText", { count: bigWarn.count })}
-              </p>
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => setBigWarn(null)}
-                  className="rounded-ui border-2 border-fog px-4 py-2 text-sm font-semibold hover:bg-fog"
-                >
-                  {t("common.cancel")}
-                </button>
-                <button
-                  onClick={() => {
-                    const fn = bigWarn.onConfirm;
-                    setBigWarn(null);
-                    fn();
-                  }}
-                  className="flex items-center gap-2 rounded-ui border-2 border-ink bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
-                >
-                  <ArrowDownToLine className="h-4 w-4" strokeWidth={2.25} />
-                  {t("dl.downloadAll")}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
+          <>
+            <h3 className="text-base font-semibold tracking-tight">{t("dl.bigTitle")}</h3>
+            <p className="text-sm font-semibold leading-snug text-smoke">
+              {t("dl.bigText", { count: bigWarn.count })}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setBigWarn(null)}
+                className="rounded-ui border-2 border-fog px-4 py-2 text-sm font-semibold hover:bg-fog"
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                onClick={() => {
+                  const fn = bigWarn.onConfirm;
+                  setBigWarn(null);
+                  fn();
+                }}
+                className="flex items-center gap-2 rounded-ui border-2 border-ink bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+              >
+                <ArrowDownToLine className="h-4 w-4" strokeWidth={2.25} />
+                {t("dl.downloadAll")}
+              </button>
+            </div>
+          </>
         )}
-      </AnimatePresence>
+      </Modal>
     </div>
   );
 }

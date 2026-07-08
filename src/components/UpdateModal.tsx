@@ -3,6 +3,7 @@ import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { Download, RefreshCw, X } from "lucide-react";
 import { humanizeError, updaterSupported } from "../lib/ipc";
+import Modal from "./Modal";
 import { useI18n } from "../context/LanguageContext";
 
 type Phase = "prompt" | "downloading" | "error";
@@ -43,8 +44,6 @@ export default function UpdateModal() {
     };
   }, []);
 
-  if (!update) return null;
-
   async function runUpdate() {
     if (!update) return;
     setPhase("downloading");
@@ -77,9 +76,16 @@ export default function UpdateModal() {
 
   const pct = progress < 0 ? null : Math.round(progress * 100);
 
+  // Во время скачивания закрытие по фону/Esc отключаем, чтобы не сбить установку.
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-8 backdrop-blur-sm">
-      <div className="w-full max-w-[420px] space-y-5 rounded-ui border-2 border-ink bg-snow p-6">
+    <Modal
+      open={!!update}
+      onClose={phase === "downloading" ? undefined : () => setUpdate(null)}
+      z={70}
+      maxWidth={420}
+    >
+      {update && (
+        <>
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-ui bg-accent text-white">
             <RefreshCw className="h-5 w-5" strokeWidth={2.25} />
@@ -138,7 +144,8 @@ export default function UpdateModal() {
             </button>
           </div>
         )}
-      </div>
-    </div>
+        </>
+      )}
+    </Modal>
   );
 }
