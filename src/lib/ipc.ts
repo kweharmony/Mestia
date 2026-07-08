@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { t } from "./i18n";
 import type {
   DonePayload,
   DownloadFormat,
@@ -98,6 +99,11 @@ export function generateThumbnail(videoPath: string): Promise<string> {
   return invoke<string>("generate_thumbnail", { videoPath });
 }
 
+/** Внешние субтитры рядом с видео в формате WebVTT (или null). */
+export function subtitleTrack(videoPath: string): Promise<string | null> {
+  return invoke<string | null>("subtitle_track", { videoPath });
+}
+
 /** Начать слежение за папкой библиотеки (события `library://changed`). */
 export function watchLibrary(path: string): Promise<void> {
   return invoke("watch_library", { path });
@@ -181,8 +187,28 @@ export function onDone(cb: (p: DonePayload) => void): Promise<UnlistenFn> {
 
 export const VIDEO_FORMATS: DownloadFormat[] = [
   {
+    id: "v2160",
+    label: "4K · MP4",
+    // 4K обычно только VP9/AV1 (avc1 почти не бывает) — пробуем avc1, иначе любой кодек.
+    minHeight: 1700, // показываем, только если в источнике есть дорожка ~2160p
+    format:
+      "bestvideo[vcodec^=avc1][height<=2160]+bestaudio[ext=m4a]/bestvideo[height<=2160]+bestaudio/best[height<=2160]/best",
+    ext: "mp4",
+    isAudio: false,
+  },
+  {
+    id: "v1440",
+    label: "1440p · 2K",
+    minHeight: 1200, // показываем, только если есть дорожка ~1440p
+    format:
+      "bestvideo[vcodec^=avc1][height<=1440]+bestaudio[ext=m4a]/bestvideo[height<=1440]+bestaudio/best[height<=1440]/best",
+    ext: "mp4",
+    isAudio: false,
+  },
+  {
     id: "v1080",
     label: "1080p · MP4",
+    minHeight: 900,
     // Предпочитаем H.264/AAC: только такой mp4 гарантированно играется в Windows.
     format:
       "bestvideo[vcodec^=avc1][height<=1080]+bestaudio[ext=m4a]/bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4][height<=1080]/best[height<=1080]",
@@ -192,6 +218,7 @@ export const VIDEO_FORMATS: DownloadFormat[] = [
   {
     id: "v720",
     label: "720p · MP4",
+    minHeight: 600,
     format:
       "bestvideo[vcodec^=avc1][height<=720]+bestaudio[ext=m4a]/bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best[ext=mp4][height<=720]/best[height<=720]",
     ext: "mp4",
@@ -200,6 +227,7 @@ export const VIDEO_FORMATS: DownloadFormat[] = [
   {
     id: "v480",
     label: "480p · MP4",
+    minHeight: 400,
     format:
       "bestvideo[vcodec^=avc1][height<=480]+bestaudio[ext=m4a]/bestvideo[ext=mp4][height<=480]+bestaudio[ext=m4a]/best[ext=mp4][height<=480]/best[height<=480]",
     ext: "mp4",
@@ -216,16 +244,48 @@ export const VIDEO_FORMATS: DownloadFormat[] = [
   },
 ];
 
+// Дефолтный видеопресет — 1080p (есть почти всегда), а не 4K из начала списка.
+export const DEFAULT_VIDEO_FORMAT: DownloadFormat =
+  VIDEO_FORMATS.find((f) => f.id === "v1080") ?? VIDEO_FORMATS[0];
+
 export const AUDIO_FORMATS: DownloadFormat[] = [
   { id: "mp3_320", label: "MP3 · 320 kbps", format: "bestaudio/best", ext: "mp3_320", isAudio: true },
   { id: "mp3_128", label: "MP3 · 128 kbps", format: "bestaudio/best", ext: "mp3_128", isAudio: true },
+  // Предпочитаем готовую m4a-дорожку — тогда yt-dlp копирует AAC без перекодирования.
+  { id: "m4a", label: "M4A · AAC", format: "bestaudio[ext=m4a]/bestaudio/best", ext: "m4a", isAudio: true },
+  { id: "opus", label: "OPUS", format: "bestaudio/best", ext: "opus", isAudio: true },
+  { id: "ogg", label: "OGG · Vorbis", format: "bestaudio/best", ext: "ogg", isAudio: true },
+  { id: "flac", label: "FLAC · без потерь", format: "bestaudio/best", ext: "flac", isAudio: true },
   { id: "wav", label: "WAV · без потерь", format: "bestaudio/best", ext: "wav", isAudio: true },
+  // Оригинальная дорожка как есть, без перекодирования (макс. качество и скорость).
+  { id: "best", label: "Оригинал", format: "bestaudio/best", ext: "best", isAudio: true },
 ];
 
+/** Локализованная подпись формата (часть подписей переводится, часть нейтральна). */
+export function formatLabel(f: DownloadFormat): string {
+  switch (f.id) {
+    case "vbest":
+      return t("fmt.best");
+    case "best":
+      return t("fmt.audioBest");
+    case "flac":
+      return `FLAC · ${t("fmt.lossless")}`;
+    case "wav":
+      return `WAV · ${t("fmt.lossless")}`;
+    default:
+      return f.label;
+  }
+}
+
 // Битрейт результирующего аудио (бит/с) по пресету — размер считается из длительности.
+// Для «Оригинал» битрейт неизвестен заранее → размер не показываем.
 const AUDIO_BITRATE: Record<string, number> = {
   mp3_320: 320_000,
   mp3_128: 128_000,
+  m4a: 192_000, // типичный AAC-битрейт исходной дорожки
+  opus: 160_000, // ~битрейт opus на YouTube
+  ogg: 160_000,
+  flac: 900_000, // прикидка lossless-сжатия (≈60% от WAV)
   wav: 1_411_200, // 16 бит · 44.1 кГц · стерео
 };
 
@@ -265,6 +325,94 @@ export function formatDuration(seconds: number | null | undefined): string {
 export function formatSpeed(bytesPerSec: number | null | undefined): string {
   if (!bytesPerSec || bytesPerSec <= 0) return "—";
   return `${formatBytes(bytesPerSec)}/s`;
+}
+
+// Признаки того, что ошибка yt-dlp связана с доступом/входом — тогда часто
+// помогает настройка «Куки из браузера» (приватное, 18+, по подписке, антибот).
+const AUTH_ERROR_RE =
+  /sign in|log ?in|cookies?|\bmembers?\b|join this channel|private video|this video is private|age[- ]?restrict|confirm your age|not a bot|music premium|requires (payment|purchase|a subscription)|subscriber|rental|this content isn|authenticat|--cookies/i;
+
+/** Похоже ли сообщение об ошибке на проблему доступа, решаемую куками. */
+export function isAuthError(msg: string | null | undefined): boolean {
+  return !!msg && AUTH_ERROR_RE.test(msg);
+}
+
+/**
+ * Превращает техническую ошибку (от Rust/yt-dlp/JS, часто английскую) в понятное
+ * пользователю сообщение на русском. Наши собственные русские сообщения проходят
+ * как есть; нераспознанное техническое — заменяется общим дружелюбным текстом.
+ */
+export function humanizeError(e: unknown): string {
+  const raw = (e instanceof Error ? e.message : String(e ?? "")).trim();
+  if (!raw) return t("err.generic");
+  if (/^DRM:/i.test(raw)) return t("err.drm");
+  const s = raw.toLowerCase();
+  const has = (...subs: string[]) => subs.some((x) => s.includes(x));
+
+  if (isAuthError(raw)) return t("err.auth");
+  if (has("timed out", "timeout", "connection", "getaddrinfo", "temporary failure",
+          "network is unreachable", "connection refused", "unable to download webpage",
+          "failed to resolve", "name or service not known", "socket", "ssl", "winerror 100"))
+    return t("err.network");
+  if (has("no space left", "not enough space", "os error 112", "disk full", "enospc"))
+    return t("err.disk");
+  if (has("being used by another process", "os error 32", "resource busy", "sharing violation"))
+    return t("err.busy");
+  if (has("access is denied", "permission denied", "os error 5", "operation not permitted", "eacces"))
+    return t("err.access");
+  if (has("not found", "cannot find", "no such file", "os error 2", "os error 3", "enoent"))
+    return t("err.notfound");
+  if (has("video unavailable", "this video is unavailable", "has been removed", "has been deleted",
+          "account has been terminated", "no longer available", "video does not exist"))
+    return t("err.unavailable");
+  if (has("not available in your country", "geo restrict", "geo-restricted", "in your country"))
+    return t("err.geo");
+  if (has("unsupported url", "is not a valid url", "unable to extract", "no video formats",
+          "unable to download json metadata", "ничего не найдено"))
+    return t("err.unsupported");
+
+  // Сообщение бэкенда на русском (Rust отдаёт по-русски) — оставляем как есть.
+  if (/[а-яё]/i.test(raw)) return raw;
+  // Прочее техническое — общий понятный текст.
+  return t("err.generic");
+}
+
+/** Тип провала загрузки — определяет действие (CTA), которое предложить пользователю. */
+export type DownloadFailureKind =
+  | "auth" // нужен вход — куки из браузера
+  | "geo" // геоблок — предложить прокси
+  | "drm" // защищённый (DRM) контент — скачать нельзя, действий нет
+  | "unsupported" // сервис изменился/не распознан — обновить движок
+  | "network" // сеть — можно повторить
+  | "unavailable" // контент удалён/недоступен — действий нет
+  | "unknown";
+
+/**
+ * Классифицирует ошибку загрузки в тип для CTA-кнопки. Переиспользует те же
+ * сигнатуры, что и `humanizeError` (текст), но возвращает только категорию.
+ */
+export function classifyError(e: unknown): DownloadFailureKind {
+  const raw = (e instanceof Error ? e.message : String(e ?? "")).trim();
+  if (!raw) return "unknown";
+  // Маркер жёсткого DRM из Rust (resolve_input) — финальная ошибка без действий.
+  if (/^DRM:/i.test(raw)) return "drm";
+  const s = raw.toLowerCase();
+  const has = (...subs: string[]) => subs.some((x) => s.includes(x));
+
+  if (isAuthError(raw)) return "auth";
+  if (has("not available in your country", "geo restrict", "geo-restricted", "in your country"))
+    return "geo";
+  if (has("video unavailable", "this video is unavailable", "has been removed", "has been deleted",
+          "account has been terminated", "no longer available", "video does not exist"))
+    return "unavailable";
+  if (has("unsupported url", "is not a valid url", "unable to extract", "no video formats",
+          "unable to download json metadata"))
+    return "unsupported";
+  if (has("timed out", "timeout", "connection", "getaddrinfo", "temporary failure",
+          "network is unreachable", "connection refused", "unable to download webpage",
+          "failed to resolve", "name or service not known", "socket", "ssl", "winerror 100"))
+    return "network";
+  return "unknown";
 }
 
 const AUDIO_EXTS = ["mp3", "m4a", "wav", "flac", "opus", "aac", "ogg", "oga"];

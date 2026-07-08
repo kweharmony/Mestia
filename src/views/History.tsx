@@ -12,10 +12,11 @@ import {
   X,
 } from "lucide-react";
 import { clearHistory, deleteHistoryRow, findVideoByUrl, listHistory } from "../lib/db";
-import { formatBytes, revealInExplorer } from "../lib/ipc";
+import { formatBytes, humanizeError, revealInExplorer } from "../lib/ipc";
 import type { HistoryRow, VideoRow } from "../types";
 import { useToast } from "../components/Toast";
 import { useDownloads } from "../context/DownloadsContext";
+import { useI18n } from "../context/LanguageContext";
 
 interface HistoryProps {
   onPlay: (v: VideoRow) => void;
@@ -24,6 +25,7 @@ interface HistoryProps {
 export default function History({ onPlay }: HistoryProps) {
   const { notify } = useToast();
   const { start, libraryVersion } = useDownloads();
+  const { t } = useI18n();
   const [rows, setRows] = useState<HistoryRow[]>([]);
 
   async function refresh() {
@@ -31,7 +33,7 @@ export default function History({ onPlay }: HistoryProps) {
   }
 
   useEffect(() => {
-    refresh().catch((e) => notify(String(e), "error"));
+    refresh().catch((e) => notify(humanizeError(e), "error"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -44,25 +46,25 @@ export default function History({ onPlay }: HistoryProps) {
   async function handlePlay(row: HistoryRow) {
     const v = await findVideoByUrl(row.url);
     if (v) onPlay(v);
-    else notify("Файл не найден в Медиатеке", "error");
+    else notify(t("hist.notFoundLibrary"), "error");
   }
 
   async function handleReveal(row: HistoryRow) {
     const v = await findVideoByUrl(row.url);
     if (v) await revealInExplorer(v.file_path);
-    else notify("Файл не найден", "error");
+    else notify(t("hist.notFound"), "error");
   }
 
   async function handleClear() {
     await clearHistory();
     await refresh();
-    notify("История очищена");
+    notify(t("hist.cleared"));
   }
 
   async function handleDelete(row: HistoryRow) {
     await deleteHistoryRow(row.id);
     await refresh();
-    notify("Запись удалена");
+    notify(t("hist.rowDeleted"));
   }
 
   // Продолжить (resume) или начать заново (restart) прерванную загрузку.
@@ -76,7 +78,11 @@ export default function History({ onPlay }: HistoryProps) {
       mode: (row.mode as "single" | "all" | "range") ?? "single",
       items: row.items,
       meta: {
-        title: (row.title ?? "Загрузка").replace(/^Плейлист:\s*/, ""),
+        // У плейлистов заголовок в БД хранится с префиксом «Плейлист:/Playlist:/播放列表：» —
+        // убираем его (любой язык) для чистого meta.title.
+        title: isPlaylist
+          ? (row.title ?? t("ctx.downloadFallback")).replace(/^[^:：]+[:：]\s*/, "")
+          : row.title ?? t("ctx.downloadFallback"),
         platform: row.platform,
         webpage_url: row.url,
         isPlaylist,
@@ -86,26 +92,26 @@ export default function History({ onPlay }: HistoryProps) {
       recovery,
     });
     await refresh();
-    notify(recovery === "resume" ? "Продолжаю загрузку" : "Скачиваю заново");
+    notify(recovery === "resume" ? t("hist.resuming") : t("hist.redownloading"));
   }
 
   return (
     <div className="mestia-fade-in flex-1 p-12">
       <div className="mx-auto max-w-[1000px] space-y-8">
         <div className="flex items-end justify-between border-b-2 border-fog pb-4">
-          <h1 className="text-2xl font-normal tracking-tight">История загрузок</h1>
+          <h1 className="text-2xl font-normal tracking-tight">{t("hist.title")}</h1>
           <button
             onClick={handleClear}
             className="flex items-center gap-2 text-sm font-semibold text-smoke hover:text-ink"
           >
             <Trash2 className="h-4 w-4" strokeWidth={2.25} />
-            Очистить историю
+            {t("hist.clear")}
           </button>
         </div>
 
         {rows.length === 0 ? (
           <div className="py-20 text-center text-sm font-semibold text-smoke">
-            История пуста.
+            {t("hist.empty")}
           </div>
         ) : (
           <div className="space-y-3">
@@ -142,7 +148,9 @@ function HistoryItem({
   onResume: () => void;
   onRestart: () => void;
 }) {
-  const date = new Date(row.timestamp + "Z").toLocaleString("ru-RU", {
+  const { t, lang } = useI18n();
+  const locale = lang === "zh" ? "zh-CN" : lang === "en" ? "en-US" : "ru-RU";
+  const date = new Date(row.timestamp + "Z").toLocaleString(locale, {
     day: "numeric",
     month: "short",
     hour: "2-digit",
@@ -162,7 +170,7 @@ function HistoryItem({
             {row.title ?? row.url}
           </h4>
           <p className="text-xs font-semibold text-smoke">
-            {row.status === "interrupted" ? "Прервано · " : ""}
+            {row.status === "interrupted" ? `${t("hist.interrupted")} · ` : ""}
             {date} · {formatBytes(row.file_size)} · {row.platform ?? "—"}
           </p>
         </div>
@@ -173,14 +181,14 @@ function HistoryItem({
           <>
             <button
               onClick={onReveal}
-              title="Открыть папку"
+              title={t("hist.openFolder")}
               className="rounded-ui p-2 text-smoke hover:bg-fog hover:text-ink"
             >
               <FolderOpen className="h-5 w-5" strokeWidth={2.25} />
             </button>
             <button
               onClick={onPlay}
-              title="Воспроизвести"
+              title={t("hist.play")}
               className="rounded-ui p-2 text-accent hover:bg-fog"
             >
               <PlayCircle className="h-5 w-5" strokeWidth={2.25} />
@@ -191,15 +199,15 @@ function HistoryItem({
           <>
             <button
               onClick={onResume}
-              title="Продолжить загрузку"
+              title={t("hist.resume")}
               className="flex items-center gap-1.5 rounded-ui border-2 border-ink px-3 py-1.5 text-xs font-semibold hover:bg-fog"
             >
               <ArrowDownToLine className="h-4 w-4" strokeWidth={2.25} />
-              Продолжить
+              {t("hist.resumeShort")}
             </button>
             <button
               onClick={onRestart}
-              title="Скачать заново"
+              title={t("hist.restart")}
               className="rounded-ui p-2 text-smoke hover:bg-fog hover:text-ink"
             >
               <RotateCcw className="h-5 w-5" strokeWidth={2.25} />
@@ -208,7 +216,7 @@ function HistoryItem({
         )}
         <button
           onClick={onDelete}
-          title="Удалить запись"
+          title={t("hist.deleteRow")}
           className="rounded-ui p-2 text-smoke hover:bg-rose-100 hover:text-rose-600"
         >
           <X className="h-5 w-5" strokeWidth={2.25} />

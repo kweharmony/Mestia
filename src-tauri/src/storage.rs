@@ -53,6 +53,10 @@ fn settings_file(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(dir.join("settings.json"))
 }
 
+/// Сериализует операции чтения-изменения-записи settings.json, чтобы параллельные
+/// `set_setting` не теряли ключи друг друга (read-modify-write — гонка).
+static SETTINGS_LOCK: Mutex<()> = Mutex::new(());
+
 /// Читает все настройки как JSON-объект (или пустой объект).
 fn read_settings(app: &tauri::AppHandle) -> serde_json::Map<String, Value> {
     settings_file(app)
@@ -64,11 +68,37 @@ fn read_settings(app: &tauri::AppHandle) -> serde_json::Map<String, Value> {
 }
 
 /// Записывает одно значение настройки, сохраняя остальные ключи.
+///
+/// Защищено от потери данных: чтение-запись под мьютексом, запись — атомарная
+/// (во временный файл + rename), а если существующий файл повреждён (например,
+/// усечён прерванной записью при обновлении), он не затирается молча, а
+/// откладывается в `.bak` — иначе один `set_setting` стёр бы все остальные ключи.
 fn write_setting(app: &tauri::AppHandle, key: &str, value: Value) -> Result<(), String> {
-    let mut map = read_settings(app);
+    let _guard = SETTINGS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    upsert_setting_file(&settings_file(app)?, key, value)
+}
+
+/// Чистая логика записи одного ключа в файл настроек (тестируема без AppHandle).
+fn upsert_setting_file(path: &std::path::Path, key: &str, value: Value) -> Result<(), String> {
+    let mut map = match std::fs::read_to_string(path) {
+        // Файл есть и непустой, но не парсится — сохраняем копию, не теряем молча.
+        Ok(text) if !text.trim().is_empty() => serde_json::from_str::<Value>(&text)
+            .ok()
+            .and_then(|v| v.as_object().cloned())
+            .unwrap_or_else(|| {
+                let _ = std::fs::rename(path, path.with_extension("json.bak"));
+                serde_json::Map::new()
+            }),
+        // Файла нет или он пуст — начинаем с чистой карты.
+        _ => serde_json::Map::new(),
+    };
     map.insert(key.to_string(), value);
+
     let body = serde_json::to_string_pretty(&Value::Object(map)).map_err(|e| e.to_string())?;
-    std::fs::write(settings_file(app)?, body).map_err(|e| e.to_string())
+    // Атомарная запись: прерывание (kill при обновлении) не оставит битый файл.
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, body).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, path).map_err(|e| e.to_string())
 }
 
 /// Пользовательская папка загрузок из настроек (если задана).
@@ -282,22 +312,29 @@ pub fn move_video_file(file_path: String, dest_dir: String) -> Result<String, St
     Ok(dest.to_string_lossy().to_string())
 }
 
-/// Удаляет файл с диска.
+/// Удаляет файл в системную корзину (можно восстановить). Если корзина
+/// недоступна (сетевой диск, некоторые Linux-окружения) — удаляет безвозвратно,
+/// чтобы действие всё же выполнилось.
 #[tauri::command]
 pub fn delete_file(path: String) -> Result<(), String> {
     let p = PathBuf::from(&path);
     if p.is_file() {
-        std::fs::remove_file(&p).map_err(|e| e.to_string())?;
+        if trash::delete(&p).is_err() {
+            std::fs::remove_file(&p).map_err(|e| e.to_string())?;
+        }
     }
     Ok(())
 }
 
-/// Удаляет папку со всем содержимым.
+/// Удаляет папку со всем содержимым в системную корзину (с запасным
+/// безвозвратным удалением, если корзина недоступна).
 #[tauri::command]
 pub fn delete_folder(path: String) -> Result<(), String> {
     let p = PathBuf::from(&path);
     if p.is_dir() {
-        std::fs::remove_dir_all(&p).map_err(|e| e.to_string())?;
+        if trash::delete(&p).is_err() {
+            std::fs::remove_dir_all(&p).map_err(|e| e.to_string())?;
+        }
     }
     Ok(())
 }
@@ -545,6 +582,52 @@ pub fn reveal_in_explorer(file_path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Ищет внешние субтитры рядом с видео (`<имя>*.vtt`/`.srt`) и возвращает их в
+/// формате WebVTT (браузерный `<track>` понимает только его). `.srt` конвертируется.
+#[tauri::command]
+pub fn subtitle_track(video_path: String) -> Option<String> {
+    let p = PathBuf::from(&video_path);
+    let dir = p.parent()?;
+    let stem = p.file_stem()?.to_string_lossy().to_lowercase();
+    let prefix = format!("{stem}.");
+    let mut vtt: Option<PathBuf> = None;
+    let mut srt: Option<PathBuf> = None;
+    for entry in std::fs::read_dir(dir).ok()?.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().map(|s| s.to_string_lossy().to_lowercase()) else {
+            continue;
+        };
+        if !name.starts_with(&prefix) {
+            continue;
+        }
+        if name.ends_with(".vtt") {
+            vtt = Some(path);
+            break; // .vtt в приоритете
+        } else if name.ends_with(".srt") && srt.is_none() {
+            srt = Some(path);
+        }
+    }
+    if let Some(v) = vtt {
+        return std::fs::read_to_string(v).ok();
+    }
+    let s = srt?;
+    std::fs::read_to_string(s).ok().map(|raw| srt_to_vtt(&raw))
+}
+
+/// Минимальная конвертация SRT → WebVTT: заголовок + точка вместо запятой в таймкодах.
+fn srt_to_vtt(srt: &str) -> String {
+    let mut out = String::from("WEBVTT\n\n");
+    for line in srt.lines() {
+        if line.contains("-->") {
+            out.push_str(&line.replace(',', "."));
+        } else {
+            out.push_str(line);
+        }
+        out.push('\n');
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -587,6 +670,31 @@ mod tests {
 
     fn touch(p: &std::path::Path) {
         std::fs::write(p, b"x").unwrap();
+    }
+
+    #[test]
+    fn upsert_preserves_other_keys() {
+        let t = TempDir::new();
+        let f = t.join("settings.json");
+        upsert_setting_file(&f, "downloadDir", json!("D:/Загрузки")).unwrap();
+        upsert_setting_file(&f, "theme", json!("midnight")).unwrap();
+        let v: Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
+        // Запись второго ключа не должна стирать первый.
+        assert_eq!(v["downloadDir"], json!("D:/Загрузки"));
+        assert_eq!(v["theme"], json!("midnight"));
+    }
+
+    #[test]
+    fn upsert_corrupt_file_is_backed_up_not_clobbered_silently() {
+        let t = TempDir::new();
+        let f = t.join("settings.json");
+        // Имитируем усечённый прерванной записью файл.
+        std::fs::write(&f, b"{\"downloadDir\":\"D:/Down").unwrap();
+        upsert_setting_file(&f, "theme", json!("ember")).unwrap();
+        // Битый файл отложен в .bak (данные восстановимы, не потеряны молча).
+        assert!(f.with_extension("json.bak").exists());
+        let v: Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
+        assert_eq!(v["theme"], json!("ember"));
     }
 
     #[test]

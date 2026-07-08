@@ -130,6 +130,7 @@ pub fn run() {
             storage::delete_folder,
             storage::rename_folder,
             storage::reveal_in_explorer,
+            storage::subtitle_track,
         ])
         .run(tauri::generate_context!())
         .expect("Ошибка запуска приложения Mestia");

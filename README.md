@@ -37,6 +37,9 @@ yt-dlp + ffmpeg (как sidecar).
 - **Продолжение прерванных загрузок** (resume из `.part`) или «заново».
 
 **Прочее**
+- **Интерфейс на 3 языках**: русский, английский, китайский. При первом запуске
+  язык определяется по локали ОС (иначе — русский), затем меняется в Настройках и
+  сохраняется между запусками.
 - 8 тем (5 цветных + светлая/тёмная нейтральные), сохраняются между запусками.
 - **Системный трей**: сворачивание в фон, умное закрытие (диалог / трей).
 - Уведомления на рабочий стол о завершении загрузок (опция).
@@ -193,9 +196,9 @@ mestia/
 │   ├── fetch-binaries.mjs   # загрузка yt-dlp + ffmpeg под ОС
 │   └── free-port.mjs        # освобождение порта 1420 (хук predev)
 ├── src/                     # фронтенд (React + TS)
-│   ├── context/             # Theme, Downloads (очередь/события), Drag
+│   ├── context/             # Theme, Language (i18n), Downloads (очередь/события), Drag
 │   ├── components/          # Sidebar, Settings, Player-панель, Splash, Toast…
-│   ├── lib/                 # ipc.ts (мост в Rust), db.ts (SQLite)
+│   ├── lib/                 # ipc.ts (мост в Rust), db.ts (SQLite), i18n.ts (словари ru/en/zh)
 │   └── views/               # Downloader, Locker (Медиатека), History, Player
 └── src-tauri/               # бэкенд (Rust + Tauri v2)
     ├── tauri.conf.json      # окно, трей, sidecar, asset-протокол, NSIS

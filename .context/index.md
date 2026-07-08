@@ -45,6 +45,8 @@ Build-time Node helpers.
 - `main.tsx` / `App.tsx` — entry point and root component / routing between views.
 - `context/` — global React state:
   - `ThemeContext` — 8 themes, persisted.
+  - `LanguageContext` — i18n (ru/en/zh); exposes `useI18n().t`, persists setting `lang`,
+    defaults to OS locale on first run.
   - `DownloadsContext` — download queue, concurrency limit, live progress events.
   - `DragContext` — drag-and-drop state for the library.
 - `components/` — reusable UI: `Sidebar`, `Settings`, `DownloadsPanel`, `Splash`,
@@ -52,6 +54,8 @@ Build-time Node helpers.
 - `lib/`:
   - `ipc.ts` — typed wrappers over Tauri `invoke` (the single bridge to Rust).
   - `db.ts` — SQLite access (history, library structure, metadata).
+  - `i18n.ts` — trilingual dictionary (`ru`/`en`/`zh`) + `t()`; module-level `t()` for
+    non-React code (e.g. `humanizeError`, desktop notifications).
 - `views/` — top-level screens:
   - `Downloader` — paste URL, pick format/quality, start downloads.
   - `Locker` — the media library (folders + videos grid, multi-select, drag-drop).
@@ -86,6 +90,8 @@ Build-time Node helpers.
   modal offers to download, install, and relaunch.
 
 ## Conventions
-- Code comments and UI strings are in **Russian**.
+- Code comments are in **Russian**. UI strings are **localized via i18n** (`src/lib/i18n.ts`,
+  `useI18n().t`) in ru/en/zh — never hardcode user-facing text. Rust backend messages stay
+  Russian; `humanizeError` translates the common ones.
 - Versions in `package.json` and `src-tauri/tauri.conf.json` must stay in sync.
 - Tests: Vitest (`npm test`, frontend pure logic) and `cargo test` (Rust). No linter; type safety via `tsc --noEmit`.

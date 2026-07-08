@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
+  ArrowDownUp,
   ChevronRight,
   Download,
   Folder,
@@ -30,10 +31,13 @@ import {
   listVideos,
   moveVideoToFolder,
   pruneOutsideRoot,
+  reassignVideosToFolder,
   renameFolderRows,
   renameVideo,
   searchVideos,
+  updateVideoPath,
   updateVideoThumb,
+  videosBySize,
 } from "../lib/db";
 import {
   createFolderOnDisk,
@@ -44,6 +48,7 @@ import {
   formatDuration,
   generateThumbnail,
   getStorageRoot,
+  humanizeError,
   isAudioPath,
   moveVideoFile,
   onLibraryChanged,
@@ -57,16 +62,14 @@ import type { FolderRow, VideoRow } from "../types";
 import { useDrag } from "../context/DragContext";
 import { useDownloads } from "../context/DownloadsContext";
 import { useToast } from "../components/Toast";
+import { useI18n } from "../context/LanguageContext";
 import Typewriter from "../components/Typewriter";
 
-const SEARCH_HINTS = [
-  "Поиск по всей библиотеке…",
-  "Тот самый ролик про котиков?…",
-  "Куда же я сохранил это видео…",
-  "Введите название — найду вмиг 🐾",
-  "Мемы, лекции, музыка… что ищем?",
-  "Мяу? Имя файла подскажете?",
-];
+const SEARCH_HINT_KEYS = ["lib.sh.0", "lib.sh.1", "lib.sh.2", "lib.sh.3", "lib.sh.4", "lib.sh.5"];
+
+// Отсрочка перед удалением записи о пропавшем файле — чтобы переезд файла
+// (проводником) не стёр его метаданные до усыновления в папке-назначении.
+const MISSING_GRACE_MS = 60_000;
 
 // Нормализация пути для сравнения (без хвостового слэша, в нижнем регистре).
 function normPath(p: string): string {
@@ -90,6 +93,7 @@ export default function Locker({
   const { dragging, startDrag, endDrag } = useDrag();
   const { libraryVersion } = useDownloads();
   const { notify } = useToast();
+  const { t } = useI18n();
 
   const [storageRoot, setStorageRoot] = useState("");
   const [trail, setTrail] = useState<FolderRow[]>([]);
@@ -106,6 +110,10 @@ export default function Locker({
   const [results, setResults] = useState<VideoRow[]>([]);
   const searchActive = query.trim().length > 0;
 
+  // Сортировка и фильтр по типу медиа (применяются к показанным видео).
+  const [sortKey, setSortKey] = useState<"date" | "name" | "size">("date");
+  const [kindFilter, setKindFilter] = useState<"all" | "video" | "audio">("all");
+
   const [renaming, setRenaming] = useState<Renaming>(null);
   const [renameValue, setRenameValue] = useState("");
   const [confirm, setConfirm] = useState<Confirm>(null);
@@ -119,6 +127,20 @@ export default function Locker({
   const currentPath = current?.path ?? storageRoot;
   const displayed = searchActive ? results : videos;
 
+  // Показанные видео с учётом фильтра по типу и сортировки.
+  const shownVideos = useMemo(() => {
+    let arr = displayed;
+    if (kindFilter !== "all") {
+      const wantAudio = kindFilter === "audio";
+      arr = arr.filter((v) => isAudioPath(v.file_path) === wantAudio);
+    }
+    if (sortKey === "date") return arr; // из БД/поиска уже по дате (новые сверху)
+    const sorted = [...arr];
+    if (sortKey === "name") sorted.sort((a, b) => a.title.localeCompare(b.title, "ru"));
+    else sorted.sort((a, b) => (b.size ?? 0) - (a.size ?? 0)); // size: крупные сверху
+    return sorted;
+  }, [displayed, kindFilter, sortKey]);
+
   // ── Фоновая генерация обложек для видео без превью ───────────────────────────
   const thumbAttempts = useRef<Set<number>>(new Set());
   // id видео, для которых сейчас генерится кадр — показываем скелетон.
@@ -131,20 +153,22 @@ export default function Locker({
     });
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      for (const v of videos) {
-        if (cancelled) break;
-        if (v.thumbnail_path || isAudioPath(v.file_path) || thumbAttempts.current.has(v.id)) {
-          continue;
-        }
+    const targets = videos.filter(
+      (v) => !v.thumbnail_path && !isAudioPath(v.file_path) && !thumbAttempts.current.has(v.id)
+    );
+    if (!targets.length) return;
+    const queue = [...targets];
+    // Пул воркеров: обложки генерятся параллельно (по несколько сразу), а не по одной.
+    const worker = async () => {
+      for (let v = queue.shift(); v && !cancelled; v = queue.shift()) {
         thumbAttempts.current.add(v.id);
         markGen(v.id, true);
         try {
           const thumb = await generateThumbnail(v.file_path);
-          if (cancelled) break;
+          if (cancelled) return;
           await updateVideoThumb(v.id, thumb);
           setVideos((cur) =>
-            cur.map((x) => (x.id === v.id ? { ...x, thumbnail_path: thumb } : x))
+            cur.map((x) => (x.id === v!.id ? { ...x, thumbnail_path: thumb } : x))
           );
         } catch {
           /* нет кадра — оставляем заглушку */
@@ -152,7 +176,9 @@ export default function Locker({
           markGen(v.id, false);
         }
       }
-    })();
+    };
+    const POOL = 3;
+    void Promise.all(Array.from({ length: Math.min(POOL, queue.length) }, worker));
     return () => {
       cancelled = true;
     };
@@ -212,10 +238,59 @@ export default function Locker({
     setMarquee({ x1: e.clientX, y1: e.clientY, x2: e.clientX, y2: e.clientY });
   }
 
+  // Сериализация reload(): параллельные вызовы (фокус + watcher + смена папки)
+  // не должны пересекаться и делать insert/delete одновременно.
+  const reloadingRef = useRef(false);
+  const reloadAgainRef = useRef(false);
+  // Корень, для которого уже сделан prune — чтобы не гонять полный перебор БД
+  // на каждый фокус/обновление, а только при реальной смене корня хранилища.
+  const prunedRootRef = useRef<string | null>(null);
+  // id видео → когда его файл впервые заметили пропавшим (для отсрочки удаления).
+  const missingSinceRef = useRef<Map<number, number>>(new Map());
+
   async function reload() {
-    // Сначала вычищаем записи от прежнего корня хранилища (если корень известен),
-    // чтобы папки из ранее выбранной основной папки не «всплывали».
-    if (storageRoot) await pruneOutsideRoot(storageRoot).catch(() => {});
+    if (reloadingRef.current) {
+      reloadAgainRef.current = true; // перезапустим один раз после текущего прохода
+      return;
+    }
+    reloadingRef.current = true;
+    try {
+      await doReload();
+    } finally {
+      reloadingRef.current = false;
+      if (reloadAgainRef.current) {
+        reloadAgainRef.current = false;
+        void reload();
+      }
+    }
+  }
+
+  // Возможно, файл переехал в эту папку извне (проводником): вместо вставки нового
+  // «Локального файла» усыновляем существующую запись того же размера, чей файл
+  // пропал по старому пути — так сохраняются название, обложка и платформа.
+  async function adoptMoved(
+    f: { path: string; name: string; size: number },
+    folderId: number | null
+  ): Promise<boolean> {
+    if (!f.size) return false;
+    const cands = await videosBySize(f.size);
+    if (!cands.length) return false;
+    const present = await existingPaths(cands.map((c) => c.file_path));
+    const gone = cands.filter((c, i) => !present[i] && c.file_path !== f.path);
+    if (!gone.length) return false;
+    const stem = (p: string) =>
+      (p.split(/[\\/]/).pop() ?? p).replace(/\.[^.]+$/, "").toLowerCase();
+    const target = gone.find((c) => stem(c.file_path) === f.name.toLowerCase()) ?? gone[0];
+    await updateVideoPath(target.id, f.path, folderId);
+    return true;
+  }
+
+  async function doReload() {
+    // Чистим записи от прежнего корня хранилища только при смене корня (не каждый раз).
+    if (storageRoot && prunedRootRef.current !== storageRoot) {
+      await pruneOutsideRoot(storageRoot).catch(() => {});
+      prunedRootRef.current = storageRoot;
+    }
 
     // Подхватываем вручную добавленные на диск подпапки и медиафайлы текущей папки.
     const dir = current?.path ?? storageRoot;
@@ -232,19 +307,23 @@ export default function Locker({
         if (files.length) {
           const knownFiles = await allVideoPaths();
           for (const f of files) {
-            if (!knownFiles.has(f.path)) {
-              await insertVideo({
-                title: f.name,
-                url: null,
-                file_path: f.path,
-                duration: null,
-                size: f.size,
-                thumbnail_path: null,
-                platform: "Локальный файл",
-                folder_id: currentId,
-              });
-            }
+            if (knownFiles.has(f.path)) continue;
+            // Сначала пробуем усыновить переехавшую запись (сохранив метаданные).
+            if (await adoptMoved(f, currentId)) continue;
+            await insertVideo({
+              title: f.name,
+              url: null,
+              file_path: f.path,
+              duration: null,
+              size: f.size,
+              thumbnail_path: null,
+              platform: t("lib.localFile"),
+              folder_id: currentId,
+            });
           }
+          // Уже известные файлы, физически лежащие здесь, но привязанные в БД к
+          // другой папке, — перепривязываем к текущей (иначе папка «пустая»).
+          await reassignVideosToFolder(files.map((f) => f.path), currentId);
         }
       } catch {
         /* ошибки сканирования игнорируем */
@@ -253,10 +332,27 @@ export default function Locker({
     let folders = await listFolders(currentId);
     let vids = await listVideos(currentId);
 
-    // Удаляем из библиотеки то, чего больше нет на диске (удалили/переместили вне приложения).
+    // Удаляем из библиотеки то, чего больше нет на диске. Но не сразу: файл мог
+    // просто переехать в другую папку (проводником) — даём отсрочку, чтобы он
+    // успел быть усыновлён при открытии папки-назначения и не потерял метаданные.
     try {
+      const now = Date.now();
       const vEx = await existingPaths(vids.map((v) => v.file_path));
-      await Promise.all(vids.filter((_, i) => !vEx[i]).map((v) => deleteVideoRow(v.id)));
+      const seen = missingSinceRef.current;
+      const toDelete: VideoRow[] = [];
+      vids.forEach((v, i) => {
+        if (vEx[i]) {
+          seen.delete(v.id); // файл на месте — снимаем метку «пропал»
+          return;
+        }
+        const since = seen.get(v.id);
+        if (since === undefined) seen.set(v.id, now); // впервые пропал — ждём
+        else if (now - since > MISSING_GRACE_MS) toDelete.push(v);
+      });
+      await Promise.all(toDelete.map((v) => deleteVideoRow(v.id)));
+      toDelete.forEach((v) => seen.delete(v.id));
+      // В сетке показываем только реально существующие файлы; пропавшие в отсрочке
+      // остаются в БД (ждут усыновления в папке-назначении), но не мозолят глаза.
       vids = vids.filter((_, i) => vEx[i]);
       const fEx = await existingPaths(folders.map((f) => f.path));
       for (const f of folders.filter((_, i) => !fEx[i])) await deleteFolderTree(f.id);
@@ -283,7 +379,7 @@ export default function Locker({
 
   useEffect(() => {
     setSelected(new Set()); // сбрасываем выбор при смене папки / появлении корня
-    reload().catch((e) => notify(String(e), "error"));
+    reload().catch((e) => notify(humanizeError(e), "error"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentId, storageRoot]);
 
@@ -331,6 +427,25 @@ export default function Locker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
 
+  // Горячие клавиши медиатеки: Ctrl/Cmd+A — выбрать всё, Delete — удалить выбранное.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || renaming || confirm) return;
+      if ((e.ctrlKey || e.metaKey) && (e.key === "a" || e.key === "ф" || e.key === "Ф")) {
+        if (shownVideos.length === 0) return;
+        e.preventDefault();
+        setSelected(new Set(shownVideos.map((v) => v.id)));
+      } else if ((e.key === "Delete" || e.key === "Backspace") && selected.size > 0) {
+        e.preventDefault();
+        askDeleteSelected();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shownVideos, selected, renaming, confirm]);
+
   function enterFolder(folder: FolderRow) {
     // Защита от двойного/быстрого клика: не заталкиваем одну и ту же папку
     // в крошки повторно (иначе путь дублируется: …→ Папка → Папка).
@@ -353,15 +468,15 @@ export default function Locker({
     try {
       const img = await open({
         multiple: false,
-        filters: [{ name: "Изображения", extensions: ["jpg", "jpeg", "png", "webp", "gif", "bmp"] }],
+        filters: [{ name: t("lib.imagesFilter"), extensions: ["jpg", "jpeg", "png", "webp", "gif", "bmp"] }],
       });
       if (typeof img !== "string") return;
       await updateVideoThumb(v.id, img);
       setVideos((cur) => cur.map((x) => (x.id === v.id ? { ...x, thumbnail_path: img } : x)));
       if (searchActive) setResults((cur) => cur.map((x) => (x.id === v.id ? { ...x, thumbnail_path: img } : x)));
-      notify("Обложка обновлена");
+      notify(t("lib.coverUpdated"));
     } catch (e) {
-      notify(String(e), "error");
+      notify(humanizeError(e), "error");
     }
   }
 
@@ -376,9 +491,9 @@ export default function Locker({
       setNewName("");
       setCreating(false);
       await reload();
-      notify(`Папка «${name}» создана`);
+      notify(t("lib.folderCreated", { name }));
     } catch (e) {
-      notify(String(e), "error");
+      notify(humanizeError(e), "error");
     } finally {
       creatingBusy.current = false;
     }
@@ -403,13 +518,13 @@ export default function Locker({
         await reload();
         notify(
           toMove.length > 1
-            ? `Перемещено: ${toMove.length} → «${target.name}»`
-            : `Перемещено в «${target.name}»`
+            ? t("lib.movedMulti", { count: toMove.length, name: target.name })
+            : t("lib.movedOne", { name: target.name })
         );
       }, 220);
     } catch (e) {
       setLeavingIds(new Set());
-      notify(String(e), "error");
+      notify(humanizeError(e), "error");
     }
   }
 
@@ -451,39 +566,39 @@ export default function Locker({
       }
       setRenaming(null);
       await reload();
-      notify("Переименовано");
+      notify(t("lib.renamed"));
     } catch (e) {
-      notify(String(e), "error");
+      notify(humanizeError(e), "error");
     }
   }
 
   function askDeleteVideo(v: VideoRow) {
     setConfirm({
-      text: `Удалить «${v.title}» и файл с диска?`,
+      text: t("lib.confirmDeleteVideo", { title: v.title }),
       action: async () => {
         await deleteFileOnDisk(v.file_path);
         await deleteVideoRow(v.id);
         await reload();
-        notify("Видео удалено");
+        notify(t("lib.videoDeleted"));
       },
     });
   }
   function askDeleteFolder(f: FolderRow) {
     setConfirm({
-      text: `Удалить папку «${f.name}» со всем содержимым?`,
+      text: t("lib.confirmDeleteFolder", { name: f.name }),
       action: async () => {
         await deleteFolderOnDisk(f.path);
         await deleteFolderTree(f.id);
         await reload();
-        notify("Папка удалена");
+        notify(t("lib.folderDeleted"));
       },
     });
   }
   function askDeleteSelected() {
-    const vids = displayed.filter((v) => selected.has(v.id));
+    const vids = shownVideos.filter((v) => selected.has(v.id));
     if (!vids.length) return;
     setConfirm({
-      text: `Удалить выбранные видео (${vids.length}) и файлы с диска?`,
+      text: t("lib.confirmDeleteSelected", { count: vids.length }),
       action: async () => {
         for (const v of vids) {
           await deleteFileOnDisk(v.file_path);
@@ -491,7 +606,7 @@ export default function Locker({
         }
         setSelected(new Set());
         await reload();
-        notify(`Удалено: ${vids.length}`);
+        notify(t("lib.deletedCount", { count: vids.length }));
       },
     });
   }
@@ -511,13 +626,13 @@ export default function Locker({
               onDragLeave={() => setHoverCrumb(null)}
               onDrop={(e) => {
                 e.preventDefault();
-                dropMove({ id: null, path: storageRoot, name: "Медиатека" });
+                dropMove({ id: null, path: storageRoot, name: t("lib.title") });
               }}
               className={`rounded-ui px-1 ${
                 hoverCrumb === "root" ? "bg-accent/20 ring-2 ring-accent" : ""
               } ${trail.length ? "text-smoke hover:text-ink" : ""}`}
             >
-              Медиатека
+              {t("lib.title")}
             </button>
             {trail.map((f, i) => (
               <span key={f.id} className="flex items-center gap-1">
@@ -545,15 +660,15 @@ export default function Locker({
 
           <div className="flex shrink-0 items-center gap-2">
             <button
-              onClick={() => reload().catch((e) => notify(String(e), "error"))}
-              title="Обновить"
+              onClick={() => reload().catch((e) => notify(humanizeError(e), "error"))}
+              title={t("lib.refresh")}
               className="mestia-nav flex items-center justify-center rounded-ui border-2 border-fog p-2 hover:bg-fog"
             >
               <RefreshCw className="mestia-ico-gear h-4 w-4" strokeWidth={2.25} />
             </button>
             <button
-              onClick={() => openFolder(currentPath).catch((e) => notify(String(e), "error"))}
-              title="Открыть в проводнике"
+              onClick={() => openFolder(currentPath).catch((e) => notify(humanizeError(e), "error"))}
+              title={t("lib.openExplorer")}
               className="mestia-nav flex items-center justify-center rounded-ui border-2 border-ink p-2 hover:bg-fog"
             >
               <FolderOpen className="mestia-ico-open h-4 w-4" strokeWidth={2.25} />
@@ -568,7 +683,7 @@ export default function Locker({
                     if (e.key === "Enter") handleCreateFolder();
                     if (e.key === "Escape") setCreating(false);
                   }}
-                  placeholder="Название папки"
+                  placeholder={t("lib.folderNamePlaceholder")}
                   className="rounded-ui border-2 border-accent bg-snow px-3 py-2 text-sm font-semibold outline-none"
                 />
                 <button onClick={handleCreateFolder} className="rounded-ui border-2 border-ink p-2 hover:bg-fog">
@@ -584,7 +699,7 @@ export default function Locker({
                 className="mestia-nav flex items-center gap-2 rounded-ui border-2 border-ink px-4 py-2 text-sm font-semibold hover:bg-fog"
               >
                 <FolderPlus className="mestia-ico-folderplus h-4 w-4" strokeWidth={2.25} />
-                Новая папка
+                {t("lib.newFolder")}
               </button>
             )}
           </div>
@@ -603,7 +718,7 @@ export default function Locker({
           />
           {!query && !searchFocused && (
             <div className="pointer-events-none absolute inset-y-0 left-9 right-9 flex items-center overflow-hidden text-sm font-semibold text-smoke">
-              <Typewriter phrases={SEARCH_HINTS} className="whitespace-nowrap" />
+              <Typewriter phrases={SEARCH_HINT_KEYS.map((k) => t(k))} className="whitespace-nowrap" />
             </div>
           )}
           {searchActive && (
@@ -612,6 +727,51 @@ export default function Locker({
             </button>
           )}
         </div>
+
+        {/* Панель сортировки и фильтра */}
+        {(displayed.length > 0 || kindFilter !== "all") && (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-1">
+              {([
+                ["all", "lib.all"],
+                ["video", "lib.video"],
+                ["audio", "lib.audio"],
+              ] as const).map(([k, labelKey]) => (
+                <button
+                  key={k}
+                  onClick={() => setKindFilter(k)}
+                  className={`rounded-ui border-2 px-3 py-1.5 text-xs font-semibold ${
+                    kindFilter === k
+                      ? "border-accent text-accent"
+                      : "border-transparent text-smoke hover:bg-fog"
+                  }`}
+                >
+                  {t(labelKey)}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <ArrowDownUp className="h-3.5 w-3.5 text-smoke" strokeWidth={2.25} />
+              {([
+                ["date", "lib.sortDate"],
+                ["name", "lib.sortName"],
+                ["size", "lib.sortSize"],
+              ] as const).map(([k, labelKey]) => (
+                <button
+                  key={k}
+                  onClick={() => setSortKey(k)}
+                  className={`rounded-ui border-2 px-3 py-1.5 text-xs font-semibold ${
+                    sortKey === k
+                      ? "border-accent text-accent"
+                      : "border-transparent text-smoke hover:bg-fog"
+                  }`}
+                >
+                  {t(labelKey)}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Панель выбора */}
         <AnimatePresence>
@@ -623,27 +783,27 @@ export default function Locker({
             transition={{ duration: 0.2 }}
             className="mestia-anim flex flex-wrap items-center justify-between gap-3 overflow-hidden rounded-ui border-2 border-accent bg-accent/10 px-4 py-2.5"
           >
-            <span className="text-sm font-semibold">Выбрано: {selected.size}</span>
+            <span className="text-sm font-semibold">{t("lib.selected", { count: selected.size })}</span>
             <div className="flex items-center gap-2 text-sm font-semibold">
-              <span className="hidden text-smoke md:inline">перетащите на папку для переноса</span>
+              <span className="hidden text-smoke md:inline">{t("lib.dragHint")}</span>
               <button
-                onClick={() => setSelected(new Set(displayed.map((v) => v.id)))}
+                onClick={() => setSelected(new Set(shownVideos.map((v) => v.id)))}
                 className="rounded-ui border-2 border-ink px-3 py-1.5 hover:bg-fog"
               >
-                Выбрать все
+                {t("lib.selectAll")}
               </button>
               <button
                 onClick={askDeleteSelected}
                 className="flex items-center gap-1.5 rounded-ui border-2 border-ink bg-rose-600 px-3 py-1.5 text-white hover:opacity-90"
               >
                 <Trash2 className="h-4 w-4" strokeWidth={2.25} />
-                Удалить
+                {t("lib.delete")}
               </button>
               <button
                 onClick={() => setSelected(new Set())}
                 className="rounded-ui border-2 border-fog px-3 py-1.5 hover:bg-fog"
               >
-                Снять
+                {t("lib.deselect")}
               </button>
             </div>
           </motion.div>
@@ -654,11 +814,11 @@ export default function Locker({
         <div ref={gridRef} onMouseDown={onGridMouseDown} className="relative min-h-[300px]">
         {searchActive ? (
           results.length === 0 ? (
-            <EmptyState icon={Search} text={`Ничего не найдено по запросу «${query}».`} />
+            <EmptyState icon={Search} text={t("lib.noResults", { query })} />
           ) : (
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3">
               <AnimatePresence mode="popLayout">
-              {results.map((v) => (
+              {shownVideos.map((v) => (
                 <VideoCard
                   key={`s-${v.id}`}
                   video={v}
@@ -686,9 +846,9 @@ export default function Locker({
           )
         ) : folders.length === 0 && videos.length === 0 ? (
           trail.length ? (
-            <EmptyState icon={FolderOpen} text="В этой папке пусто." />
+            <EmptyState icon={FolderOpen} text={t("lib.emptyFolder")} />
           ) : (
-            <EmptyState icon={Download} text="Пусто. Скачайте видео во вкладке «Загрузчик»." />
+            <EmptyState icon={Download} text={t("lib.emptyRoot")} />
           )
         ) : (
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3">
@@ -717,7 +877,7 @@ export default function Locker({
                 }}
               />
             ))}
-            {videos.map((video) => (
+            {shownVideos.map((video) => (
               <VideoCard
                 key={`v-${video.id}`}
                 video={video}
@@ -790,7 +950,7 @@ export default function Locker({
                 onClick={() => setConfirm(null)}
                 className="rounded-ui border-2 border-fog px-4 py-2 text-sm font-semibold hover:bg-fog"
               >
-                Отмена
+                {t("common.cancel")}
               </button>
               <button
                 onClick={async () => {
@@ -799,13 +959,13 @@ export default function Locker({
                   try {
                     await act();
                   } catch (e) {
-                    notify(String(e), "error");
+                    notify(humanizeError(e), "error");
                   }
                 }}
                 className="flex items-center gap-2 rounded-ui border-2 border-ink bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
               >
                 <Trash2 className="h-4 w-4" strokeWidth={2.25} />
-                Удалить
+                {t("lib.delete")}
               </button>
             </div>
           </motion.div>
@@ -833,47 +993,70 @@ function FolderCardView(props: {
   onDrop: (e: React.DragEvent) => void;
 }) {
   const { folder, hover, renaming } = props;
+  const { t } = useI18n();
   return (
     <motion.div
       layout
       initial={{ opacity: 0, scale: 0.92 }}
       animate={{ opacity: 1, scale: hover ? 1.03 : 1 }}
       exit={{ opacity: 0, scale: 0.85 }}
-      whileHover={{ y: -2 }}
+      whileHover={{ y: -4 }}
       transition={{ type: "spring", stiffness: 400, damping: 30 }}
       data-card
       onClick={() => !renaming && props.onEnter()}
       onDragOver={props.onDragOver}
       onDragLeave={props.onDragLeave}
       onDrop={props.onDrop}
-      className={`mestia-anim group relative flex cursor-pointer items-center justify-between rounded-ui border-2 bg-paper p-4 no-select ${
-        hover ? "border-accent bg-snow" : "border-fog hover:border-accent hover:bg-snow"
+      className={`mestia-anim group relative cursor-pointer rounded-ui border-2 p-2.5 no-select ${
+        hover
+          ? "border-accent bg-accent/5"
+          : "border-transparent hover:border-fog hover:bg-paper/40"
       }`}
     >
-      <div className="flex min-w-0 items-center gap-4">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border-2 border-fog bg-snow text-accent-light transition-all duration-300 group-hover:bg-accent-light group-hover:text-white">
-          <Folder className="h-5 w-5 fill-current" strokeWidth={2.25} />
-        </div>
-        {renaming ? (
-          <RenameInput {...props} />
-        ) : (
-          <div className="min-w-0">
-            <span className="block truncate text-sm font-semibold tracking-tight">{folder.name}</span>
-            <span className="text-[11px] font-bold text-smoke">папка</span>
-          </div>
-        )}
-      </div>
-
+      {/* Действия — на тач-устройствах видны без наведения. */}
       {!renaming && (
-        <div className="flex shrink-0 items-center gap-1">
-          <CardAction icon={Pencil} title="Переименовать" onClick={props.onRename} />
-          <CardAction icon={Trash2} title="Удалить" onClick={props.onDelete} danger />
-          <ChevronRight
-            className="ml-1 h-4 w-4 text-accent opacity-0 transition-all group-hover:opacity-100"
-            strokeWidth={2.25}
-          />
+        <div className="absolute right-3 top-3 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+          <CardAction icon={Pencil} title={t("lib.rename")} onClick={props.onRename} solid />
+          <CardAction icon={Trash2} title={t("lib.delete")} onClick={props.onDelete} danger solid />
         </div>
       )}
+
+      {/* Превью-плитка папки — тот же формат, что и у видео */}
+      <div
+        className={`relative mb-3 flex aspect-video w-full items-center justify-center overflow-hidden rounded-ui border-2 transition-colors ${
+          hover
+            ? "border-accent bg-accent/10"
+            : "border-fog bg-gradient-to-br from-accent/10 to-accent/5 group-hover:border-accent"
+        }`}
+      >
+        {hover ? (
+          <FolderOpen
+            className="h-12 w-12 text-accent transition-transform group-hover:scale-110"
+            strokeWidth={1.75}
+          />
+        ) : (
+          <Folder
+            className="h-12 w-12 fill-accent-light/20 text-accent-light transition-transform group-hover:scale-110 group-hover:text-accent"
+            strokeWidth={1.75}
+          />
+        )}
+        <span className="absolute left-2 top-2 rounded-[4px] bg-ink/85 px-1.5 py-0.5 text-[10px] font-bold uppercase text-snow">
+          {t("lib.folder")}
+        </span>
+        <ChevronRight
+          className="absolute bottom-2 right-2 h-4 w-4 text-accent opacity-0 transition-opacity group-hover:opacity-100"
+          strokeWidth={2.5}
+        />
+      </div>
+
+      {renaming ? (
+        <RenameInput {...props} />
+      ) : (
+        <h3 className="line-clamp-2 h-10 text-sm font-semibold leading-tight tracking-tight">
+          {folder.name}
+        </h3>
+      )}
+      {!renaming && <p className="mt-1 truncate text-xs font-semibold text-smoke">{t("lib.openFolderArrow")}</p>}
     </motion.div>
   );
 }
@@ -900,7 +1083,16 @@ function VideoCard(props: {
   onDragEnd: () => void;
 }) {
   const { video, leaving, generating, renaming, selected, selectionMode } = props;
+  const { t } = useI18n();
   const audio = isAudioPath(video.file_path);
+
+  // «Продолжить просмотр»: доля просмотренного из сохранённой позиции плеера.
+  const watched = (() => {
+    const raw = localStorage.getItem(`mestia.pos.${video.id}`);
+    const pos = raw ? parseFloat(raw) : NaN;
+    if (!Number.isFinite(pos) || pos <= 0 || !video.duration) return 0;
+    return Math.min(1, pos / video.duration);
+  })();
 
   // Клик: Ctrl/Cmd или режим выбора → переключить выделение; иначе — воспроизвести.
   const activate = (e: React.MouseEvent) => {
@@ -935,7 +1127,7 @@ function VideoCard(props: {
           e.stopPropagation();
           props.onToggleSelect();
         }}
-        title="Выбрать"
+        title={t("lib.select")}
         className={`absolute left-3 top-3 z-10 flex h-6 w-6 items-center justify-center rounded-md border-2 transition-all ${
           selected
             ? "border-accent bg-accent text-white"
@@ -952,9 +1144,9 @@ function VideoCard(props: {
       {/* Действия — на тач-устройствах (Steam Deck) видны без наведения. */}
       {!renaming && (
         <div className="absolute right-3 top-3 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100">
-          <CardAction icon={ImageIcon} title="Сменить обложку" onClick={props.onCover} solid />
-          <CardAction icon={Pencil} title="Переименовать" onClick={props.onRename} solid />
-          <CardAction icon={Trash2} title="Удалить" onClick={props.onDelete} danger solid />
+          <CardAction icon={ImageIcon} title={t("lib.setCover")} onClick={props.onCover} solid />
+          <CardAction icon={Pencil} title={t("lib.rename")} onClick={props.onRename} solid />
+          <CardAction icon={Trash2} title={t("lib.delete")} onClick={props.onDelete} danger solid />
         </div>
       )}
 
@@ -985,11 +1177,17 @@ function VideoCard(props: {
         )}
         {/* Метка типа */}
         <span className="absolute left-2 top-2 rounded-[4px] bg-ink/85 px-1.5 py-0.5 text-[10px] font-bold uppercase text-snow">
-          {audio ? "Аудио" : "Видео"}
+          {audio ? t("lib.audio") : t("lib.video")}
         </span>
         <span className="absolute bottom-2 right-2 rounded-[4px] bg-ink px-1.5 py-0.5 text-[10px] font-bold text-snow">
           {formatDuration(video.duration)}
         </span>
+        {/* Полоса «продолжить просмотр» */}
+        {watched > 0.02 && (
+          <div className="absolute inset-x-0 bottom-0 h-1 bg-ink/30">
+            <div className="h-full bg-accent" style={{ width: `${watched * 100}%` }} />
+          </div>
+        )}
       </div>
 
       {renaming ? (
@@ -997,13 +1195,13 @@ function VideoCard(props: {
       ) : (
         <h3
           onClick={activate}
-          className="line-clamp-2 cursor-pointer text-sm font-semibold leading-tight hover:underline"
+          className="line-clamp-2 h-10 cursor-pointer text-sm font-semibold leading-tight hover:underline"
         >
           {video.title}
         </h3>
       )}
-      <p className="mt-1 text-xs font-semibold text-smoke">
-        {audio ? "Аудио" : "Видео"} · {formatBytes(video.size)} · {video.platform ?? "—"}
+      <p className="mt-1 truncate text-xs font-semibold text-smoke">
+        {audio ? t("lib.audio") : t("lib.video")} · {formatBytes(video.size)} · {video.platform ?? "—"}
       </p>
     </motion.div>
   );

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
   AUDIO_FORMATS,
   VIDEO_FORMATS,
@@ -6,8 +6,15 @@ import {
   formatBytes,
   formatDuration,
   formatSpeed,
+  humanizeError,
   isAudioPath,
+  isAuthError,
 } from "./ipc";
+import { setActiveLang } from "./i18n";
+
+// humanizeError теперь зависит от активного языка i18n — фиксируем русский,
+// чтобы проверять русский маппинг вне зависимости от локали окружения.
+beforeAll(() => setActiveLang("ru"));
 
 describe("formatBytes", () => {
   it("отдаёт прочерк для пустых/нулевых значений", () => {
@@ -67,10 +74,13 @@ describe("estimateAudioBytes", () => {
     // 320 kbps · 60 c = 320000/8 * 60 = 2_400_000
     expect(estimateAudioBytes(60, "mp3_320")).toBe(2_400_000);
     expect(estimateAudioBytes(60, "mp3_128")).toBe(960_000);
+    // FLAC: 900 kbps · 60 c = 900000/8 * 60 = 6_750_000
+    expect(estimateAudioBytes(60, "flac")).toBe(6_750_000);
   });
 
   it("null для неизвестного пресета или пустой длительности", () => {
-    expect(estimateAudioBytes(60, "flac")).toBeNull();
+    // «Оригинал» (best) — битрейт заранее неизвестен → размер не оцениваем.
+    expect(estimateAudioBytes(60, "best")).toBeNull();
     expect(estimateAudioBytes(null, "mp3_320")).toBeNull();
     expect(estimateAudioBytes(0, "mp3_320")).toBeNull();
   });
@@ -89,5 +99,43 @@ describe("каталог форматов", () => {
     for (const f of AUDIO_FORMATS) {
       expect(f.isAudio).toBe(true);
     }
+  });
+});
+
+describe("isAuthError", () => {
+  it("распознаёт ошибки доступа/входа yt-dlp", () => {
+    expect(isAuthError("ERROR: Sign in to confirm you're not a bot")).toBe(true);
+    expect(isAuthError("ERROR: Private video. Sign in if you've been granted access")).toBe(true);
+    expect(isAuthError("This video is available to this channel's members on level: …")).toBe(true);
+    expect(isAuthError("Use --cookies-from-browser or --cookies for the authentication")).toBe(true);
+    expect(isAuthError("ERROR: confirm your age")).toBe(true);
+  });
+
+  it("не срабатывает на прочих ошибках и пустых значениях", () => {
+    expect(isAuthError("ERROR: Unable to download webpage: HTTP Error 404")).toBe(false);
+    expect(isAuthError("ERROR: Video unavailable")).toBe(false);
+    expect(isAuthError(null)).toBe(false);
+    expect(isAuthError(undefined)).toBe(false);
+    expect(isAuthError("")).toBe(false);
+  });
+});
+
+describe("humanizeError", () => {
+  it("переводит технические ошибки в понятный русский", () => {
+    expect(humanizeError("failed to lookup address: getaddrinfo")).toMatch(/сетью/i);
+    expect(humanizeError("Access is denied. (os error 5)")).toMatch(/доступ/i);
+    expect(humanizeError("The system cannot find the file specified. (os error 2)")).toMatch(/не найден/i);
+    expect(humanizeError("No space left on device")).toMatch(/место/i);
+    expect(humanizeError("ERROR: Unsupported URL: https://example.com")).toMatch(/ссылк/i);
+    expect(humanizeError("ERROR: Video unavailable")).toMatch(/недоступно/i);
+  });
+
+  it("наши русские сообщения оставляет как есть", () => {
+    expect(humanizeError("Папка не выбрана")).toBe("Папка не выбрана");
+  });
+
+  it("пустое и неизвестное → общий дружелюбный текст", () => {
+    expect(humanizeError("")).toMatch(/что-то пошло не так/i);
+    expect(humanizeError("RuntimeError: weird internal failure xyz")).toMatch(/что-то пошло не так/i);
   });
 });

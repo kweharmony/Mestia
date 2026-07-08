@@ -19,12 +19,13 @@ import {
   X,
 } from "lucide-react";
 import type { VideoRow } from "../types";
-import { existingPaths, formatDuration, isAudioPath, openPath } from "../lib/ipc";
+import { existingPaths, formatDuration, getSetting, isAudioPath, openPath, subtitleTrack } from "../lib/ipc";
+import { useI18n } from "../context/LanguageContext";
 
 // Linux (webkit2gtk) без Android — на нём чаще всего не хватает GStreamer-кодеков.
 const IS_LINUX = /Linux/i.test(navigator.userAgent) && !/Android/i.test(navigator.userAgent);
 
-const SKIP = 15; // секунд
+const DEFAULT_SKIP = 15; // секунд (настраивается в параметрах)
 
 // ── Запоминание позиции воспроизведения ───────────────────────────────────────
 // Храним в localStorage по id видео (как и громкость) — общий стейт между
@@ -85,6 +86,7 @@ export default function Player({
   onClose: () => void;
   embedded?: boolean;
 }) {
+  const { t } = useI18n();
   const idx = queue.findIndex((v) => v.id === video.id);
   const prevVideo = idx > 0 ? queue[idx - 1] : null;
   const nextVideo = idx >= 0 && idx < queue.length - 1 ? queue[idx + 1] : null;
@@ -97,6 +99,8 @@ export default function Player({
     return Number.isNaN(v) ? 1 : Math.min(1, Math.max(0, v));
   });
   const [muted, setMuted] = useState(false);
+  const [skipSec, setSkipSec] = useState(DEFAULT_SKIP);
+  const [subs, setSubs] = useState<string | null>(null); // src дорожки субтитров (.vtt)
   // Причина сбоя воспроизведения: нет файла по пути / не удалось декодировать / иное.
   const [failKind, setFailKind] = useState<null | "missing" | "decode" | "unknown">(null);
   const failed = failKind !== null;
@@ -108,6 +112,25 @@ export default function Player({
       ? video.thumbnail_path
       : convertFileSrc(video.thumbnail_path)
     : null;
+
+  // Шаг перемотки берём из настроек (по умолчанию 15с).
+  useEffect(() => {
+    getSetting("skipSeconds")
+      .then((v) => {
+        const n = parseInt(v ?? "", 10);
+        if (Number.isFinite(n) && n > 0) setSkipSec(Math.min(120, Math.max(5, n)));
+      })
+      .catch(() => {});
+  }, []);
+
+  // Внешние субтитры (.srt/.vtt рядом с файлом) — конвертируются в data:URL .vtt.
+  useEffect(() => {
+    setSubs(null);
+    if (audio) return;
+    subtitleTrack(video.file_path)
+      .then((vtt) => vtt && setSubs(`data:text/vtt;charset=utf-8,${encodeURIComponent(vtt)}`))
+      .catch(() => {});
+  }, [video.file_path, audio]);
 
   function togglePlay() {
     const el = ref.current;
@@ -209,7 +232,7 @@ export default function Player({
     setFailKind(null);
   }, [video.id]);
 
-  // Горячие клавиши: Esc, пробел, ←/→ (±15с), ↑/↓ (громкость), F (полный экран).
+  // Горячие клавиши: Esc, пробел, ←/→ (±шаг), ↑/↓ (громкость), F (полный экран).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       switch (e.key) {
@@ -221,10 +244,10 @@ export default function Player({
           togglePlay();
           break;
         case "ArrowLeft":
-          skip(-SKIP);
+          skip(-skipSec);
           break;
         case "ArrowRight":
-          skip(SKIP);
+          skip(skipSec);
           break;
         case "ArrowUp":
           e.preventDefault();
@@ -253,22 +276,20 @@ export default function Player({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onClose, volume]);
+  }, [onClose, volume, skipSec]);
 
   const VolIcon = muted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2;
 
   // ── Сообщение о сбое воспроизведения (по причине failKind) ──────────────────
   function ErrorView({ compact }: { compact: boolean }) {
     const title =
-      failKind === "missing"
-        ? "Файл не найден"
-        : "Не удалось воспроизвести файл";
+      failKind === "missing" ? t("player.fileNotFound") : t("player.playFailed");
     const hint =
       failKind === "missing"
-        ? "Возможно, файл перемещён, удалён или хранится в другом расположении."
+        ? t("player.missingHint")
         : IS_LINUX
-        ? "Похоже, в системе нет кодеков для этого формата. Установите их командой:"
-        : "Формат файла не поддерживается проигрывателем.";
+        ? t("player.linuxCodec")
+        : t("player.formatUnsupported");
     return (
       <div
         className={`flex w-full flex-col items-center justify-center gap-2 bg-black px-6 text-center ${
@@ -286,7 +307,7 @@ export default function Player({
             className="mt-2 flex items-center gap-2 rounded-ui bg-white/15 px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/25"
           >
             <ExternalLink className="h-4 w-4" strokeWidth={2.25} />
-            Открыть во внешнем плеере
+            {t("player.external")}
           </button>
         )}
         {failKind === "decode" && IS_LINUX && (
@@ -310,6 +331,11 @@ export default function Player({
   }`;
   const rowCls = `flex items-center ${embedded ? "gap-1 px-2 py-1.5" : "gap-2 px-4 py-3"}`;
 
+  // Дорожка субтитров для <video>.
+  const subTrack = subs ? (
+    <track kind="subtitles" src={subs} srcLang="und" label={t("player.subtitles")} default />
+  ) : null;
+
   // ── Отдельное окно: безрамочный оверлей — видео на всё окно, иконки поверх ──
   if (embedded) {
     const ov = "shrink-0 rounded-md p-1.5 text-white/90 transition-colors hover:bg-white/20 disabled:opacity-30";
@@ -328,7 +354,9 @@ export default function Player({
             <audio {...mediaProps} className="hidden" />
           </div>
         ) : (
-          <video {...mediaProps} className="h-full w-full bg-black object-contain" onClick={togglePlay} />
+          <video {...mediaProps} className="h-full w-full bg-black object-contain" onClick={togglePlay}>
+            {subTrack}
+          </video>
         )}
 
         {/* Верх: зона перетаскивания окна + закрыть */}
@@ -336,7 +364,7 @@ export default function Player({
           data-tauri-drag-region
           className="absolute inset-x-0 top-0 flex h-10 items-center justify-end bg-gradient-to-b from-black/55 to-transparent px-2 opacity-0 transition-opacity group-hover:opacity-100"
         >
-          <button onClick={onClose} title="Закрыть" className={ov}>
+          <button onClick={onClose} title={t("player.close")} className={ov}>
             <X className="h-5 w-5" strokeWidth={2.25} />
           </button>
         </div>
@@ -344,11 +372,11 @@ export default function Player({
         {/* Низ: иконки управления поверх видео */}
         <div className="absolute inset-x-0 bottom-0 flex items-center gap-1 bg-gradient-to-t from-black/65 to-transparent px-2 pb-2 pt-7 opacity-0 transition-opacity group-hover:opacity-100">
           {queue.length > 1 && (
-            <button onClick={() => prevVideo && onChange(prevVideo)} disabled={!prevVideo} title="Предыдущий (P)" className={ov}>
+            <button onClick={() => prevVideo && onChange(prevVideo)} disabled={!prevVideo} title={`${t("player.prev")} (P)`} className={ov}>
               <SkipBack className="h-4 w-4 fill-current" strokeWidth={2.25} />
             </button>
           )}
-          <button onClick={() => skip(-SKIP)} title="Назад 15с (←)" className={ov}>
+          <button onClick={() => skip(-skipSec)} title={`${t("player.back", { n: skipSec })} (←)`} className={ov}>
             <Rewind className="h-4 w-4" strokeWidth={2.25} />
           </button>
           <button onClick={togglePlay} className={ov}>
@@ -358,11 +386,11 @@ export default function Player({
               <Play className="h-5 w-5 fill-current" strokeWidth={2.25} />
             )}
           </button>
-          <button onClick={() => skip(SKIP)} title="Вперёд 15с (→)" className={ov}>
+          <button onClick={() => skip(skipSec)} title={`${t("player.forward", { n: skipSec })} (→)`} className={ov}>
             <FastForward className="h-4 w-4" strokeWidth={2.25} />
           </button>
           {queue.length > 1 && (
-            <button onClick={() => nextVideo && onChange(nextVideo)} disabled={!nextVideo} title="Следующий (N)" className={ov}>
+            <button onClick={() => nextVideo && onChange(nextVideo)} disabled={!nextVideo} title={`${t("player.next")} (N)`} className={ov}>
               <SkipForward className="h-4 w-4 fill-current" strokeWidth={2.25} />
             </button>
           )}
@@ -380,11 +408,11 @@ export default function Player({
               }%, rgba(255,255,255,0.3) 0%)`,
             }}
           />
-          <button onClick={toggleMute} title="Звук (M)" className={ov}>
+          <button onClick={toggleMute} title={`${t("player.sound")} (M)`} className={ov}>
             <VolIcon className="h-4 w-4" strokeWidth={2.25} />
           </button>
           {!audio && (
-            <button onClick={toggleFullscreen} title="Полный экран (F)" className={ov}>
+            <button onClick={toggleFullscreen} title={`${t("player.fullscreen")} (F)`} className={ov}>
               <Maximize className="h-4 w-4" strokeWidth={2.25} />
             </button>
           )}
@@ -403,6 +431,191 @@ export default function Player({
     );
   }
 
+  // ── Аудиоплеер: квадратный, обложка — главный элемент ──────────────────────
+  if (audio) {
+    const abtn = "shrink-0 rounded-ui p-1.5 text-smoke transition-colors hover:bg-fog hover:text-ink disabled:opacity-30";
+    return (
+      <div
+        className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-8 backdrop-blur-sm"
+        onClick={onClose}
+      >
+        <div
+          className="flex w-full max-w-[400px] flex-col overflow-hidden rounded-ui border-2 border-ink bg-snow shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Обложка — квадрат во всю ширину, с мягким свечением из неё же */}
+          <div className="relative aspect-square w-full overflow-hidden bg-gradient-to-br from-accent/20 to-accent/5">
+            {/* Кнопка закрытия поверх обложки */}
+            <button
+              onClick={onClose}
+              aria-label={t("player.close")}
+              className="absolute right-2.5 top-2.5 z-20 rounded-ui bg-black/35 p-1.5 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
+            >
+              <X className="h-4 w-4" strokeWidth={2.25} />
+            </button>
+
+            {failed ? (
+              <ErrorView compact />
+            ) : (
+              <>
+                {cover && (
+                  <img
+                    src={cover}
+                    alt=""
+                    aria-hidden
+                    className="pointer-events-none absolute inset-0 h-full w-full scale-125 object-cover opacity-45 blur-3xl"
+                  />
+                )}
+                <div className="relative flex h-full w-full items-center justify-center p-2.5">
+                  {cover ? (
+                    <img
+                      src={cover}
+                      alt=""
+                      className="max-h-full max-w-full rounded-ui border-2 border-ink/10 object-contain shadow-lg"
+                    />
+                  ) : (
+                    <div
+                      className={`flex h-36 w-36 items-center justify-center rounded-full bg-accent text-white shadow-lg ${
+                        playing ? "mestia-pulse" : ""
+                      }`}
+                    >
+                      <Music className="h-16 w-16" strokeWidth={2} />
+                    </div>
+                  )}
+                </div>
+                <audio {...mediaProps} className="hidden" />
+              </>
+            )}
+          </div>
+
+          {/* Инфо + управление */}
+          <div className="flex flex-col gap-2 px-4 pb-3 pt-2.5">
+            {/* Название */}
+            <div className="min-w-0 text-center">
+              <h3 className="truncate text-sm font-semibold tracking-tight">{video.title}</h3>
+              <p className="truncate text-[11px] font-semibold text-smoke">{video.platform ?? t("dl.audio")}</p>
+            </div>
+
+            {/* Полоса перемотки */}
+            <div>
+              <input
+                type="range"
+                min={0}
+                max={duration || 0}
+                step={0.1}
+                value={time}
+                onChange={seek}
+                aria-label={t("player.seek")}
+                className="h-1.5 w-full cursor-pointer appearance-none rounded-full"
+                style={{
+                  background: `linear-gradient(to right, var(--c-accent) ${
+                    duration ? (time / duration) * 100 : 0
+                  }%, var(--c-fog) 0%)`,
+                }}
+              />
+              <div className="mt-0.5 flex justify-between text-[10px] font-semibold tabular-nums text-smoke">
+                <span>{formatDuration(time)}</span>
+                <span>{formatDuration(duration)}</span>
+              </div>
+            </div>
+
+            {/* Единый ряд: громкость · транспорт · действия */}
+            <div className="flex items-center justify-between gap-2">
+              {/* Громкость */}
+              <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                <button onClick={toggleMute} title={`${t("player.sound")} (M)`} aria-label={t("player.sound")} className={abtn}>
+                  <VolIcon className="h-4 w-4" strokeWidth={2.25} />
+                </button>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={muted ? 0 : volume}
+                  onChange={(e) => applyVolume(Number(e.target.value))}
+                  title={`${t("player.volume")} (↑/↓)`}
+                  aria-label={t("player.volume")}
+                  className="h-1.5 w-14 cursor-pointer appearance-none rounded-full"
+                  style={{
+                    background: `linear-gradient(to right, var(--c-accent) ${
+                      (muted ? 0 : volume) * 100
+                    }%, var(--c-fog) 0%)`,
+                  }}
+                />
+              </div>
+
+              {/* Транспорт по центру */}
+              <div className="flex shrink-0 items-center gap-0.5">
+                {queue.length > 1 && (
+                  <button
+                    onClick={() => prevVideo && onChange(prevVideo)}
+                    disabled={!prevVideo}
+                    title={`${t("player.prev")} (P)`}
+                    aria-label={t("player.prev")}
+                    className={abtn}
+                  >
+                    <SkipBack className="h-4 w-4 fill-current" strokeWidth={2.25} />
+                  </button>
+                )}
+                <button onClick={() => skip(-skipSec)} title={`${t("player.back", { n: skipSec })} (←)`} aria-label={t("player.backAria")} className={abtn}>
+                  <Rewind className="h-4 w-4" strokeWidth={2.25} />
+                </button>
+                <button
+                  onClick={togglePlay}
+                  aria-label={playing ? t("player.pause") : t("player.play")}
+                  className="mx-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent text-white shadow-md transition-all hover:opacity-90 active:scale-95"
+                >
+                  {playing ? (
+                    <Pause className="h-5 w-5 fill-current" strokeWidth={2.25} />
+                  ) : (
+                    <Play className="h-5 w-5 translate-x-[1px] fill-current" strokeWidth={2.25} />
+                  )}
+                </button>
+                <button onClick={() => skip(skipSec)} title={`${t("player.forward", { n: skipSec })} (→)`} aria-label={t("player.forwardAria")} className={abtn}>
+                  <FastForward className="h-4 w-4" strokeWidth={2.25} />
+                </button>
+                {queue.length > 1 && (
+                  <button
+                    onClick={() => nextVideo && onChange(nextVideo)}
+                    disabled={!nextVideo}
+                    title={`${t("player.next")} (N)`}
+                    aria-label={t("player.next")}
+                    className={abtn}
+                  >
+                    <SkipForward className="h-4 w-4 fill-current" strokeWidth={2.25} />
+                  </button>
+                )}
+              </div>
+
+              {/* Действия */}
+              <div className="flex min-w-0 flex-1 items-center justify-end gap-0.5">
+                <button
+                  onClick={() => openPath(video.file_path).catch(() => {})}
+                  title={t("player.external")}
+                  aria-label={t("player.externalAria")}
+                  className={abtn}
+                >
+                  <ExternalLink className="h-4 w-4" strokeWidth={2.25} />
+                </button>
+                <button
+                  onClick={() => {
+                    openMiniWindow(video);
+                    onClose();
+                  }}
+                  title={t("player.miniWindow")}
+                  aria-label={t("player.miniWindow")}
+                  className={abtn}
+                >
+                  <PictureInPicture2 className="h-4 w-4" strokeWidth={2.25} />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={
@@ -416,7 +629,7 @@ export default function Player({
         className={
           embedded
             ? "flex h-full w-full flex-col overflow-hidden bg-snow"
-            : "flex w-full max-w-[900px] flex-col overflow-hidden rounded-ui border-2 border-ink bg-snow"
+            : "flex w-[70vw] min-w-[360px] max-w-[1100px] flex-col overflow-hidden rounded-ui border-2 border-ink bg-snow"
         }
         onClick={(e) => e.stopPropagation()}
       >
@@ -479,10 +692,12 @@ export default function Player({
             className={
               embedded
                 ? "min-h-0 w-full flex-1 bg-black object-contain"
-                : "max-h-[60vh] min-h-[280px] w-full bg-black"
+                : "max-h-[70vh] min-h-[280px] w-full bg-black"
             }
             onClick={togglePlay}
-          />
+          >
+            {subTrack}
+          </video>
         )}
 
         {/* Контролы */}
@@ -491,14 +706,14 @@ export default function Player({
             <button
               onClick={() => prevVideo && onChange(prevVideo)}
               disabled={!prevVideo}
-              title="Предыдущий (P)"
+              title={`${t("player.prev")} (P)`}
               className={`${btn} disabled:opacity-30`}
             >
               <SkipBack className={`${ic} fill-current`} strokeWidth={2.25} />
             </button>
           )}
 
-          <button onClick={() => skip(-SKIP)} title="Назад 15 секунд (←)" className={btn}>
+          <button onClick={() => skip(-skipSec)} title={`${t("player.back", { n: skipSec })} (←)`} className={btn}>
             <Rewind className={ic} strokeWidth={2.25} />
           </button>
 
@@ -515,7 +730,7 @@ export default function Player({
             )}
           </button>
 
-          <button onClick={() => skip(SKIP)} title="Вперёд 15 секунд (→)" className={btn}>
+          <button onClick={() => skip(skipSec)} title={`${t("player.forward", { n: skipSec })} (→)`} className={btn}>
             <FastForward className={ic} strokeWidth={2.25} />
           </button>
 
@@ -523,7 +738,7 @@ export default function Player({
             <button
               onClick={() => nextVideo && onChange(nextVideo)}
               disabled={!nextVideo}
-              title="Следующий (N)"
+              title={`${t("player.next")} (N)`}
               className={`${btn} disabled:opacity-30`}
             >
               <SkipForward className={`${ic} fill-current`} strokeWidth={2.25} />
@@ -556,7 +771,7 @@ export default function Player({
           )}
 
           {/* Громкость (в мини-окне — только кнопка mute) */}
-          <button onClick={toggleMute} title="Звук (M)" className={btn}>
+          <button onClick={toggleMute} title={`${t("player.sound")} (M)`} className={btn}>
             <VolIcon className={ic} strokeWidth={2.25} />
           </button>
           {!embedded && (
@@ -567,7 +782,7 @@ export default function Player({
               step={0.05}
               value={muted ? 0 : volume}
               onChange={(e) => applyVolume(Number(e.target.value))}
-              title="Громкость (↑/↓)"
+              title={`${t("player.volume")} (↑/↓)`}
               className="h-1.5 w-20 shrink-0 cursor-pointer appearance-none rounded-full"
               style={{
                 background: `linear-gradient(to right, var(--c-accent) ${
@@ -580,7 +795,7 @@ export default function Player({
           {!embedded && (
             <button
               onClick={() => openPath(video.file_path).catch(() => {})}
-              title="Открыть во внешнем плеере"
+              title={t("player.external")}
               className={btn}
             >
               <ExternalLink className={ic} strokeWidth={2.25} />
@@ -593,7 +808,7 @@ export default function Player({
                 openMiniWindow(video);
                 onClose();
               }}
-              title="В отдельном окне"
+              title={t("player.miniWindow")}
               className={btn}
             >
               <PictureInPicture2 className={ic} strokeWidth={2.25} />
@@ -601,7 +816,7 @@ export default function Player({
           )}
 
           {!audio && (
-            <button onClick={toggleFullscreen} title="Полный экран (F)" className={btn}>
+            <button onClick={toggleFullscreen} title={`${t("player.fullscreen")} (F)`} className={btn}>
               <Maximize className={ic} strokeWidth={2.25} />
             </button>
           )}

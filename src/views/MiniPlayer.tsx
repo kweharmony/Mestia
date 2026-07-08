@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getVideoById, listVideos } from "../lib/db";
 import type { VideoRow } from "../types";
+import { useI18n } from "../context/LanguageContext";
 import Player from "./Player";
 
 /** Содержимое отдельного плавающего окна плеера (?mini=<id>). */
 export default function MiniPlayer({ id }: { id: number }) {
+  const { t } = useI18n();
   const [current, setCurrent] = useState<VideoRow | null>(null);
   const [queue, setQueue] = useState<VideoRow[]>([]);
 
@@ -24,7 +26,7 @@ export default function MiniPlayer({ id }: { id: number }) {
   if (!current) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-snow text-sm font-semibold text-smoke">
-        Загрузка…
+        {t("player.loading")}
       </div>
     );
   }

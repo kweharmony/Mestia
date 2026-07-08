@@ -3,54 +3,90 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowDownToLine,
   ArrowRight,
+  Cookie,
   ListVideo,
   Loader2,
   Music,
   RotateCcw,
+  Search,
+  Settings as SettingsIcon,
   Video,
 } from "lucide-react";
 import {
   AUDIO_FORMATS,
+  DEFAULT_VIDEO_FORMAT,
   VIDEO_FORMATS,
   estimateAudioBytes,
   existingPaths,
   fetchMetadata,
   formatBytes,
   formatDuration,
+  formatLabel,
+  getSetting,
+  humanizeError,
+  isAuthError,
 } from "../lib/ipc";
 import { findVideoByUrl } from "../lib/db";
 import type { DownloadFormat, FetchResult, FormatSizes } from "../types";
 import { useToast } from "../components/Toast";
 import { useDownloads } from "../context/DownloadsContext";
+import { useI18n } from "../context/LanguageContext";
 import Typewriter from "../components/Typewriter";
 
 type Phase = "idle" | "fetching" | "ready";
 type PlMode = "all" | "range";
 
-const PLACEHOLDERS = [
-  "Кидай ссылку — дальше моя забота…",
-  "YouTube, Rutube, VK… неси любую ссылку…",
-  "Плейлист на 100 видео? Да без проблем…",
-  "Видео или аудио — как пожелаешь…",
-  "Вставь ссылку и налей себе чаю ☕",
-  "Спасём ролик, пока его не удалили…",
-];
+// Порог, выше которого «Скачать весь плейлист» просит подтверждения — чтобы
+// случайная ссылка на канал/огромный плейлист не запустила лавину загрузок.
+const BIG_PLAYLIST = 40;
 
-export default function Downloader() {
+// Разумный видеопресет по умолчанию для источника максимальной высотой max:
+// предпочитаем 1080p, если оно есть; иначе — лучшее доступное конкретное разрешение,
+// а для совсем низких — «Лучшее качество». max=null (высота неизвестна) → 1080p.
+function defaultVideoFor(max: number | null): DownloadFormat {
+  if (max == null || max >= 900) return DEFAULT_VIDEO_FORMAT;
+  return (
+    VIDEO_FORMATS.find((f) => f.minHeight && max >= f.minHeight) ??
+    VIDEO_FORMATS.find((f) => !f.minHeight) ??
+    DEFAULT_VIDEO_FORMAT
+  );
+}
+
+// Сервисы без прямой поддержки yt-dlp — качаем аналог с YouTube по названию.
+const SERVICE_LABELS: Record<string, string> = {
+  spotify: "Spotify",
+  apple: "Apple Music",
+  vk: "VK Музыка",
+  zvuk: "Звук",
+};
+
+const PLACEHOLDER_KEYS = ["dl.ph.0", "dl.ph.1", "dl.ph.2", "dl.ph.3", "dl.ph.4", "dl.ph.5"];
+
+export default function Downloader({ onOpenSettings }: { onOpenSettings: () => void }) {
   const { notify } = useToast();
   const { start } = useDownloads();
+  const { t } = useI18n();
 
   const [url, setUrl] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [info, setInfo] = useState<FetchResult | null>(null);
   const [mediaKind, setMediaKind] = useState<"video" | "audio">("video");
-  const [fmt, setFmt] = useState<DownloadFormat>(VIDEO_FORMATS[0]);
+  const [fmt, setFmt] = useState<DownloadFormat>(DEFAULT_VIDEO_FORMAT);
   const [error, setError] = useState<string | null>(null);
   const [focused, setFocused] = useState(false);
   const [plMode, setPlMode] = useState<PlMode>("all");
   const [range, setRange] = useState("");
   // Видео уже в медиатеке — модалка подтверждения повторной загрузки.
   const [dup, setDup] = useState<{ title: string; onConfirm: () => void } | null>(null);
+  // Большой плейлист — подтверждение перед массовой загрузкой.
+  const [bigWarn, setBigWarn] = useState<{ count: number; onConfirm: () => void } | null>(null);
+  // Сервис без прямой поддержки (Spotify/Apple/VK/Звук) — ручной поиск по названию.
+  const [manual, setManual] = useState<string | null>(null);
+  const [manualQuery, setManualQuery] = useState("");
+  // Если трек найден через поиск — качаем именно его (ytsearch1:…), а не исходную ссылку.
+  const [searchUrl, setSearchUrl] = useState<string | null>(null);
+  // Подсказка про куки, когда ошибка похожа на «нужен вход» (cookiesOn — включены ли куки).
+  const [authHint, setAuthHint] = useState<{ cookiesOn: boolean; detail: string } | null>(null);
 
   function reset() {
     setInfo(null);
@@ -59,39 +95,127 @@ export default function Downloader() {
     setPhase("idle");
     setRange("");
     setPlMode("all");
+    setManual(null);
+    setManualQuery("");
+    setSearchUrl(null);
+    setAuthHint(null);
+    setBigWarn(null);
   }
 
   function handleUrlChange(v: string) {
     setUrl(v);
-    if (info || phase !== "idle") {
+    if (info || manual || searchUrl || authHint || phase !== "idle") {
       setInfo(null);
       setError(null);
       setPhase("idle");
+      setManual(null);
+      setSearchUrl(null);
+      setAuthHint(null);
     }
   }
 
+  // Единый разбор ошибки получения метаданных: ошибки доступа → подсказка про
+  // куки, остальное → обычное сообщение.
+  async function reportFetchError(msg: string) {
+    if (isAuthError(msg)) {
+      const c = await getSetting("cookiesBrowser").catch(() => null);
+      setError(null);
+      setAuthHint({ cookiesOn: !!(c && c.trim()), detail: msg });
+      return;
+    }
+    setError(humanizeError(msg));
+    notify(t("dl.fetchError"), "error");
+  }
+
+  // Ссылка это или текст для поиска: схема/домен → ссылка; иначе — поиск по названию.
+  function looksLikeUrl(s: string): boolean {
+    if (/^(https?:\/\/|ytsearch|scsearch|spotify:)/i.test(s)) return true;
+    return !/\s/.test(s) && /\.[a-z]{2,}(\/|$|\?)/i.test(s);
+  }
+
   async function handleFetch() {
-    const trimmed = url.trim();
+    const t = url.trim();
+    if (!t) return;
+    // Не похоже на ссылку → ищем по названию на YouTube (удобно вставлять «Автор — Трек»).
+    await doFetch(looksLikeUrl(t) ? t : `ytsearch1:${t}`);
+  }
+
+  async function doFetch(trimmed: string) {
     if (!trimmed) return;
     setError(null);
     setInfo(null);
+    setManual(null);
+    setSearchUrl(null);
+    setAuthHint(null);
     setPhase("fetching");
     try {
       const r = await fetchMetadata(trimmed);
       setInfo(r);
+      // Точная ссылка найденного видео (Spotify/Apple/поиск) — качаем ровно её, без
+      // повторного резолва в бэкенде.
+      setSearchUrl(r.resolved_url ?? null);
+      // Если выбранного разрешения нет в этом видео — подбираем корректный пресет.
+      if (!fmt.isAudio) {
+        const max = r.sizes?.max_height ?? null;
+        const ok = !fmt.minHeight || max == null || max >= fmt.minHeight;
+        if (!ok) setFmt(defaultVideoFor(max));
+      }
       setPlMode("all");
       setRange("");
       setPhase("ready");
     } catch (e) {
-      setError(String(e));
+      const msg = String(e);
+      // Сервис без прямой поддержки — предлагаем найти трек на YouTube по названию.
+      if (msg.startsWith("MANUAL_QUERY:")) {
+        setManual(msg.slice("MANUAL_QUERY:".length) || "");
+        setManualQuery("");
+        setPhase("idle");
+        return;
+      }
       setPhase("idle");
-      notify("Не удалось получить данные по ссылке", "error");
+      await reportFetchError(msg);
     }
+  }
+
+  // Поиск трека на YouTube по введённому вручную «Исполнитель — Название».
+  async function handleManualSearch() {
+    const q = manualQuery.trim();
+    if (!q) return;
+    const su = `ytsearch1:${q}`;
+    setError(null);
+    setAuthHint(null);
+    setPhase("fetching");
+    try {
+      const r = await fetchMetadata(su);
+      setInfo(r);
+      // Предпочитаем точную ссылку найденного видео; иначе — сам поисковый запрос.
+      setSearchUrl(r.resolved_url ?? su);
+      setManual(null);
+      setPlMode("all");
+      setRange("");
+      setPhase("ready");
+    } catch (e) {
+      setPhase("idle");
+      await reportFetchError(String(e));
+    }
+  }
+
+  // id настоящего плейлиста из ссылки на видео (RD…/миксы игнорируем — они не плейлисты).
+  function playlistIdFromUrl(u: string): string | null {
+    const id = u.match(/[?&]list=([^&]+)/)?.[1] ?? null;
+    return id && !/^RD/i.test(id) ? id : null;
+  }
+
+  // Переоткрыть текущую ссылку как плейлист (когда видео несёт и список).
+  function openAsPlaylist(listId: string) {
+    const plUrl = `https://www.youtube.com/playlist?list=${listId}`;
+    setUrl(plUrl);
+    void doFetch(plUrl);
   }
 
   function pickKind(kind: "video" | "audio") {
     setMediaKind(kind);
-    setFmt(kind === "video" ? VIDEO_FORMATS[0] : AUDIO_FORMATS[0]);
+    setFmt(kind === "video" ? defaultVideoFor(info?.sizes?.max_height ?? null) : AUDIO_FORMATS[0]);
   }
 
   async function handleDownload() {
@@ -100,7 +224,7 @@ export default function Downloader() {
     const mode: "single" | "all" | "range" = isPlaylist ? plMode : "single";
     const items = mode === "range" ? range.trim() : null;
     if (mode === "range" && !items) {
-      notify("Укажите номера видео, напр. 1-5, 8", "error");
+      notify(t("dl.rangeNeeded"), "error");
       return;
     }
 
@@ -108,7 +232,7 @@ export default function Downloader() {
     // перезаписывает существующий файл (для повторного скачивания).
     const launch = (recovery?: "restart") => {
       void start({
-        url: url.trim(),
+        url: searchUrl ?? url.trim(),
         format: fmt.format,
         isAudio: fmt.isAudio,
         audioFormat: fmt.isAudio ? fmt.ext : null,
@@ -122,9 +246,15 @@ export default function Downloader() {
           isPlaylist,
         },
       });
-      notify(isPlaylist ? "Плейлист добавлен в загрузки" : "Добавлено в загрузки");
+      notify(isPlaylist ? t("dl.playlistAdded") : t("dl.added"));
       reset();
     };
+
+    // Предохранитель: очень большой плейлист/канал — подтверждаем перед лавиной.
+    if (isPlaylist && mode === "all" && (info.playlist_count ?? 0) > BIG_PLAYLIST) {
+      setBigWarn({ count: info.playlist_count ?? 0, onConfirm: () => launch() });
+      return;
+    }
 
     // Конфликт: одиночное видео уже есть в медиатеке (и файл на месте).
     if (!isPlaylist && info.webpage_url) {
@@ -147,6 +277,8 @@ export default function Downloader() {
 
   const formats = mediaKind === "video" ? VIDEO_FORMATS : AUDIO_FORMATS;
   const isPlaylist = info?.is_playlist ?? false;
+  // Ссылка на одиночное видео, которая при этом несёт настоящий плейлист.
+  const alsoPlaylistId = info && !isPlaylist ? playlistIdFromUrl(url) : null;
 
   // Подпись с прикидкой размера для чипа формата (пусто, если неизвестно).
   function sizeLabel(f: DownloadFormat): string {
@@ -161,7 +293,7 @@ export default function Downloader() {
   return (
     <div className="mestia-fade-in flex flex-1 flex-col items-center justify-center p-8">
       <div className="flex w-full max-w-[700px] -translate-y-[6vh] flex-col items-center gap-8">
-        <h1 className="text-2xl font-normal tracking-tight">Что будем скачивать?</h1>
+        <h1 className="text-2xl font-normal tracking-tight">{t("dl.title")}</h1>
 
         {/* Строка ввода: только поле + анимированная стрелка */}
         <div className="group relative flex w-full items-center rounded-ui border-2 border-fog bg-snow p-2 pl-5 transition-colors focus-within:border-accent">
@@ -177,13 +309,13 @@ export default function Downloader() {
           />
           {!url && !focused && (
             <div className="pointer-events-none absolute inset-y-0 left-5 right-14 flex items-center overflow-hidden font-semibold text-smoke">
-              <Typewriter phrases={PLACEHOLDERS} className="whitespace-nowrap" />
+              <Typewriter phrases={PLACEHOLDER_KEYS.map((k) => t(k))} className="whitespace-nowrap" />
             </div>
           )}
           <button
             onClick={handleFetch}
             disabled={phase === "fetching"}
-            aria-label="Проверить"
+            aria-label={t("dl.check")}
             className="mestia-go flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-ui bg-accent text-white transition-all hover:opacity-90 active:scale-90 disabled:opacity-50"
           >
             <AnimatePresence mode="wait" initial={false}>
@@ -229,6 +361,90 @@ export default function Downloader() {
           )}
         </AnimatePresence>
 
+        {/* Подсказка про куки: ошибка похожа на «нужен вход» */}
+        <AnimatePresence>
+          {authHint && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2 }}
+              className="mestia-anim w-full space-y-3 rounded-ui border-2 border-amber-300 bg-amber-50 p-4"
+            >
+              <div className="flex items-start gap-3">
+                <Cookie className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" strokeWidth={2.25} />
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-sm font-semibold tracking-tight text-amber-900">
+                    {t("dl.authTitle")}
+                  </h3>
+                  <p className="mt-1 text-xs font-semibold leading-snug text-amber-800">
+                    {authHint.cookiesOn ? t("dl.authOn") : t("dl.authOff")}
+                  </p>
+                  <p className="mt-1.5 break-all text-[11px] font-medium leading-snug text-amber-700/80">
+                    {authHint.detail}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={onOpenSettings}
+                className="flex items-center gap-2 rounded-ui border-2 border-amber-400 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-900 transition-all hover:bg-amber-200 active:scale-95"
+              >
+                <SettingsIcon className="h-3.5 w-3.5" strokeWidth={2.25} />
+                {t("dl.openSettings")}
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Ручной поиск: сервис без прямой поддержки (Spotify/Apple/VK/Звук) */}
+        <AnimatePresence>
+          {manual && !info && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 12 }}
+              transition={{ duration: 0.25, ease: "easeOut" }}
+              className="mestia-anim w-full space-y-4 rounded-ui border-2 border-fog bg-paper/40 p-5"
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-ui border-2 border-accent bg-accent/10 text-accent">
+                  <Search className="h-5 w-5" strokeWidth={2.25} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-semibold leading-tight tracking-tight">
+                    {t("dl.serviceNotDirect", { service: SERVICE_LABELS[manual] ?? t("dl.thisService") })}
+                  </h3>
+                  <p className="mt-1 text-xs font-semibold leading-snug text-smoke">
+                    {t("dl.manualHint")}
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  value={manualQuery}
+                  onChange={(e) => setManualQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleManualSearch()}
+                  autoFocus
+                  placeholder={t("dl.manualPlaceholder")}
+                  className="flex-1 rounded-ui border-2 border-accent bg-snow px-3 py-2 text-sm font-semibold text-ink placeholder-smoke outline-none"
+                />
+                <button
+                  onClick={handleManualSearch}
+                  disabled={!manualQuery.trim() || phase === "fetching"}
+                  className="flex shrink-0 items-center gap-2 rounded-ui bg-accent px-4 py-2 text-sm font-semibold text-white transition-all hover:opacity-90 active:scale-95 disabled:opacity-50"
+                >
+                  {phase === "fetching" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.5} />
+                  ) : (
+                    <Search className="h-4 w-4" strokeWidth={2.25} />
+                  )}
+                  {t("dl.find")}
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <AnimatePresence>
         {info && phase !== "fetching" && (
           <motion.div
@@ -246,13 +462,13 @@ export default function Downloader() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="mb-0.5 text-[11px] font-bold uppercase tracking-wider text-accent">
-                    Плейлист
+                    {t("dl.playlist")}
                   </div>
                   <h3 className="line-clamp-2 font-semibold leading-tight tracking-tight">
                     {info.title}
                   </h3>
                   <p className="mt-1 text-xs font-semibold text-smoke">
-                    {info.playlist_count ?? "?"} видео · {info.platform ?? "—"}
+                    {t("dl.videos", { count: info.playlist_count ?? "?" })} · {info.platform ?? "—"}
                   </p>
                 </div>
               </div>
@@ -277,6 +493,17 @@ export default function Downloader() {
               </div>
             )}
 
+            {/* Ссылка на видео несёт и плейлист — предложить открыть его */}
+            {alsoPlaylistId && (
+              <button
+                onClick={() => openAsPlaylist(alsoPlaylistId)}
+                className="flex w-full items-center justify-center gap-2 rounded-ui border-2 border-dashed border-accent/60 px-3 py-2 text-xs font-semibold text-accent transition-colors hover:bg-accent/10"
+              >
+                <ListVideo className="h-4 w-4" strokeWidth={2.25} />
+                {t("dl.alsoPlaylist")}
+              </button>
+            )}
+
             {/* Режим плейлиста */}
             {isPlaylist && (
               <div className="space-y-2">
@@ -299,7 +526,7 @@ export default function Downloader() {
                           />
                         )}
                         <span className="relative z-10">
-                          {m === "all" ? `Весь плейлист (${info.playlist_count ?? "?"})` : "Диапазон"}
+                          {m === "all" ? t("dl.wholePlaylist", { count: info.playlist_count ?? "?" }) : t("dl.range")}
                         </span>
                       </button>
                     );
@@ -309,7 +536,7 @@ export default function Downloader() {
                   <input
                     value={range}
                     onChange={(e) => setRange(e.target.value)}
-                    placeholder="Например: 1-5, 8, 10-12"
+                    placeholder={t("dl.rangePlaceholder")}
                     className="w-full rounded-ui border-2 border-accent bg-snow px-3 py-2 text-sm font-semibold text-ink placeholder-smoke outline-none"
                   />
                 )}
@@ -337,15 +564,21 @@ export default function Downloader() {
                       />
                     )}
                     <Icon className="relative z-10 h-4 w-4" strokeWidth={2.25} />
-                    <span className="relative z-10">{k === "video" ? "Видео" : "Аудио"}</span>
+                    <span className="relative z-10">{k === "video" ? t("dl.video") : t("dl.audio")}</span>
                   </button>
                 );
               })}
             </div>
 
-            {/* Качество/формат */}
+            {/* Качество/формат — показываем только разрешения, которые есть в источнике
+                (если высота неизвестна — показываем все, чтобы не спрятать всё). */}
             <div className="flex flex-wrap gap-2">
-              {formats.map((f) => {
+              {formats
+                .filter((f) => {
+                  const max = info.sizes?.max_height ?? null;
+                  return !f.minHeight || max == null || max >= f.minHeight;
+                })
+                .map((f) => {
                 const active = fmt.id === f.id;
                 return (
                   <button
@@ -363,7 +596,7 @@ export default function Downloader() {
                       />
                     )}
                     <span className="relative z-10 flex items-center gap-1.5">
-                      {f.label}
+                      {formatLabel(f)}
                       {sizeLabel(f) && (
                         <span
                           className={`text-[10px] font-bold ${active ? "text-accent/70" : "text-smoke"}`}
@@ -384,8 +617,10 @@ export default function Downloader() {
             >
               <ArrowDownToLine className="h-4 w-4" strokeWidth={2.25} />
               {isPlaylist
-                ? "Скачать плейлист"
-                : `Скачать ${mediaKind === "video" ? "видео" : "аудио"}`}
+                ? t("dl.downloadPlaylist")
+                : mediaKind === "video"
+                ? t("dl.downloadVideo")
+                : t("dl.downloadAudio")}
               {!isPlaylist && sizeLabel(fmt) && (
                 <span className="font-bold opacity-80">· {sizeLabel(fmt)}</span>
               )}
@@ -414,17 +649,16 @@ export default function Downloader() {
               className="mestia-anim w-full max-w-[400px] space-y-5 rounded-ui border-2 border-ink bg-snow p-6"
               onClick={(e) => e.stopPropagation()}
             >
-              <h3 className="text-base font-semibold tracking-tight">Уже в медиатеке</h3>
+              <h3 className="text-base font-semibold tracking-tight">{t("dl.dupTitle")}</h3>
               <p className="text-sm font-semibold leading-snug text-smoke">
-                «{dup.title}» уже скачано. Скачать заново? Существующий файл будет
-                перезаписан.
+                {t("dl.dupText", { title: dup.title })}
               </p>
               <div className="flex justify-end gap-2">
                 <button
                   onClick={() => setDup(null)}
                   className="rounded-ui border-2 border-fog px-4 py-2 text-sm font-semibold hover:bg-fog"
                 >
-                  Отмена
+                  {t("common.cancel")}
                 </button>
                 <button
                   onClick={() => {
@@ -435,7 +669,54 @@ export default function Downloader() {
                   className="flex items-center gap-2 rounded-ui border-2 border-ink bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
                 >
                   <RotateCcw className="h-4 w-4" strokeWidth={2.25} />
-                  Скачать заново
+                  {t("dl.redownload")}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Предупреждение: большой плейлист */}
+      <AnimatePresence>
+        {bigWarn && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="mestia-anim fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-8 backdrop-blur-sm"
+            onClick={() => setBigWarn(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              className="mestia-anim w-full max-w-[400px] space-y-5 rounded-ui border-2 border-ink bg-snow p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-base font-semibold tracking-tight">{t("dl.bigTitle")}</h3>
+              <p className="text-sm font-semibold leading-snug text-smoke">
+                {t("dl.bigText", { count: bigWarn.count })}
+              </p>
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setBigWarn(null)}
+                  className="rounded-ui border-2 border-fog px-4 py-2 text-sm font-semibold hover:bg-fog"
+                >
+                  {t("common.cancel")}
+                </button>
+                <button
+                  onClick={() => {
+                    const fn = bigWarn.onConfirm;
+                    setBigWarn(null);
+                    fn();
+                  }}
+                  className="flex items-center gap-2 rounded-ui border-2 border-ink bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+                >
+                  <ArrowDownToLine className="h-4 w-4" strokeWidth={2.25} />
+                  {t("dl.downloadAll")}
                 </button>
               </div>
             </motion.div>

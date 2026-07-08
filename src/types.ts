@@ -23,14 +23,18 @@ export interface FetchResult {
   webpage_url: string | null;
   playlist_count: number | null; // кол-во видео (для плейлиста)
   sizes: FormatSizes | null; // прикидка размеров по пресетам (только одиночное видео)
+  resolved_url: string | null; // точная ссылка для загрузки (Spotify/Apple/поиск); иначе null
 }
 
 /** Прикидка размера (байты) по пресетам качества видео. */
 export interface FormatSizes {
+  v2160: number | null;
+  v1440: number | null;
   v1080: number | null;
   v720: number | null;
   v480: number | null;
   vbest: number | null;
+  max_height: number | null; // макс. высота дорожки в источнике (для показа 2K/4K)
 }
 
 /** Вариант формата для скачивания. */
@@ -42,6 +46,8 @@ export interface DownloadFormat {
   /** Целевое расширение/режим (mp4, mp3_320, wav…). */
   ext: string;
   isAudio: boolean;
+  /** Мин. высота источника, при которой пресет показывается (для 2K/4K). */
+  minHeight?: number;
 }
 
 /** Событие прогресса, прилетающее из Rust по каналу `download://progress`. */

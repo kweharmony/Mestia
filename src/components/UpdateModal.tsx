@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { Download, RefreshCw, X } from "lucide-react";
-import { updaterSupported } from "../lib/ipc";
+import { humanizeError, updaterSupported } from "../lib/ipc";
+import { useI18n } from "../context/LanguageContext";
 
 type Phase = "prompt" | "downloading" | "error";
 
@@ -14,6 +15,7 @@ type Phase = "prompt" | "downloading" | "error";
  * Рендерится только в главном окне (App), поэтому проверка идёт один раз.
  */
 export default function UpdateModal() {
+  const { t } = useI18n();
   const [update, setUpdate] = useState<Update | null>(null);
   const [phase, setPhase] = useState<Phase>("prompt");
   const [progress, setProgress] = useState(0); // 0..1, -1 — размер неизвестен
@@ -68,7 +70,7 @@ export default function UpdateModal() {
       // Установка завершена — перезапускаем приложение в новой версии.
       await relaunch();
     } catch (e) {
-      setError(String(e));
+      setError(humanizeError(e));
       setPhase("error");
     }
   }
@@ -83,16 +85,11 @@ export default function UpdateModal() {
             <RefreshCw className="h-5 w-5" strokeWidth={2.25} />
           </div>
           <div className="min-w-0">
-            <h3 className="text-base font-semibold tracking-tight">Доступно обновление</h3>
+            <h3 className="text-base font-semibold tracking-tight">{t("upd.title")}</h3>
             <p className="mt-1 text-sm font-semibold text-smoke">
-              Новая версия <span className="text-ink">v{update.version}</span>
-              {update.currentVersion ? (
-                <>
-                  {" "}
-                  (у вас v{update.currentVersion})
-                </>
-              ) : null}
-              . Обновить сейчас?
+              {update.currentVersion
+                ? t("upd.newVersionYou", { version: update.version, current: update.currentVersion })
+                : t("upd.newVersion", { version: update.version })}
             </p>
           </div>
         </div>
@@ -106,7 +103,7 @@ export default function UpdateModal() {
 
         {phase === "error" && (
           <div className="rounded-ui border-2 border-accent/40 bg-accent/10 p-3 text-xs font-semibold text-accent">
-            Не удалось установить обновление.
+            {t("upd.installFail")}
             <span className="mt-1 block break-all font-medium opacity-80">{error}</span>
           </div>
         )}
@@ -120,7 +117,7 @@ export default function UpdateModal() {
               />
             </div>
             <p className="text-center text-xs font-semibold text-smoke">
-              {pct === null ? "Загрузка обновления…" : `Загрузка… ${pct}%`}
+              {pct === null ? t("upd.downloading") : t("upd.downloadingPct", { pct })}
             </p>
           </div>
         ) : (
@@ -130,14 +127,14 @@ export default function UpdateModal() {
               className="flex items-center justify-center gap-2 rounded-ui bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90"
             >
               <Download className="h-4 w-4" strokeWidth={2.25} />
-              {phase === "error" ? "Попробовать снова" : "Обновить и перезапустить"}
+              {phase === "error" ? t("upd.retry") : t("upd.updateRestart")}
             </button>
             <button
               onClick={() => setUpdate(null)}
               className="flex items-center justify-center gap-2 rounded-ui px-4 py-2 text-sm font-semibold text-smoke hover:text-ink"
             >
               <X className="h-4 w-4" strokeWidth={2.25} />
-              Позже
+              {t("upd.later")}
             </button>
           </div>
         )}

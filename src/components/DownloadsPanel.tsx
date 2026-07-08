@@ -6,11 +6,17 @@ import {
   Ban,
   Check,
   Clock,
+  Cookie,
   Loader2,
   RefreshCw,
+  RotateCw,
+  Settings2,
   X,
 } from "lucide-react";
 import { useDownloads, type ActiveDownload } from "../context/DownloadsContext";
+import { humanizeError, updateYtdlp } from "../lib/ipc";
+import { useI18n } from "../context/LanguageContext";
+import { useToast } from "./Toast";
 
 /**
  * Прогресс для полосы и подписи. Для плейлиста — агрегат по всем роликам
@@ -24,8 +30,9 @@ export function overallPercent(d: ActiveDownload): number {
   return d.percent;
 }
 
-export default function DownloadsPanel() {
-  const { downloads, cancel, dismiss } = useDownloads();
+export default function DownloadsPanel({ onOpenSettings }: { onOpenSettings: () => void }) {
+  const { downloads, cancel, dismiss, retry } = useDownloads();
+  const { t } = useI18n();
   // hovering — для мыши; pinned — для тача/контроллера Steam Deck (клик по кружку).
   const [hovering, setHovering] = useState(false);
   const [pinned, setPinned] = useState(false);
@@ -55,7 +62,7 @@ export default function DownloadsPanel() {
           >
             <div className="flex items-center gap-2 px-1 pb-1 text-xs font-bold uppercase tracking-wider text-smoke">
               <ArrowDownToLine className="h-3.5 w-3.5 text-accent" strokeWidth={2.5} />
-              Загрузки
+              {t("dp.downloads")}
             </div>
             <div className="max-h-[40vh] space-y-2 overflow-y-auto">
               {downloads.map((d) => (
@@ -67,12 +74,15 @@ export default function DownloadsPanel() {
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-xs font-semibold">{d.title}</div>
                       <StatusLine d={d} />
+                      {d.status === "error" && (
+                        <ErrorCta d={d} onOpenSettings={onOpenSettings} onRetry={() => retry(d.id)} />
+                      )}
                     </div>
                     {d.status === "downloading" || d.status === "queued" ? (
                       <button
                         onClick={() => cancel(d.id)}
                         className="shrink-0 rounded-ui p-1 text-smoke hover:bg-rose-100 hover:text-rose-600"
-                        title="Отменить загрузку"
+                        title={t("dp.cancelTitle")}
                       >
                         <Ban className="h-3.5 w-3.5" strokeWidth={2.5} />
                       </button>
@@ -80,7 +90,7 @@ export default function DownloadsPanel() {
                       <button
                         onClick={() => dismiss(d.id)}
                         className="shrink-0 rounded-ui p-1 text-smoke hover:bg-fog hover:text-ink"
-                        title="Убрать"
+                        title={t("dp.dismiss")}
                       >
                         <X className="h-3.5 w-3.5" strokeWidth={2.5} />
                       </button>
@@ -105,8 +115,8 @@ export default function DownloadsPanel() {
       <button
         onClick={() => setPinned((p) => !p)}
         className="relative flex h-10 w-10 items-center justify-center rounded-full border-2 border-ink bg-snow shadow-lg transition-transform hover:scale-105"
-        title="Загрузки"
-        aria-label="Загрузки"
+        title={t("dp.downloads")}
+        aria-label={t("dp.downloads")}
         aria-expanded={open}
       >
         <RefreshCw
@@ -139,31 +149,100 @@ function StatusIcon({ status }: { status: ActiveDownload["status"] }) {
 }
 
 function StatusLine({ d }: { d: ActiveDownload }) {
+  const { t } = useI18n();
   if (d.status === "downloading") {
     return (
       <div className="text-[11px] font-semibold text-smoke">
         {d.isPlaylist && d.totalItems
-          ? `Видео ${d.index ?? "?"} из ${d.totalItems} · ${overallPercent(d).toFixed(0)}%`
+          ? `${t("dp.videoOf", { index: d.index ?? "?", total: d.totalItems })} · ${overallPercent(d).toFixed(0)}%`
           : `${d.percent.toFixed(0)}%`}
       </div>
     );
   }
   if (d.status === "queued") {
-    return <div className="text-[11px] font-semibold text-smoke">В очереди…</div>;
+    return <div className="text-[11px] font-semibold text-smoke">{t("dp.queued")}</div>;
   }
   if (d.status === "done") {
     return (
       <div className="text-[11px] font-semibold text-emerald-600">
-        {d.isPlaylist ? `Скачано: ${d.doneCount}` : "Готово"}
+        {d.isPlaylist ? t("dp.downloaded", { count: d.doneCount }) : t("dp.done")}
       </div>
     );
   }
   if (d.status === "cancelled") {
-    return <div className="text-[11px] font-semibold text-amber-600">Отменено</div>;
+    return <div className="text-[11px] font-semibold text-amber-600">{t("dp.cancelled")}</div>;
   }
   return (
     <div className="truncate text-[11px] font-semibold text-rose-500">
-      {d.error ?? "Ошибка"}
+      {d.error ? humanizeError(d.error) : t("dp.error")}
     </div>
   );
+}
+
+/**
+ * Кнопка-действие под ошибкой: ведёт к решению в зависимости от типа провала.
+ * Для DRM и удалённого контента действий нет — кнопку не показываем.
+ */
+function ErrorCta({
+  d,
+  onOpenSettings,
+  onRetry,
+}: {
+  d: ActiveDownload;
+  onOpenSettings: () => void;
+  onRetry: () => void;
+}) {
+  const { notify } = useToast();
+  const { t } = useI18n();
+  const [updating, setUpdating] = useState(false);
+
+  const base =
+    "mt-1.5 inline-flex items-center gap-1 rounded-ui border-2 border-fog px-2 py-0.5 text-[11px] font-semibold text-ink hover:border-accent hover:text-accent";
+
+  async function handleUpdate() {
+    setUpdating(true);
+    try {
+      const msg = await updateYtdlp();
+      notify(msg || t("dp.updated"));
+    } catch (e) {
+      notify(humanizeError(e), "error");
+    } finally {
+      setUpdating(false);
+    }
+  }
+
+  switch (d.kind) {
+    case "auth":
+      return (
+        <button onClick={onOpenSettings} className={base}>
+          <Cookie className="h-3 w-3" strokeWidth={2.5} /> {t("dp.cta.cookies")}
+        </button>
+      );
+    case "geo":
+      return (
+        <button onClick={onOpenSettings} className={base}>
+          <Settings2 className="h-3 w-3" strokeWidth={2.5} /> {t("dp.cta.proxy")}
+        </button>
+      );
+    case "unsupported":
+      return (
+        <button onClick={handleUpdate} disabled={updating} className={base}>
+          {updating ? (
+            <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2.5} />
+          ) : (
+            <RefreshCw className="h-3 w-3" strokeWidth={2.5} />
+          )}
+          {t("dp.cta.update")}
+        </button>
+      );
+    case "network":
+      return (
+        <button onClick={onRetry} className={base}>
+          <RotateCw className="h-3 w-3" strokeWidth={2.5} /> {t("dp.cta.retry")}
+        </button>
+      );
+    // drm / unavailable / unknown — действий нет.
+    default:
+      return null;
+  }
 }

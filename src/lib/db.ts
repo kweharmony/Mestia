@@ -131,6 +131,27 @@ export async function insertVideo(v: {
   );
 }
 
+/** Записи видео того же размера — кандидаты на «переехавший вне приложения файл». */
+export async function videosBySize(size: number): Promise<VideoRow[]> {
+  if (!size) return [];
+  const d = await db();
+  return d.select<VideoRow[]>("SELECT * FROM videos WHERE size = $1", [size]);
+}
+
+/** Переносит запись видео на новый путь/папку, сохраняя все метаданные. */
+export async function updateVideoPath(
+  id: number,
+  newPath: string,
+  folderId: number | null
+): Promise<void> {
+  const d = await db();
+  await d.execute("UPDATE videos SET file_path = $1, folder_id = $2 WHERE id = $3", [
+    newPath,
+    folderId,
+    id,
+  ]);
+}
+
 /** Все пути файлов, уже занесённых в БД (для дедупликации при сканировании). */
 export async function allVideoPaths(): Promise<Set<string>> {
   const d = await db();
@@ -164,6 +185,33 @@ export async function moveVideoToFolder(
     newPath,
     videoId,
   ]);
+}
+
+/**
+ * Привязывает уже известные видео (по пути файла) к папке folderId, если в БД
+ * у них остался прежний/ошибочный folder_id. Чинит случай, когда файл физически
+ * лежит в папке, но числится за другой (или за корнем) — из-за чего папка
+ * выглядела пустой. Меняем только folder_id, метаданные не трогаем.
+ */
+export async function reassignVideosToFolder(
+  paths: string[],
+  folderId: number | null
+): Promise<void> {
+  if (!paths.length) return;
+  const d = await db();
+  for (const p of paths) {
+    if (folderId === null) {
+      await d.execute(
+        "UPDATE videos SET folder_id = NULL WHERE file_path = $1 AND folder_id IS NOT NULL",
+        [p]
+      );
+    } else {
+      await d.execute(
+        "UPDATE videos SET folder_id = $2 WHERE file_path = $1 AND (folder_id IS NULL OR folder_id != $2)",
+        [p, folderId]
+      );
+    }
+  }
 }
 
 export async function searchVideos(query: string): Promise<VideoRow[]> {

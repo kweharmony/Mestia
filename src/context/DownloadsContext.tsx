@@ -12,13 +12,17 @@ import {
 } from "@tauri-apps/plugin-notification";
 import {
   cancelDownload as ipcCancel,
+  classifyError,
   createFolderOnDisk,
+  type DownloadFailureKind,
   getSetting,
+  isAuthError,
   onDone,
   onItem,
   onProgress,
   startDownload as ipcStartDownload,
 } from "../lib/ipc";
+import { t } from "../lib/i18n";
 import {
   createFolder,
   findFolderByPath,
@@ -41,6 +45,7 @@ export interface ActiveDownload {
   doneCount: number;
   status: DownloadStatus;
   error?: string;
+  kind?: DownloadFailureKind;
 }
 
 export interface StartOpts {
@@ -71,6 +76,7 @@ interface DownloadsCtx {
   start: (opts: StartOpts) => Promise<void>;
   cancel: (id: string) => Promise<void>;
   dismiss: (id: string) => void;
+  retry: (id: string) => Promise<void>;
 }
 
 const Ctx = createContext<DownloadsCtx | null>(null);
@@ -104,6 +110,8 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
   const [downloads, setDownloads] = useState<ActiveDownload[]>([]);
   const [libraryVersion, setLibraryVersion] = useState(0);
   const metaMap = useRef(new Map<string, Meta>());
+  // Исходные параметры задачи — для повтора проваленной загрузки (CTA «Повторить»).
+  const optsMap = useRef(new Map<string, StartOpts>());
   const queueRef = useRef<QueuedInvoke[]>([]);
   // Единый счётчик процессов «в полёте» (запущенных, но ещё не завершённых).
   // Источник правды для лимита параллелизма — в отличие от downloadsRef он
@@ -144,7 +152,7 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
     const m = metaMap.current.get(id);
     if (m?.historyId) void updateHistoryStatus(m.historyId, "error", null);
     metaMap.current.delete(id);
-    setStatus(id, { status: "error", error: String(e) });
+    setStatus(id, { status: "error", error: String(e), kind: classifyError(e) });
     void pumpQueue();
   }
 
@@ -220,7 +228,12 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
         setDownloads((ds) =>
           ds.map((x) =>
             x.id === d.id && x.status === "downloading"
-              ? { ...x, status: d.ok ? "done" : "error", error: d.error ?? undefined }
+              ? {
+                  ...x,
+                  status: d.ok ? "done" : "error",
+                  error: d.error ?? undefined,
+                  kind: d.ok ? undefined : classifyError(d.error),
+                }
               : x
           )
         );
@@ -228,11 +241,13 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
         const task = downloadsRef.current.find((x) => x.id === d.id);
         if (task && task.status === "downloading") {
           if (d.ok) {
-            notify(`Готово: ${task.title}`);
-            void notifyDesktop("Mestia — загрузка завершена", task.title);
+            notify(t("toast.done", { title: task.title }));
+            void notifyDesktop(t("toast.doneDesktop"), task.title);
           } else {
-            notify(`Ошибка: ${task.title}`, "error");
-            void notifyDesktop("Mestia — ошибка загрузки", task.title);
+            // Ошибка доступа — подсказываем про куки прямо в тосте.
+            const hint = isAuthError(d.error) ? t("toast.authHint") : "";
+            notify(`${t("toast.error", { title: task.title })}${hint}`, "error");
+            void notifyDesktop(t("toast.errorDesktop"), task.title);
           }
         }
         void pumpQueue();
@@ -269,7 +284,7 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
         await updateHistoryStatus(historyId, "downloading", null);
       } else {
         historyId = await insertHistory({
-          title: opts.meta.isPlaylist ? `Плейлист: ${opts.meta.title}` : opts.meta.title,
+          title: opts.meta.isPlaylist ? t("ctx.playlistPrefix", { title: opts.meta.title }) : opts.meta.title,
           url: opts.meta.webpage_url ?? opts.url,
           status: "downloading",
           file_size: null,
@@ -289,6 +304,8 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
         isPlaylist: opts.meta.isPlaylist,
         lastTotal: null,
       });
+      // Запоминаем в резолвнутую папку/историю — повтор продолжит ту же загрузку.
+      optsMap.current.set(id, { ...opts, outDir, folderId, historyId });
 
       const invokeArgs: QueuedInvoke = {
         id,
@@ -329,9 +346,18 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
       const m = metaMap.current.get(id);
       if (m?.historyId) await updateHistoryStatus(m.historyId, "error", null);
       metaMap.current.delete(id);
-      setStatus(id, { status: "error", error: String(e) });
-      notify("Ошибка запуска загрузки", "error");
+      setStatus(id, { status: "error", error: String(e), kind: classifyError(e) });
+      notify(t("toast.startError"), "error");
     }
+  }
+
+  /** Повторить проваленную загрузку исходными параметрами (продолжает частичные файлы). */
+  async function retry(id: string) {
+    const opts = optsMap.current.get(id);
+    if (!opts) return;
+    optsMap.current.delete(id);
+    dismiss(id); // убираем проваленную карточку — вместо неё появится новая
+    await start({ ...opts, recovery: "resume" });
   }
 
   /** Отменить загрузку (активную — убить процесс, очередную — убрать из очереди). */
@@ -350,7 +376,7 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
     if (m?.historyId) await updateHistoryStatus(m.historyId, "interrupted", null);
     setStatus(id, { status: "cancelled" });
     setLibraryVersion((v) => v + 1); // обновить статусы в Истории
-    notify("Загрузка отменена");
+    notify(t("toast.cancelled"));
     void pumpQueue();
   }
 
@@ -363,7 +389,7 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <Ctx.Provider value={{ downloads, hasActive, libraryVersion, start, cancel, dismiss }}>
+    <Ctx.Provider value={{ downloads, hasActive, libraryVersion, start, cancel, dismiss, retry }}>
       {children}
     </Ctx.Provider>
   );

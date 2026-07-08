@@ -13,6 +13,10 @@ and themes.
 - **Backend:** Rust + Tauri v2 (`src-tauri/`)
 - **Frontend:** React 18 + TypeScript + Vite 6 (`src/`)
 - **Styling:** Tailwind CSS v4 (`@tailwindcss/vite`)
+- **i18n:** свой лёгкий контекст без зависимостей — `src/lib/i18n.ts` (словари
+  `ru`/`en`/`zh`, ключ → `{ru,en,zh}`) + `src/context/LanguageContext.tsx`
+  (`useI18n().t`). Не-React код зовёт модульный `t()`. Язык хранится в настройке
+  `lang` (и `localStorage`), при первом запуске определяется по локали ОС.
 - **Animation:** `framer-motion` (layout/exit transitions, sliding tab pills); global
   `<MotionConfig reducedMotion="user">` honors OS reduced-motion. Motion-animated
   elements carry the `.mestia-anim` class so the global CSS `transform`/`opacity`
@@ -52,9 +56,9 @@ docs/               GitHub Pages landing site (self-contained index.html: all 8 
                     part of the app build.
 scripts/            Node scripts: fetch-binaries.mjs, free-port.mjs
 src/                Frontend (React + TS)
-  context/          React contexts: ThemeContext, DownloadsContext (queue/events), DragContext
+  context/          React contexts: ThemeContext, LanguageContext (i18n), DownloadsContext (queue/events), DragContext
   components/       UI: Sidebar, Settings, DownloadsPanel, Splash, Toast, Typewriter, ThemeSwitcher, Logo
-  lib/              ipc.ts (bridge to Rust commands), db.ts (SQLite access)
+  lib/              ipc.ts (bridge to Rust commands), db.ts (SQLite access), i18n.ts (ru/en/zh dictionary + t())
   views/            Downloader, Locker (library), History, Player, MiniPlayer
   types.ts          Shared TS types
 src-tauri/          Backend (Rust + Tauri v2)
@@ -79,7 +83,11 @@ file-watcher events back to the frontend.
 - **Match existing style** — naming, comment density, idioms of surrounding code.
 - **No unsolicited refactors.** Change what was asked; flag other issues briefly instead
   of fixing them inline.
-- **Comments in code are Russian** (matching the existing codebase); UI strings are Russian.
+- **Comments in code are Russian** (matching the existing codebase). **UI strings go
+  through i18n** — never hardcode user-facing text: add a key to `src/lib/i18n.ts`
+  (with `ru`/`en`/`zh`) and render via `useI18n().t("key")` (or module `t()` in
+  non-React code). Rust backend messages remain Russian; `humanizeError` maps the
+  common ones to translated keys.
 - Keep `package.json` and `src-tauri/tauri.conf.json` versions in sync when bumping.
 
 ## Keeping This Documentation Current

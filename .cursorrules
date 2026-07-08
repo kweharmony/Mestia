@@ -7,6 +7,7 @@ Cross-platform desktop video downloader & media library.
 - Frontend: React 18 + TypeScript + Vite 6 (`src/`)
 - Styling: Tailwind CSS v4
 - Animation: framer-motion (global `<MotionConfig reducedMotion="user">`; motion-animated elements use `.mestia-anim` to avoid clashing with the global CSS transform/opacity transition)
+- i18n: custom lightweight context (no deps) — `src/lib/i18n.ts` (ru/en/zh dictionary + `t()`) + `src/context/LanguageContext.tsx` (`useI18n().t`); language in setting `lang`, OS-locale default
 - DB: SQLite via tauri-plugin-sql (`src-tauri/migrations/`)
 - Sidecars: yt-dlp + ffmpeg/ffprobe (`src-tauri/binaries/`)
 - Package manager: npm
@@ -20,9 +21,9 @@ Cross-platform desktop video downloader & media library.
 - Tests: `npm test` (Vitest, frontend), `cargo test` (Rust). No linter; typecheck via `tsc --noEmit`.
 
 ## Architecture
-- `src/context/` — ThemeContext, DownloadsContext (queue/events), DragContext
+- `src/context/` — ThemeContext, LanguageContext (i18n), DownloadsContext (queue/events), DragContext
 - `src/components/` — Sidebar, Settings, DownloadsPanel, Splash, Toast, etc.
-- `src/lib/` — ipc.ts (bridge to Rust), db.ts (SQLite)
+- `src/lib/` — ipc.ts (bridge to Rust), db.ts (SQLite), i18n.ts (ru/en/zh dictionary + t())
 - `src/views/` — Downloader, Locker (library), History, Player, MiniPlayer
 - `src-tauri/src/` — lib.rs (plugins/tray/commands), downloader.rs (yt-dlp), storage.rs (files/watcher/thumbnails)
 - `flatpak/` — Flatpak packaging for Steam Deck/SteamOS (manifest + desktop/metainfo); wraps the built .deb in the GNOME runtime, built in CI.
@@ -35,7 +36,7 @@ Cross-platform desktop video downloader & media library.
 - Read only the needed section of a file, not the whole file.
 - Match surrounding code style (naming, comments, idioms).
 - No unsolicited refactors — change only what was asked.
-- Code comments and UI strings are in Russian (match existing codebase).
+- Code comments are in Russian (match existing codebase). UI strings go through i18n — add a key to `src/lib/i18n.ts` (ru/en/zh) and render via `useI18n().t()`; never hardcode user-facing text.
 - Keep `package.json` and `src-tauri/tauri.conf.json` versions in sync.
 
 ## Keep docs current

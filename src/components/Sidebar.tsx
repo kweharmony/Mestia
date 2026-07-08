@@ -6,6 +6,7 @@ import {
   Settings,
 } from "lucide-react";
 import type { TabId } from "../types";
+import { useI18n } from "../context/LanguageContext";
 import Logo from "./Logo";
 
 interface SidebarProps {
@@ -17,15 +18,15 @@ interface SidebarProps {
 
 interface NavDef {
   id: TabId;
-  label: string;
+  labelKey: string;
   icon: typeof Download;
   anim: string; // класс анимации иконки при наведении
 }
 
 const NAV: NavDef[] = [
-  { id: "downloader", label: "Загрузчик", icon: Download, anim: "mestia-ico-dl" },
-  { id: "locker", label: "Медиатека", icon: Folders, anim: "mestia-ico-folder" },
-  { id: "history", label: "История", icon: HistoryIcon, anim: "mestia-ico-history" },
+  { id: "downloader", labelKey: "nav.downloader", icon: Download, anim: "mestia-ico-dl" },
+  { id: "locker", labelKey: "nav.locker", icon: Folders, anim: "mestia-ico-folder" },
+  { id: "history", labelKey: "nav.history", icon: HistoryIcon, anim: "mestia-ico-history" },
 ];
 
 export default function Sidebar({
@@ -34,6 +35,7 @@ export default function Sidebar({
   onOpenSettings,
   onHideToTray,
 }: SidebarProps) {
+  const { t } = useI18n();
   return (
     <aside className="flex w-[260px] shrink-0 flex-col justify-between bg-paper no-select">
       <div className="space-y-6 p-4">
@@ -42,7 +44,7 @@ export default function Sidebar({
 
         {/* Навигация */}
         <nav className="space-y-1">
-          {NAV.map(({ id, label, icon: Icon, anim }) => {
+          {NAV.map(({ id, labelKey, icon: Icon, anim }) => {
             const isActive = active === id;
             return (
               <button
@@ -55,7 +57,7 @@ export default function Sidebar({
                 }`}
               >
                 <Icon className={`h-4 w-4 ${anim}`} strokeWidth={2.25} />
-                {label}
+                {t(labelKey)}
               </button>
             );
           })}
@@ -66,18 +68,18 @@ export default function Sidebar({
       <div className="space-y-1 p-4">
         <button
           onClick={onHideToTray}
-          title="Свернуть в трей (загрузка продолжится фоном)"
+          title={t("sidebar.trayTitle")}
           className="mestia-nav flex w-full items-center gap-3 rounded-ui px-3 py-2 text-sm opacity-80 transition-all hover:bg-fog hover:opacity-100"
         >
           <Minus className="mestia-ico-folderplus h-4 w-4" strokeWidth={2.25} />
-          Свернуть в трей
+          {t("sidebar.tray")}
         </button>
         <button
           onClick={onOpenSettings}
           className="mestia-nav flex w-full items-center gap-3 rounded-ui px-3 py-2 text-sm opacity-80 transition-all hover:bg-fog hover:opacity-100"
         >
           <Settings className="mestia-ico-gear h-4 w-4" strokeWidth={2.25} />
-          Настройки
+          {t("sidebar.settings")}
         </button>
       </div>
     </aside>

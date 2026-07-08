@@ -100,13 +100,13 @@
 
 /* 8. Graphite (нейтральная тёмная) */
 [data-theme="graphite"] {
-  --c-snow: #34332f;
-  --c-paper: #3d3d3a;
-  --c-ink: #faf9f5;
-  --c-accent: #6a6a62;
-  --c-accent-light: #8c8b81;
-  --c-fog: #4b4a45;
-  --c-smoke: #a3a299;
+  --c-snow: #1a1a18;
+  --c-paper: #252523;
+  --c-ink: #f5f4ef;
+  --c-accent: #74736b;
+  --c-accent-light: #95948a;
+  --c-fog: #34332f;
+  --c-smoke: #9b9a90;
 }
 
 html,
@@ -259,6 +259,43 @@ input[type="range"]::-webkit-slider-thumb {
   }
   100% {
     transform: translateX(360%);
+  }
+}
+
+/* Переливающийся фон аудио-плеера: два размытых слоя обложки медленно дрейфуют
+   в разные стороны, из-за чего цвета обложки «переливаются». */
+@keyframes mestia-ambient {
+  0% {
+    transform: scale(1.3) translate(-5%, -4%) rotate(0deg);
+  }
+  50% {
+    transform: scale(1.55) translate(6%, 5%) rotate(8deg);
+  }
+  100% {
+    transform: scale(1.3) translate(-5%, -4%) rotate(0deg);
+  }
+}
+@keyframes mestia-ambient-2 {
+  0% {
+    transform: scale(1.5) translate(5%, -5%) rotate(0deg);
+  }
+  50% {
+    transform: scale(1.3) translate(-6%, 6%) rotate(-10deg);
+  }
+  100% {
+    transform: scale(1.5) translate(5%, -5%) rotate(0deg);
+  }
+}
+.mestia-ambient {
+  animation: mestia-ambient 16s ease-in-out infinite;
+}
+.mestia-ambient-2 {
+  animation: mestia-ambient-2 22s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mestia-ambient,
+  .mestia-ambient-2 {
+    animation: none;
   }
 }
 

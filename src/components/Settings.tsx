@@ -11,9 +11,12 @@ import {
   Bell,
   Captions,
   Cookie,
+  FastForward,
   FolderCog,
   Gauge,
   FolderOpen,
+  Globe,
+  Languages,
   Layers,
   Loader2,
   Palette,
@@ -26,6 +29,7 @@ import {
   exitApp,
   getSetting,
   getStorageRoot,
+  humanizeError,
   openFolder,
   setSetting,
   setStorageRoot,
@@ -35,6 +39,8 @@ import {
 import ThemeSwitcher from "./ThemeSwitcher";
 import { useToast } from "./Toast";
 import { useDownloads } from "../context/DownloadsContext";
+import { useI18n } from "../context/LanguageContext";
+import { LANGS, LANG_LABELS } from "../lib/i18n";
 
 export default function Settings({
   onClose,
@@ -45,11 +51,14 @@ export default function Settings({
 }) {
   const { notify } = useToast();
   const { hasActive } = useDownloads();
+  const { t, lang, setLang } = useI18n();
   const [path, setPath] = useState("");
   const [notifications, setNotifications] = useState(false);
   const [parallel, setParallel] = useState(2);
   const [fragments, setFragments] = useState(5);
+  const [skip, setSkip] = useState(15);
   const [cookiesBrowser, setCookiesBrowser] = useState("");
+  const [proxy, setProxy] = useState("");
   const [subtitles, setSubtitles] = useState(false);
   const [subtitlesLang, setSubtitlesLang] = useState("ru,en");
   const [sponsorblock, setSponsorblock] = useState(false);
@@ -73,7 +82,14 @@ export default function Settings({
         setFragments(Number.isNaN(n) ? 5 : Math.min(16, Math.max(1, n)));
       })
       .catch(() => {});
+    getSetting("skipSeconds")
+      .then((v) => {
+        const n = parseInt(v ?? "15", 10);
+        setSkip(Number.isNaN(n) ? 15 : Math.min(120, Math.max(5, n)));
+      })
+      .catch(() => {});
     getSetting("cookiesBrowser").then((v) => setCookiesBrowser(v ?? "")).catch(() => {});
+    getSetting("proxy").then((v) => setProxy(v ?? "")).catch(() => {});
     getSetting("subtitles").then((v) => setSubtitles(v === "1")).catch(() => {});
     getSetting("subtitlesLang").then((v) => v && setSubtitlesLang(v)).catch(() => {});
     getSetting("sponsorblock").then((v) => setSponsorblock(v === "1")).catch(() => {});
@@ -84,7 +100,7 @@ export default function Settings({
 
   async function pickFolder() {
     if (hasActive) {
-      notify("Нельзя менять папку во время загрузки", "error");
+      notify(t("set.folderBusy"), "error");
       return;
     }
     try {
@@ -93,10 +109,10 @@ export default function Settings({
         const applied = await setStorageRoot(dir);
         setPath(applied);
         onFolderChanged();
-        notify("Папка загрузок обновлена");
+        notify(t("set.folderUpdated"));
       }
     } catch (e) {
-      notify(String(e), "error");
+      notify(humanizeError(e), "error");
     }
   }
 
@@ -106,7 +122,7 @@ export default function Settings({
       let granted = await isPermissionGranted().catch(() => false);
       if (!granted) granted = (await requestPermission().catch(() => "denied")) === "granted";
       if (!granted) {
-        notify("Уведомления запрещены в системе", "error");
+        notify(t("set.notifDenied"), "error");
         return;
       }
     }
@@ -120,12 +136,12 @@ export default function Settings({
       let granted = await isPermissionGranted().catch(() => false);
       if (!granted) granted = (await requestPermission().catch(() => "denied")) === "granted";
       if (!granted) {
-        notify("Уведомления запрещены в системе", "error");
+        notify(t("set.notifDenied"), "error");
         return;
       }
-      sendNotification({ title: "Mestia", body: "Уведомления работают 🎉" });
+      sendNotification({ title: "Mestia", body: t("set.notifWorks") });
     } catch (e) {
-      notify(`Не удалось отправить уведомление: ${e}`, "error");
+      notify(t("set.notifSendFail", { err: humanizeError(e) }), "error");
     }
   }
 
@@ -139,9 +155,19 @@ export default function Settings({
     await setSetting("concurrentFragments", String(n)).catch(() => {});
   }
 
+  async function changeSkip(n: number) {
+    setSkip(n);
+    await setSetting("skipSeconds", String(n)).catch(() => {});
+  }
+
   async function changeCookies(b: string) {
     setCookiesBrowser(b);
     await setSetting("cookiesBrowser", b).catch(() => {});
+  }
+
+  async function changeProxy(v: string) {
+    setProxy(v);
+    await setSetting("proxy", v.trim()).catch(() => {});
   }
 
   async function toggleSubtitles() {
@@ -168,7 +194,7 @@ export default function Settings({
       await exitApp();
     } catch (e) {
       setUninstalling(false);
-      notify(`Не удалось удалить: ${e}`, "error");
+      notify(t("set.uninstallFail", { err: humanizeError(e) }), "error");
     }
   }
 
@@ -176,9 +202,9 @@ export default function Settings({
     setUpdating(true);
     try {
       const msg = await updateYtdlp();
-      notify(msg.slice(0, 80) || "yt-dlp обновлён");
+      notify(msg.slice(0, 80) || t("dp.updated"));
     } catch (e) {
-      notify(`Не удалось обновить: ${e}`, "error");
+      notify(t("set.updateFail", { err: humanizeError(e) }), "error");
     } finally {
       setUpdating(false);
     }
@@ -202,7 +228,7 @@ export default function Settings({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold tracking-tight">Настройки</h2>
+          <h2 className="text-xl font-semibold tracking-tight">{t("set.title")}</h2>
           <button
             onClick={onClose}
             className="rounded-ui p-1.5 text-smoke hover:bg-fog hover:text-ink"
@@ -215,15 +241,15 @@ export default function Settings({
         <section className="space-y-3">
           <div className="flex items-center gap-2 text-sm font-semibold">
             <FolderCog className="h-4 w-4 text-accent" strokeWidth={2.25} />
-            Папка загрузок
+            {t("set.downloadFolder")}
           </div>
           <div className="flex items-center gap-2">
             <div className="flex-1 truncate rounded-ui border-2 border-fog bg-paper/40 px-3 py-2 text-sm font-semibold">
               {path || "—"}
             </div>
             <button
-              onClick={() => openFolder(path).catch((e) => notify(String(e), "error"))}
-              title="Открыть в проводнике"
+              onClick={() => openFolder(path).catch((e) => notify(humanizeError(e), "error"))}
+              title={t("lib.openExplorer")}
               className="rounded-ui border-2 border-fog p-2 hover:bg-fog"
             >
               <FolderOpen className="h-4 w-4" strokeWidth={2.25} />
@@ -233,13 +259,11 @@ export default function Settings({
               disabled={hasActive}
               className="rounded-ui border-2 border-ink px-4 py-2 text-sm font-semibold hover:bg-fog disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Изменить
+              {t("common.change")}
             </button>
           </div>
           <p className="text-xs font-semibold text-smoke">
-            {hasActive
-              ? "Смена папки недоступна, пока идут загрузки."
-              : "Применяется к новым загрузкам. Уже скачанные файлы не переносятся."}
+            {hasActive ? t("set.folderBusy") : t("set.folderApplies")}
           </p>
         </section>
 
@@ -248,7 +272,7 @@ export default function Settings({
           <div className="flex items-center justify-between text-sm font-semibold">
             <span className="flex items-center gap-2">
               <Layers className="h-4 w-4 text-accent" strokeWidth={2.25} />
-              Одновременных загрузок
+              {t("set.parallel")}
             </span>
             <span className="text-accent">{parallel}</span>
           </div>
@@ -276,7 +300,7 @@ export default function Settings({
             })}
           </div>
           <p className="text-xs font-semibold text-smoke">
-            Остальные задачи становятся в очередь.
+            {t("set.parallelHint")}
           </p>
         </section>
 
@@ -284,19 +308,19 @@ export default function Settings({
         <section className="space-y-3">
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Gauge className="h-4 w-4 text-accent" strokeWidth={2.25} />
-            Скорость загрузки
+            {t("set.speed")}
           </div>
           <div className="flex gap-1.5">
             {[
-              { label: "Обычная", v: 3 },
-              { label: "Быстрая", v: 5 },
-              { label: "Максимум", v: 10 },
-            ].map((t) => {
-              const active = fragments === t.v;
+              { label: t("set.speedNormal"), v: 3 },
+              { label: t("set.speedFast"), v: 5 },
+              { label: t("set.speedMax"), v: 10 },
+            ].map((opt) => {
+              const active = fragments === opt.v;
               return (
                 <button
-                  key={t.v}
-                  onClick={() => changeFragments(t.v)}
+                  key={opt.v}
+                  onClick={() => changeFragments(opt.v)}
                   className={`relative flex-1 rounded-ui border-2 border-transparent py-1.5 text-sm font-semibold ${
                     active ? "text-accent" : "hover:bg-fog"
                   }`}
@@ -308,14 +332,47 @@ export default function Settings({
                       className="mestia-anim absolute -inset-[2px] z-0 rounded-ui border-2 border-accent bg-snow"
                     />
                   )}
-                  <span className="relative z-10">{t.label}</span>
+                  <span className="relative z-10">{opt.label}</span>
                 </button>
               );
             })}
           </div>
           <p className="text-xs font-semibold text-smoke">
-            Сколько фрагментов качать параллельно. Выше — быстрее, но больше нагрузка
-            на сеть и диск.
+            {t("set.speedHint")}
+          </p>
+        </section>
+
+        {/* Шаг перемотки в плеере */}
+        <section className="space-y-3">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <FastForward className="h-4 w-4 text-accent" strokeWidth={2.25} />
+            {t("set.skip")}
+          </div>
+          <div className="flex gap-1.5">
+            {[5, 10, 15, 30].map((n) => {
+              const active = skip === n;
+              return (
+                <button
+                  key={n}
+                  onClick={() => changeSkip(n)}
+                  className={`relative flex-1 rounded-ui border-2 border-transparent py-1.5 text-sm font-semibold ${
+                    active ? "text-accent" : "hover:bg-fog"
+                  }`}
+                >
+                  {active && (
+                    <motion.span
+                      layoutId="skipPill"
+                      transition={{ type: "spring", stiffness: 500, damping: 38 }}
+                      className="mestia-anim absolute -inset-[2px] z-0 rounded-ui border-2 border-accent bg-snow"
+                    />
+                  )}
+                  <span className="relative z-10">{n}{lang === "zh" ? " 秒" : lang === "en" ? "s" : " с"}</span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs font-semibold text-smoke">
+            {t("set.skipHint")}
           </p>
         </section>
 
@@ -324,7 +381,7 @@ export default function Settings({
           <div className="flex items-center justify-between">
             <span className="flex items-center gap-2 text-sm font-semibold">
               <Bell className="h-4 w-4 text-accent" strokeWidth={2.25} />
-              Уведомления на рабочий стол
+              {t("set.notifications")}
             </span>
             <div className="flex items-center gap-2">
               {notifications && (
@@ -332,7 +389,7 @@ export default function Settings({
                   onClick={testNotification}
                   className="rounded-ui border-2 border-fog px-3 py-1 text-xs font-semibold hover:bg-fog"
                 >
-                  Проверить
+                  {t("set.test")}
                 </button>
               )}
               <button
@@ -350,9 +407,7 @@ export default function Settings({
             </div>
           </div>
           <p className="text-xs font-semibold text-smoke">
-            Сообщать о завершении загрузки, даже когда окно свёрнуто. На Windows
-            всплывающие уведомления видны только в установленной версии и при
-            выключенном режиме «Не беспокоить».
+            {t("set.notificationsHint")}
           </p>
         </section>
 
@@ -361,14 +416,14 @@ export default function Settings({
           <div className="flex items-center justify-between text-sm font-semibold">
             <span className="flex items-center gap-2">
               <Cookie className="h-4 w-4 text-accent" strokeWidth={2.25} />
-              Куки из браузера
+              {t("set.cookies")}
             </span>
             <select
               value={cookiesBrowser}
               onChange={(e) => changeCookies(e.target.value)}
               className="rounded-ui border-2 border-fog bg-snow px-2 py-1.5 text-sm font-semibold text-ink outline-none focus:border-accent"
             >
-              <option value="">Выключено</option>
+              <option value="">{t("set.cookiesOff")}</option>
               <option value="chrome">Chrome</option>
               <option value="firefox">Firefox</option>
               <option value="edge">Edge</option>
@@ -379,8 +434,48 @@ export default function Settings({
             </select>
           </div>
           <p className="text-xs font-semibold text-smoke">
-            Нужно для приватных, возрастных и доступных по подписке видео. Браузер
-            при скачивании лучше закрыть.
+            {t("set.cookiesHint")}
+          </p>
+        </section>
+
+        {/* Прокси */}
+        <section className="space-y-3">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <Globe className="h-4 w-4 text-accent" strokeWidth={2.25} />
+            {t("set.proxy")}
+          </div>
+          <input
+            value={proxy}
+            onChange={(e) => changeProxy(e.target.value)}
+            placeholder={t("set.proxyPlaceholder")}
+            className="w-full rounded-ui border-2 border-fog bg-snow px-3 py-2 text-sm font-semibold text-ink placeholder-smoke outline-none focus:border-accent"
+          />
+          <p className="text-xs font-semibold text-smoke">
+            {t("set.proxyHint")}
+          </p>
+        </section>
+
+        {/* Язык интерфейса */}
+        <section className="space-y-3">
+          <div className="flex items-center justify-between text-sm font-semibold">
+            <span className="flex items-center gap-2">
+              <Languages className="h-4 w-4 text-accent" strokeWidth={2.25} />
+              {t("set.language")}
+            </span>
+            <select
+              value={lang}
+              onChange={(e) => setLang(e.target.value as (typeof LANGS)[number])}
+              className="rounded-ui border-2 border-fog bg-snow px-2 py-1.5 text-sm font-semibold text-ink outline-none focus:border-accent"
+            >
+              {LANGS.map((l) => (
+                <option key={l} value={l}>
+                  {LANG_LABELS[l]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className="text-xs font-semibold text-smoke">
+            {t("set.languageHint")}
           </p>
         </section>
 
@@ -388,7 +483,7 @@ export default function Settings({
         <section className="space-y-3">
           <Toggle
             icon={<Captions className="h-4 w-4 text-accent" strokeWidth={2.25} />}
-            label="Скачивать субтитры"
+            label={t("set.subtitles")}
             on={subtitles}
             onToggle={toggleSubtitles}
           />
@@ -396,12 +491,12 @@ export default function Settings({
             <input
               value={subtitlesLang}
               onChange={(e) => changeSubtitlesLang(e.target.value)}
-              placeholder="ru,en или all"
+              placeholder={t("set.subtitlesPlaceholder")}
               className="w-full rounded-ui border-2 border-fog bg-snow px-3 py-2 text-sm font-semibold text-ink placeholder-smoke outline-none focus:border-accent"
             />
           )}
           <p className="text-xs font-semibold text-smoke">
-            Встраиваются в видео. Языки через запятую (или «all» — все доступные).
+            {t("set.subtitlesHint")}
           </p>
         </section>
 
@@ -409,12 +504,12 @@ export default function Settings({
         <section className="space-y-3">
           <Toggle
             icon={<Scissors className="h-4 w-4 text-accent" strokeWidth={2.25} />}
-            label="Вырезать спонсорские вставки"
+            label={t("set.sponsorblock")}
             on={sponsorblock}
             onToggle={toggleSponsorblock}
           />
           <p className="text-xs font-semibold text-smoke">
-            SponsorBlock удаляет спонсорские сегменты и интро (по базе сообщества).
+            {t("set.sponsorblockHint")}
           </p>
         </section>
 
@@ -423,7 +518,7 @@ export default function Settings({
           <div className="flex items-center justify-between text-sm font-semibold">
             <span className="flex items-center gap-2">
               <RefreshCw className="h-4 w-4 text-accent" strokeWidth={2.25} />
-              Движок yt-dlp
+              {t("set.engine")}
             </span>
             <button
               onClick={handleUpdate}
@@ -455,11 +550,11 @@ export default function Settings({
                   </motion.span>
                 )}
               </AnimatePresence>
-              Обновить
+              {t("set.update")}
             </button>
           </div>
           <p className="text-xs font-semibold text-smoke">
-            Если какой-то сайт перестал работать — обновите движок.
+            {t("set.engineHint")}
           </p>
         </section>
 
@@ -467,11 +562,11 @@ export default function Settings({
         <section className="space-y-3">
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Palette className="h-4 w-4 text-accent" strokeWidth={2.25} />
-            Тема оформления
+            {t("set.theme")}
           </div>
           <ThemeSwitcher />
           <p className="text-xs font-semibold text-smoke">
-            Верхний ряд — светлые, нижний — тёмные.
+            {t("set.themeHint")}
           </p>
         </section>
 
@@ -480,7 +575,7 @@ export default function Settings({
           <div className="flex items-center justify-between text-sm font-semibold">
             <span className="flex items-center gap-2">
               <Trash2 className="h-4 w-4 text-rose-500" strokeWidth={2.25} />
-              Удалить приложение
+              {t("set.uninstall")}
             </span>
             <button
               onClick={() => {
@@ -489,11 +584,11 @@ export default function Settings({
               }}
               className="rounded-ui border-2 border-rose-500 px-3 py-1.5 text-xs font-semibold text-rose-500 hover:bg-rose-500 hover:text-white"
             >
-              Удалить
+              {t("lib.delete")}
             </button>
           </div>
           <p className="text-xs font-semibold text-smoke">
-            Сотрёт данные приложения и запустит деинсталляцию.
+            {t("set.uninstallHint")}
           </p>
         </section>
       </motion.div>
@@ -522,11 +617,10 @@ export default function Settings({
             >
               <div className="flex items-center gap-2">
                 <AlertTriangle className="h-5 w-5 shrink-0 text-rose-500" strokeWidth={2.25} />
-                <h3 className="text-base font-semibold tracking-tight">Удалить Mestia?</h3>
+                <h3 className="text-base font-semibold tracking-tight">{t("set.uninstallTitle")}</h3>
               </div>
               <p className="text-sm font-semibold text-smoke">
-                Будут стёрты данные приложения (история, медиатека, настройки) и
-                запущена деинсталляция. Действие необратимо.
+                {t("set.uninstallText")}
               </p>
 
               <label className="flex cursor-pointer items-start gap-2.5 rounded-ui border-2 border-fog bg-paper/40 p-3">
@@ -537,9 +631,9 @@ export default function Settings({
                   className="mt-0.5 h-4 w-4 shrink-0 accent-rose-500"
                 />
                 <span className="text-sm font-semibold">
-                  Также удалить скачанные файлы
+                  {t("set.alsoDeleteFiles")}
                   <span className="mt-0.5 block text-xs font-semibold text-smoke">
-                    Папка загрузок со всем видео/аудио. Иначе файлы останутся на диске.
+                    {t("set.alsoDeleteFilesHint")}
                   </span>
                 </span>
               </label>
@@ -550,7 +644,7 @@ export default function Settings({
                   disabled={uninstalling}
                   className="rounded-ui border-2 border-fog px-4 py-2 text-sm font-semibold hover:bg-fog disabled:opacity-50"
                 >
-                  Отмена
+                  {t("common.cancel")}
                 </button>
                 <button
                   onClick={handleUninstall}
@@ -562,7 +656,7 @@ export default function Settings({
                   ) : (
                     <Trash2 className="h-4 w-4" strokeWidth={2.25} />
                   )}
-                  Удалить приложение
+                  {t("set.uninstall")}
                 </button>
               </div>
             </motion.div>

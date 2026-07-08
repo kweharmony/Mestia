@@ -14,10 +14,12 @@ import History from "./views/History";
 import Player from "./views/Player";
 import { exitApp } from "./lib/ipc";
 import { useDownloads } from "./context/DownloadsContext";
+import { useI18n } from "./context/LanguageContext";
 import type { TabId, VideoRow } from "./types";
 
 export default function App() {
   const { hasActive } = useDownloads();
+  const { t } = useI18n();
   const [tab, setTab] = useState<TabId>("downloader");
   const [playing, setPlaying] = useState<VideoRow | null>(null);
   const [playQueue, setPlayQueue] = useState<VideoRow[]>([]);
@@ -72,12 +74,12 @@ export default function App() {
       />
 
       <main className="relative flex flex-1 flex-col overflow-y-auto">
-        {tab === "downloader" && <Downloader />}
+        {tab === "downloader" && <Downloader onOpenSettings={() => setSettingsOpen(true)} />}
         {tab === "locker" && <Locker key={storageVersion} onPlay={openPlayer} />}
         {tab === "history" && <History onPlay={openPlayer} />}
       </main>
 
-      <DownloadsPanel />
+      <DownloadsPanel onOpenSettings={() => setSettingsOpen(true)} />
 
       {playing && (
         <Player
@@ -118,9 +120,9 @@ export default function App() {
             onClick={(e) => e.stopPropagation()}
           >
             <div>
-              <h3 className="text-base font-semibold tracking-tight">Закрыть Mestia?</h3>
+              <h3 className="text-base font-semibold tracking-tight">{t("app.closeTitle")}</h3>
               <p className="mt-1 text-sm font-semibold text-smoke">
-                Свернуть в трей или выйти полностью?
+                {t("app.closeText")}
               </p>
             </div>
             <div className="flex flex-col gap-2">
@@ -132,21 +134,21 @@ export default function App() {
                 className="flex items-center justify-center gap-2 rounded-ui border-2 border-ink bg-snow px-4 py-2.5 text-sm font-semibold hover:bg-fog"
               >
                 <PictureInPicture2 className="h-4 w-4" strokeWidth={2.25} />
-                Свернуть в трей
+                {t("app.tray")}
               </button>
               <button
                 onClick={() => exitApp()}
                 className="flex items-center justify-center gap-2 rounded-ui bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90"
               >
                 <LogOut className="h-4 w-4" strokeWidth={2.25} />
-                Выйти
+                {t("app.exit")}
               </button>
               <button
                 onClick={() => setClosePrompt(false)}
                 className="flex items-center justify-center gap-2 rounded-ui px-4 py-2 text-sm font-semibold text-smoke hover:text-ink"
               >
                 <X className="h-4 w-4" strokeWidth={2.25} />
-                Отмена
+                {t("common.cancel")}
               </button>
             </div>
           </motion.div>
