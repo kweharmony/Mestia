@@ -65,22 +65,11 @@ jobs:
           # На macOS собираем universal-сайдкары (lipo arm64 + x86_64).
           MESTIA_MAC_UNIVERSAL: ${{ matrix.platform == 'macos-latest' && '1' || '' }}
 
-      # По умолчанию сборка macOS ad-hoc-подписана (signingIdentity "-") — работает
-      # только после `xattr -cr` у пользователя. Если в секретах задан Developer ID
-      # (APPLE_SIGNING_IDENTITY), подменяем идентичность в конфиге, и связка секретов
-      # ниже включает полноценную подпись + нотаризацию (Gatekeeper пропустит без плясок).
-      - name: macOS — включить Developer ID при наличии сертификата
-        if: matrix.platform == 'macos-latest'
-        env:
-          ID: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-        run: |
-          if [ -n "$ID" ]; then
-            node -e "const f='src-tauri/tauri.conf.json';const c=require('./'+f);c.bundle.macOS.signingIdentity=process.env.ID;require('fs').writeFileSync(f,JSON.stringify(c,null,2)+'\n')"
-            echo "signingIdentity → Developer ID (нотаризация включена)"
-          else
-            echo "APPLE_SIGNING_IDENTITY не задан — остаётся ad-hoc (-); см. README про xattr"
-          fi
-
+      # macOS собирается ad-hoc (signingIdentity "-" в tauri.conf.json) — работает
+      # у пользователя после `xattr -cr` (см. README). Полноценная подпись +
+      # нотаризация НАМЕРЕННО отключены: нужен платный Apple Developer ID. Чтобы
+      # включить — заведите Apple-секреты и верните сюда шаг подмены signingIdentity
+      # + блок APPLE_* env (история в git); тогда `xattr` пользователям не понадобится.
       - name: Сборка и релиз
         uses: tauri-apps/tauri-action@v0
         env:
@@ -88,17 +77,6 @@ jobs:
           # Подпись апдейтера — приватный ключ и пароль из секретов репозитория.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Подпись и нотаризация macOS. Активны, только если секреты заданы; иначе
-          # tauri-action их игнорирует и оставляет ad-hoc. Нужны все шесть:
-          # APPLE_CERTIFICATE (base64 .p12), APPLE_CERTIFICATE_PASSWORD,
-          # APPLE_SIGNING_IDENTITY ("Developer ID Application: …"), APPLE_ID,
-          # APPLE_PASSWORD (app-specific), APPLE_TEAM_ID.
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Mestia ${{ github.ref_name }}"
