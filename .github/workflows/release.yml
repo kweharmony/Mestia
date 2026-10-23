@@ -161,12 +161,26 @@ jobs:
             echo "::error::Нет секрета ANDROID_KEYSTORE_BASE64 — APK не подписать (см. README → Android)."
             exit 1
           fi
-          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          # Значения вставляют руками — срезаем пробелы/переводы строк по краям.
+          trim() { printf '%s' "$1" | tr -d '[:cntrl:]' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'; }
+          PASS=$(trim "$KEYSTORE_PASSWORD")
+          ALIAS=$(trim "$KEY_ALIAS")
+          printf '%s' "$KEYSTORE_B64" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/release.jks"
+          # Проверяем ключ до долгой сборки и говорим, что именно не так (без самих секретов).
+          echo "Отпечаток .jks (sha256, начало): $(sha256sum "$RUNNER_TEMP/release.jks" | cut -c1-16)"
+          if ! keytool -list -keystore "$RUNNER_TEMP/release.jks" -storepass "$PASS" >/dev/null 2>&1; then
+            echo "::error::Хранилище не открылось: неверный ANDROID_KEYSTORE_PASSWORD (длина ${#PASS}) или ANDROID_KEYSTORE_BASE64 — не тот файл."
+            exit 1
+          fi
+          if ! keytool -list -keystore "$RUNNER_TEMP/release.jks" -storepass "$PASS" -alias "$ALIAS" >/dev/null 2>&1; then
+            echo "::error::В хранилище нет ключа с алиасом из ANDROID_KEY_ALIAS (длина ${#ALIAS}). Есть: $(keytool -list -keystore "$RUNNER_TEMP/release.jks" -storepass "$PASS" | grep -i PrivateKeyEntry | cut -d, -f1)"
+            exit 1
+          fi
           cat > src-tauri/gen/android/keystore.properties <<EOF
           storeFile=$RUNNER_TEMP/release.jks
-          storePassword=$KEYSTORE_PASSWORD
-          keyAlias=$KEY_ALIAS
-          keyPassword=$KEYSTORE_PASSWORD
+          storePassword=$PASS
+          keyAlias=$ALIAS
+          keyPassword=$PASS
           EOF
 
       # NDK уже есть в образе ubuntu-latest (ANDROID_NDK_LATEST_HOME).
