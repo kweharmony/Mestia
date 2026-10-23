@@ -216,6 +216,23 @@ export default function Player({
     return () => mq.removeEventListener("change", onChange);
   }, [audio]);
 
+  // Полноэкранный режим: контролы прячутся через 5 с без касаний (на паузе — видны).
+  // poke — «пользователь что-то трогал»: показать и перезапустить отсчёт.
+  const [controlsShown, setControlsShown] = useState(true);
+  const [pokeTick, setPokeTick] = useState(0);
+  const poke = () => {
+    setControlsShown(true);
+    setPokeTick((n) => n + 1);
+  };
+  useEffect(() => {
+    if (!immersive || !playing) {
+      setControlsShown(true);
+      return;
+    }
+    const t = window.setTimeout(() => setControlsShown(false), 5000);
+    return () => window.clearTimeout(t);
+  }, [immersive, playing, pokeTick]);
+
   // Системная «Назад» (см. App): сперва выходим из полноэкранного режима.
   useEffect(() => {
     if (!immersive) return;
@@ -667,7 +684,12 @@ export default function Player({
 
   // ── Видеоплеер в главном окне (мини-окно и аудио обработаны выше) ──────────
   const ic = "h-5 w-5";
-  const btn = "shrink-0 rounded-ui p-2 text-smoke hover:bg-fog hover:text-ink";
+  const btn = immersive
+    ? "shrink-0 rounded-md p-1.5 text-white/90 transition-colors active:bg-white/20"
+    : "shrink-0 rounded-ui p-2 text-smoke hover:bg-fog hover:text-ink";
+  const timeCls = immersive ? "text-white/80" : "text-smoke";
+  // Незаполненная часть ползунка: на видео — полупрозрачный белый.
+  const trackRest = immersive ? "rgba(255,255,255,0.3)" : "var(--c-fog)";
   return (
     <div
       className={
@@ -710,7 +732,14 @@ export default function Player({
                 ? "min-h-0 w-full flex-1 bg-black object-contain"
                 : "max-h-[70vh] min-h-0 w-full flex-1 bg-black md:min-h-[280px]"
             }
-            onClick={togglePlay}
+            onClick={() => {
+              if (immersive && !controlsShown) {
+                poke(); // первый тап по скрытым контролам — только показать их
+                return;
+              }
+              togglePlay();
+              if (immersive) poke();
+            }}
           >
             {subTrack}
           </video>
@@ -718,9 +747,14 @@ export default function Player({
 
         {/* Контролы */}
         <div
-          className={`flex items-center gap-1 px-2 py-2 md:gap-2 md:px-4 md:py-3 ${
-            immersive ? "absolute inset-x-0 bottom-0 bg-snow/85 backdrop-blur-sm" : ""
-          }`}
+          onPointerDown={immersive ? poke : undefined}
+          className={
+            immersive
+              ? `absolute inset-x-0 bottom-0 flex items-center gap-1 bg-gradient-to-t from-black/60 to-transparent px-3 pb-2 pt-10 transition-opacity duration-300 ${
+                  controlsShown ? "opacity-100" : "pointer-events-none opacity-0"
+                }`
+              : "flex items-center gap-1 px-2 py-2 md:gap-2 md:px-4 md:py-3"
+          }
         >
           {queue.length > 1 && (
             <button
@@ -739,7 +773,9 @@ export default function Player({
 
           <button
             onClick={togglePlay}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-ui bg-accent text-white transition-all hover:opacity-90 active:scale-95"
+            className={`flex shrink-0 items-center justify-center rounded-ui bg-accent text-white transition-all hover:opacity-90 active:scale-95 ${
+              immersive ? "h-9 w-9" : "h-10 w-10"
+            }`}
           >
             {playing ? (
               <Pause className={`${ic} fill-current`} strokeWidth={2.25} />
@@ -763,7 +799,7 @@ export default function Player({
             </button>
           )}
 
-          <span className="shrink-0 text-xs font-semibold tabular-nums text-smoke">
+          <span className={`shrink-0 text-xs font-semibold tabular-nums ${timeCls}`}>
             {formatDuration(time)}
           </span>
 
@@ -780,15 +816,17 @@ export default function Player({
             style={{
               background: `linear-gradient(to right, var(--c-accent) ${
                 duration ? (time / duration) * 100 : 0
-              }%, var(--c-fog) 0%)`,
+              }%, ${trackRest} 0%)`,
             }}
           />
 
-          <span className="hidden w-12 shrink-0 text-right text-xs font-semibold tabular-nums text-smoke md:inline">
+          <span className={`hidden w-12 shrink-0 text-right text-xs font-semibold tabular-nums md:inline ${timeCls}`}>
             {formatDuration(duration)}
           </span>
 
-          {/* Громкость */}
+          {/* Громкость и внешний плеер — не в полноэкранном режиме: там только
+              основное (громкость — кнопками телефона). */}
+          {!immersive && <>
           <button onClick={toggleMute} title={`${t("player.sound")} (M)`} className={btn}>
             <VolIcon className={ic} strokeWidth={2.25} />
           </button>
@@ -815,6 +853,7 @@ export default function Player({
           >
             <ExternalLink className={ic} strokeWidth={2.25} />
           </button>
+          </>}
 
           {/* Отдельных окон на Android нет. */}
           {!IS_ANDROID && (
