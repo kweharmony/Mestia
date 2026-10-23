@@ -4,9 +4,9 @@ Guidance for AI agents working in this repository.
 
 ## Project
 
-**Mestia** — cross-platform desktop app for downloading video/audio and managing a
-media library. A GUI wrapper around `yt-dlp` with a built-in player, file manager,
-and themes.
+**Mestia** — cross-platform app (desktop + Android) for downloading video/audio and
+managing a media library. A GUI wrapper around `yt-dlp` with a built-in player, file
+manager, and themes.
 
 ## Tech Stack
 
@@ -23,6 +23,9 @@ and themes.
   transition doesn't fight framer's per-frame writes.
 - **Database:** SQLite via `tauri-plugin-sql` (migrations in `src-tauri/migrations/`)
 - **Sidecars:** `yt-dlp` + `ffmpeg`/`ffprobe` (bundled per-OS into `src-tauri/binaries/`)
+- **Android:** Tauri mobile; yt-dlp/Python/ffmpeg from `youtubedl-android` (GPL-3.0) via an
+  app-local Kotlin plugin `MestiaPlugin` (`src-tauri/gen/android/…/com/mestia/app/`).
+  Desktop-only code is gated with `#[cfg(desktop)]`, UI with `IS_ANDROID` (`src/lib/platform.ts`).
 - **Package manager:** npm
 
 ## Commands
@@ -37,6 +40,7 @@ and themes.
 | Frontend tests | `npm test` (Vitest; files `src/**/*.test.ts`) |
 | Rust tests | `cargo test` (run in `src-tauri/`) |
 | Build installers | `npm run tauri build` |
+| Android dev / APK | `npm run tauri android dev` / `npm run tauri android build -- --apk` (needs `ANDROID_HOME`, `NDK_HOME`) |
 | Tauri CLI | `npm run tauri -- <args>` |
 
 Notes:
@@ -58,17 +62,23 @@ scripts/            Node scripts: fetch-binaries.mjs, free-port.mjs
 src/                Frontend (React + TS)
   context/          React contexts: ThemeContext, LanguageContext (i18n), DownloadsContext (queue/events), DragContext
   components/       UI: Sidebar, Settings, DownloadsPanel, Splash, Toast, Typewriter, ThemeSwitcher, Logo
-  lib/              ipc.ts (bridge to Rust commands), db.ts (SQLite access), i18n.ts (ru/en/zh dictionary + t())
+  lib/              ipc.ts (bridge to Rust commands), db.ts (SQLite access), i18n.ts (ru/en/zh dictionary + t()),
+                    platform.ts (IS_ANDROID, share-text URL extraction)
   views/            Downloader, Locker (library), History, Player, MiniPlayer
   types.ts          Shared TS types
 src-tauri/          Backend (Rust + Tauri v2)
   src/lib.rs        Plugins, tray, smart-close, command registration (mestia_lib::run)
-  src/downloader.rs yt-dlp: metadata, download, cancel, progress events
+  src/downloader.rs yt-dlp args: metadata, download, progress/item events
+  src/engine.rs     yt-dlp runner: desktop sidecar / Android Kotlin plugin; cancel
+  src/mobile.rs     Android bridge to MestiaPlugin (storage root, thumbnails, share, update)
   src/storage.rs    Files, folders, file-watcher, thumbnails, settings
   src/main.rs       Entry point -> mestia_lib::run()
   migrations/       SQLite schema
-  capabilities/     Plugin permissions (default.json)
+  capabilities/     Plugin permissions (default.json; desktop.json — desktop-only)
   tauri.conf.json   Window, tray, sidecar, asset protocol, NSIS, updater
+  tauri.android.conf.json  Android overrides (no sidecars, minSdk 30)
+  gen/android/      Android Studio project: MestiaPlugin.kt, DownloadService.kt (foreground
+                    service), MainActivity.kt (insets), manifest (share intent), Gradle deps
 ```
 
 The frontend calls Rust via `src/lib/ipc.ts`. Rust emits download progress and

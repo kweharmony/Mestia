@@ -21,6 +21,7 @@ import {
 import type { VideoRow } from "../types";
 import { existingPaths, formatDuration, getSetting, isAudioPath, openPath, subtitleTrack } from "../lib/ipc";
 import { useI18n } from "../context/LanguageContext";
+import { IS_ANDROID } from "../lib/platform";
 
 // Linux (webkit2gtk) без Android — на нём чаще всего не хватает GStreamer-кодеков.
 const IS_LINUX = /Linux/i.test(navigator.userAgent) && !/Android/i.test(navigator.userAgent);
@@ -438,7 +439,7 @@ export default function Player({
     const abtn = "shrink-0 rounded-ui p-1.5 text-smoke transition-colors hover:bg-fog hover:text-ink disabled:opacity-30";
     return (
       <div
-        className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-8 backdrop-blur-sm"
+        className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm md:p-8"
         onClick={onClose}
       >
         <div
@@ -599,17 +600,20 @@ export default function Player({
                 >
                   <ExternalLink className="h-4 w-4" strokeWidth={2.25} />
                 </button>
-                <button
-                  onClick={() => {
-                    openMiniWindow(video);
-                    onClose();
-                  }}
-                  title={t("player.miniWindow")}
-                  aria-label={t("player.miniWindow")}
-                  className={abtn}
-                >
-                  <PictureInPicture2 className="h-4 w-4" strokeWidth={2.25} />
-                </button>
+                {/* Отдельных окон на Android нет. */}
+                {!IS_ANDROID && (
+                  <button
+                    onClick={() => {
+                      openMiniWindow(video);
+                      onClose();
+                    }}
+                    title={t("player.miniWindow")}
+                    aria-label={t("player.miniWindow")}
+                    className={abtn}
+                  >
+                    <PictureInPicture2 className="h-4 w-4" strokeWidth={2.25} />
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -623,11 +627,11 @@ export default function Player({
   const btn = "shrink-0 rounded-ui p-2 text-smoke hover:bg-fog hover:text-ink";
   return (
     <div
-      className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-8 backdrop-blur-sm"
+      className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-2 backdrop-blur-sm md:p-8"
       onClick={onClose}
     >
       <div
-        className="flex w-[70vw] min-w-[360px] max-w-[1100px] flex-col overflow-hidden rounded-ui border-2 border-ink bg-snow"
+        className="flex w-full max-w-[1100px] md:w-[70vw] md:min-w-[360px] flex-col overflow-hidden rounded-ui border-2 border-ink bg-snow"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Заголовок */}
@@ -657,7 +661,7 @@ export default function Player({
         )}
 
         {/* Контролы */}
-        <div className="flex items-center gap-2 px-4 py-3">
+        <div className="flex items-center gap-1 px-2 py-2 md:gap-2 md:px-4 md:py-3">
           {queue.length > 1 && (
             <button
               onClick={() => prevVideo && onChange(prevVideo)}
@@ -718,7 +722,7 @@ export default function Player({
             }}
           />
 
-          <span className="w-12 shrink-0 text-right text-xs font-semibold tabular-nums text-smoke">
+          <span className="hidden w-12 shrink-0 text-right text-xs font-semibold tabular-nums text-smoke md:inline">
             {formatDuration(duration)}
           </span>
 
@@ -734,7 +738,7 @@ export default function Player({
             value={muted ? 0 : volume}
             onChange={(e) => applyVolume(Number(e.target.value))}
             title={`${t("player.volume")} (↑/↓)`}
-            className="h-1.5 w-20 shrink-0 cursor-pointer appearance-none rounded-full"
+            className="hidden h-1.5 w-20 shrink-0 cursor-pointer appearance-none rounded-full md:block"
             style={{
               background: `linear-gradient(to right, var(--c-accent) ${
                 (muted ? 0 : volume) * 100
@@ -750,20 +754,25 @@ export default function Player({
             <ExternalLink className={ic} strokeWidth={2.25} />
           </button>
 
-          <button
-            onClick={() => {
-              openMiniWindow(video);
-              onClose();
-            }}
-            title={t("player.miniWindow")}
-            className={btn}
-          >
-            <PictureInPicture2 className={ic} strokeWidth={2.25} />
-          </button>
+          {/* Отдельных окон и HTML-fullscreen в Android WebView нет. */}
+          {!IS_ANDROID && (
+            <>
+              <button
+                onClick={() => {
+                  openMiniWindow(video);
+                  onClose();
+                }}
+                title={t("player.miniWindow")}
+                className={btn}
+              >
+                <PictureInPicture2 className={ic} strokeWidth={2.25} />
+              </button>
 
-          <button onClick={toggleFullscreen} title={`${t("player.fullscreen")} (F)`} className={btn}>
-            <Maximize className={ic} strokeWidth={2.25} />
-          </button>
+              <button onClick={toggleFullscreen} title={`${t("player.fullscreen")} (F)`} className={btn}>
+                <Maximize className={ic} strokeWidth={2.25} />
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

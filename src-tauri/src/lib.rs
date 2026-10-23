@@ -1,12 +1,19 @@
 mod downloader;
+mod engine;
+#[cfg(mobile)]
+mod mobile;
 mod storage;
 
+#[cfg(desktop)]
 use tauri::menu::{Menu, MenuItem};
+#[cfg(desktop)]
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+#[cfg(desktop)]
 use tauri::{Emitter, Manager, WindowEvent};
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 /// Показать и сфокусировать главное окно.
+#[cfg(desktop)]
 fn show_main(app: &tauri::AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
@@ -54,20 +61,28 @@ pub fn run() {
         },
     ];
 
-    tauri::Builder::default()
-        .manage(downloader::ActiveProcs::default())
-        .manage(storage::LibWatcher::default())
-        .plugin(tauri_plugin_shell::init())
+    let builder = tauri::Builder::default()
+        .manage(engine::ActiveProcs::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations("sqlite:mestia.db", migrations)
                 .build(),
-        )
+        );
+
+    // Android: yt-dlp/ffmpeg, foreground-сервис и прочее — в Kotlin-плагине.
+    #[cfg(mobile)]
+    let builder = builder.plugin(mobile::init());
+
+    // Компьютер: sidecar-бинарники, самообновление, слежение за папкой, трей.
+    #[cfg(desktop)]
+    let builder = builder
+        .manage(storage::LibWatcher::default())
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         // Иконка в системном трее с меню.
         .setup(|app| {
             let show = MenuItem::with_id(app, "show", "Открыть Mestia", true, None::<&str>)?;
@@ -105,7 +120,9 @@ pub fn run() {
                     let _ = window.emit("app://close-requested", ());
                 }
             }
-        })
+        });
+
+    builder
         .invoke_handler(tauri::generate_handler![
             downloader::fetch_metadata,
             downloader::start_download,
@@ -132,6 +149,8 @@ pub fn run() {
             storage::rename_folder,
             storage::reveal_in_explorer,
             storage::subtitle_track,
+            storage::take_shared_text,
+            storage::move_app_to_back,
         ])
         .run(tauri::generate_context!())
         .expect("Ошибка запуска приложения Mestia");

@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">Mestia</string>
+    <string name="main_activity_title">Mestia</string>
+    <!-- Язык по умолчанию — русский, как и в интерфейсе (src/lib/i18n.ts) -->
+    <string name="downloads_channel">Загрузки</string>
+    <string name="downloads_running">Идёт загрузка…</string>
+    <string name="share_label">Скачать в Mestia</string>
+</resources>

@@ -17,6 +17,7 @@ import type { HistoryRow, VideoRow } from "../types";
 import { useToast } from "../components/Toast";
 import { useDownloads } from "../context/DownloadsContext";
 import { useI18n } from "../context/LanguageContext";
+import { IS_ANDROID } from "../lib/platform";
 
 interface HistoryProps {
   onPlay: (v: VideoRow) => void;
@@ -92,7 +93,7 @@ export default function History({ onPlay, onGoToDownloader }: HistoryProps) {
   }
 
   return (
-    <div className="mestia-fade-in flex-1 p-12">
+    <div className="mestia-fade-in flex-1 p-4 md:p-12">
       <div className="mx-auto max-w-[1000px] space-y-8">
         <div className="flex items-end justify-between border-b-2 border-fog pb-4">
           <h1 className="text-2xl font-normal tracking-tight">{t("hist.title")}</h1>
@@ -185,13 +186,16 @@ function HistoryItem({
       <div className="flex shrink-0 items-center gap-1">
         {row.status === "success" && (
           <>
-            <button
-              onClick={onReveal}
-              title={t("hist.openFolder")}
-              className="rounded-ui p-2 text-smoke hover:bg-fog hover:text-ink"
-            >
-              <FolderOpen className="h-5 w-5" strokeWidth={2.25} />
-            </button>
+            {/* Проводника на Android нет. */}
+            {!IS_ANDROID && (
+              <button
+                onClick={onReveal}
+                title={t("hist.openFolder")}
+                className="rounded-ui p-2 text-smoke hover:bg-fog hover:text-ink"
+              >
+                <FolderOpen className="h-5 w-5" strokeWidth={2.25} />
+              </button>
+            )}
             <button
               onClick={onPlay}
               title={t("hist.play")}

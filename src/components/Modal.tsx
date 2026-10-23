@@ -38,7 +38,7 @@ export default function Modal({ open, onClose, children, maxWidth = 400, z = 50,
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.15 }}
-          className="mestia-anim fixed inset-0 flex items-center justify-center bg-black/60 p-8 backdrop-blur-sm"
+          className="mestia-anim fixed inset-0 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm md:p-8"
           style={{ zIndex: z }}
           onClick={() => onClose?.()}
         >

@@ -17,6 +17,7 @@ import { useDownloads, type ActiveDownload } from "../context/DownloadsContext";
 import { humanizeError, updateYtdlp } from "../lib/ipc";
 import { useI18n } from "../context/LanguageContext";
 import { useToast } from "./Toast";
+import { IS_ANDROID } from "../lib/platform";
 
 /**
  * Прогресс для полосы и подписи. Для плейлиста — агрегат по всем роликам
@@ -46,7 +47,7 @@ export default function DownloadsPanel({ onOpenSettings }: { onOpenSettings: () 
 
   return (
     <div
-      className="fixed bottom-6 right-6 z-30 flex flex-col items-end gap-2 no-select"
+      className="fixed bottom-20 right-4 z-30 flex md:bottom-6 md:right-6 flex-col items-end gap-2 no-select"
       onMouseEnter={() => setHovering(true)}
       onMouseLeave={() => setHovering(false)}
     >
@@ -58,7 +59,7 @@ export default function DownloadsPanel({ onOpenSettings }: { onOpenSettings: () 
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.96 }}
             transition={{ duration: 0.15 }}
-            className="mestia-anim w-[330px] space-y-2 rounded-ui border-2 border-ink bg-snow p-3 shadow-lg"
+            className="mestia-anim w-[min(330px,calc(100vw-2rem))] space-y-2 rounded-ui border-2 border-ink bg-snow p-3 shadow-lg"
           >
             <div className="flex items-center gap-2 px-1 pb-1 text-xs font-bold uppercase tracking-wider text-smoke">
               <ArrowDownToLine className="h-3.5 w-3.5 text-accent" strokeWidth={2.5} />
@@ -213,6 +214,8 @@ function ErrorCta({
 
   switch (d.kind) {
     case "auth":
+      // На Android куки браузера недоступны — вести некуда.
+      if (IS_ANDROID) return null;
       return (
         <button onClick={onOpenSettings} className={base}>
           <Cookie className="h-3 w-3" strokeWidth={2.5} /> {t("dp.cta.cookies")}

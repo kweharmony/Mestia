@@ -64,6 +64,7 @@ import { useToast } from "../components/Toast";
 import Modal from "../components/Modal";
 import { useI18n } from "../context/LanguageContext";
 import Typewriter from "../components/Typewriter";
+import { IS_ANDROID } from "../lib/platform";
 
 const SEARCH_HINT_KEYS = ["lib.sh.0", "lib.sh.1", "lib.sh.2", "lib.sh.3", "lib.sh.4", "lib.sh.5"];
 
@@ -631,11 +632,11 @@ export default function Locker({
   }
 
   return (
-    <div className="mestia-fade-in flex-1 p-12">
+    <div className="mestia-fade-in flex-1 p-4 md:p-12">
       <div className="mx-auto max-w-[1000px] space-y-6">
         {/* Заголовок: крошки + действия */}
-        <div className="flex items-end justify-between gap-4 border-b-2 border-fog pb-4">
-          <div className="flex flex-wrap items-center gap-1 text-2xl font-normal tracking-tight">
+        <div className="flex flex-wrap items-end justify-between gap-4 border-b-2 border-fog pb-4">
+          <div className="flex min-w-0 flex-wrap items-center gap-1 text-2xl font-normal tracking-tight">
             <button
               onClick={() => goToCrumb(-1)}
               onDragOver={(e) => {
@@ -685,13 +686,13 @@ export default function Locker({
             >
               <RefreshCw className="mestia-ico-gear h-4 w-4" strokeWidth={2.25} />
             </button>
-            <button
+            {!IS_ANDROID && <button
               onClick={() => openFolder(currentPath).catch((e) => notify(humanizeError(e), "error"))}
               title={t("lib.openExplorer")}
               className="mestia-nav flex items-center justify-center rounded-ui border-2 border-ink p-2 hover:bg-fog"
             >
               <FolderOpen className="mestia-ico-open h-4 w-4" strokeWidth={2.25} />
-            </button>
+            </button>}
             {creating ? (
               <div className="flex items-center gap-2">
                 <input
@@ -802,7 +803,7 @@ export default function Locker({
                 animate={{ opacity: 1, y: 0, x: "-50%" }}
                 exit={{ opacity: 0, y: 24, x: "-50%" }}
                 transition={{ type: "spring", stiffness: 400, damping: 32 }}
-                className="fixed bottom-6 left-1/2 z-40 flex items-center gap-2 rounded-ui border-2 border-ink bg-snow px-3 py-2 text-sm font-semibold shadow-lg no-select"
+                className="fixed bottom-20 left-1/2 z-40 md:bottom-6 flex items-center gap-2 rounded-ui border-2 border-ink bg-snow px-3 py-2 text-sm font-semibold shadow-lg no-select"
               >
                 <span className="px-1">{t("lib.selected", { count: selected.size })}</span>
                 <button
@@ -1184,8 +1185,8 @@ function VideoCard(props: {
         ) : (
           <Play className="absolute h-8 w-8 text-accent opacity-60 group-hover:opacity-100" strokeWidth={2.25} />
         )}
-        {/* Метка типа */}
-        <span className="absolute left-2 top-2 rounded-[4px] bg-ink/85 px-1.5 py-0.5 text-[10px] font-bold uppercase text-snow">
+        {/* Метка типа (на тач-экранах сдвинута: слева всегда виден чекбокс выбора) */}
+        <span className="absolute left-2 top-2 rounded-[4px] bg-ink/85 [@media(hover:none)]:left-9 px-1.5 py-0.5 text-[10px] font-bold uppercase text-snow">
           {audio ? t("lib.audio") : t("lib.video")}
         </span>
         <span className="absolute bottom-2 right-2 rounded-[4px] bg-ink px-1.5 py-0.5 text-[10px] font-bold text-snow">

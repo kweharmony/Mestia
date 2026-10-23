@@ -1,7 +1,7 @@
 # Mestia — Semantic Context Map (CCS)
 
-Cross-platform desktop app (Tauri v2) for downloading video/audio via `yt-dlp` and
-managing a local media library, with a built-in player.
+Cross-platform app (Tauri v2: Windows/macOS/Linux/Steam Deck + Android) for downloading
+video/audio via `yt-dlp` and managing a local media library, with a built-in player.
 
 ## High-level shape
 
@@ -56,6 +56,8 @@ Build-time Node helpers.
   - `db.ts` — SQLite access (history, library structure, metadata).
   - `i18n.ts` — trilingual dictionary (`ru`/`en`/`zh`) + `t()`; module-level `t()` for
     non-React code (e.g. `humanizeError`, desktop notifications).
+  - `platform.ts` — `IS_ANDROID` (hides tray, explorer, mini-window, cookies, uninstall)
+    and URL extraction from shared text.
 - `views/` — top-level screens:
   - `Downloader` — paste URL, pick format/quality, start downloads.
   - `Locker` — the media library (folders + videos grid, multi-select, drag-drop).
@@ -68,26 +70,40 @@ Build-time Node helpers.
 - `src/main.rs` — thin entry, calls `mestia_lib::run()`.
 - `src/lib.rs` — registers plugins, builds the tray, smart-close behavior, and exposes
   the Tauri commands the frontend calls.
-- `src/downloader.rs` — drives `yt-dlp`: fetch metadata, download, cancel, parse and
-  emit progress.
+- `src/downloader.rs` — builds `yt-dlp` arguments (metadata, download), parses and
+  emits progress/item/done events.
+- `src/engine.rs` — runs `yt-dlp` and streams its output line by line: desktop → sidecar
+  via tauri-plugin-shell; Android → Kotlin plugin. Owns cancel (incl. cancel before start).
+- `src/mobile.rs` — Android bridge to `MestiaPlugin` (Kotlin): storage root, thumbnails
+  (MediaMetadataRetriever), open file (FileProvider), MediaStore scan, share intent,
+  move-to-back, yt-dlp update.
+- `gen/android/` — Android Studio project. `MestiaPlugin.kt` wraps youtubedl-android
+  (Python + yt-dlp + ffmpeg); `DownloadService.kt` — foreground service while downloads
+  run; `MainActivity.kt` — system-bar insets; manifest — `ACTION_SEND text/plain` share
+  target, `extractNativeLibs`.
 - `src/storage.rs` — filesystem ops: files/folders, real-time file-watcher, thumbnail
   generation (ffmpeg, cached), settings.
 - `migrations/0001_init.sql` — SQLite schema (applied automatically).
-- `capabilities/default.json` — Tauri plugin permissions.
+- `capabilities/default.json` — Tauri plugin permissions; `desktop.json` — desktop-only
+  (updater). `tauri.android.conf.json` drops sidecars and sets minSdk 30.
 - `tauri.conf.json` — window, tray, sidecar registration, asset protocol, NSIS
   installer, and GitHub-Releases auto-updater config.
 
 ## Key flows
 
-- **Download**: `Downloader` view → `ipc.ts` → `downloader.rs` (spawns `yt-dlp`) →
-  progress events → `DownloadsContext` → UI. Records land in SQLite via `db.ts`.
+- **Download**: `Downloader` view → `ipc.ts` → `downloader.rs` (builds args) →
+  `engine.rs` (sidecar on desktop / `MestiaPlugin.execute` on Android) → progress events →
+  `DownloadsContext` → UI. On Android a foreground service keeps the process alive and each
+  finished file is registered in MediaStore; links arrive via «Share → Mestia». Records land in SQLite via `db.ts`.
   `downloader.rs` reads opt-in settings (`storage::setting`) for browser cookies,
   subtitles and SponsorBlock, and always embeds metadata/thumbnail.
-- **Library**: files live in the user's downloads folder; `storage.rs` watches the
-  folder and emits change events so the `Locker` grid stays in sync. Thumbnails are
+- **Library**: files live in the user's downloads folder (Android: `Download/Mestia`);
+  `storage.rs` watches the folder (desktop) and emits change events so the `Locker` grid
+  stays in sync; on Android the grid rescans on focus. Thumbnails are
   generated on demand and cached in the app data dir.
 - **Auto-update**: on launch the updater plugin checks GitHub Releases; if newer, a
-  modal offers to download, install, and relaunch.
+  modal offers to download, install, and relaunch. Not on Android (APK from Releases);
+  yt-dlp itself updates via Settings on every platform.
 
 ## Conventions
 - Code comments are in **Russian**. UI strings are **localized via i18n** (`src/lib/i18n.ts`,

@@ -1,25 +1,14 @@
-use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tauri::{AppHandle, Emitter, Manager};
-use tauri_plugin_shell::{
-    process::{CommandChild, CommandEvent},
-    ShellExt,
-};
+use tauri::{AppHandle, Emitter};
+#[cfg(desktop)]
+use tauri::Manager;
+#[cfg(desktop)]
+use tauri_plugin_shell::ShellExt;
 
-/// Активные дочерние процессы yt-dlp (id задачи → процесс) — для отмены.
-#[derive(Default)]
-pub struct ActiveProcs(pub Mutex<Procs>);
-
-#[derive(Default)]
-pub struct Procs {
-    running: HashMap<String, CommandChild>,
-    /// Отменены до запуска процесса (пока шёл резолв ссылки) — не стартуем их вовсе.
-    cancelled: HashSet<String>,
-}
+use crate::engine::{self, RunEnd};
 
 // Маркеры в выводе yt-dlp, по которым отличаем строки прогресса и итоговых файлов.
 const MARK_PROGRESS: &str = "[[MP]]";
@@ -184,58 +173,6 @@ pub fn normalize_url(input: &str) -> String {
     }
 }
 
-/// Итог запуска yt-dlp: код выхода и собранные stdout/stderr.
-struct RunOutput {
-    success: bool,
-    stdout: Vec<u8>,
-    stderr: Vec<u8>,
-}
-
-/// Запуск yt-dlp с жёстким таймаутом (чтобы не висеть вечно) и одним мягким
-/// повтором на ошибке запуска процесса. На таймаут — процесс убивается (иначе
-/// осиротевший yt-dlp продолжал бы работать в фоне) и сразу ошибка.
-async fn ytdlp_output_timeout(app: &AppHandle, args: &[String], secs: u64) -> Result<RunOutput, String> {
-    use tokio::time::{sleep, timeout, Duration};
-    let mut attempt = 0u8;
-    let (mut rx, child) = loop {
-        let spawned = app
-            .shell()
-            .command(ytdlp_path(app))
-            .env("PYTHONUTF8", "1")
-            .env("PYTHONIOENCODING", "utf-8")
-            .args(args.to_vec())
-            .spawn();
-        match spawned {
-            Ok(x) => break x,
-            Err(_) if attempt == 0 => {
-                attempt += 1;
-                sleep(Duration::from_millis(500)).await; // мягкий повтор
-            }
-            Err(e) => return Err(e.to_string()),
-        }
-    };
-
-    let collect = async {
-        let mut out = RunOutput { success: false, stdout: Vec::new(), stderr: Vec::new() };
-        while let Some(ev) = rx.recv().await {
-            match ev {
-                CommandEvent::Stdout(b) => out.stdout.extend_from_slice(&b),
-                CommandEvent::Stderr(b) => out.stderr.extend_from_slice(&b),
-                CommandEvent::Terminated(p) => out.success = p.code == Some(0),
-                _ => {}
-            }
-        }
-        out
-    };
-    match timeout(Duration::from_secs(secs), collect).await {
-        Ok(out) => Ok(out),
-        Err(_) => {
-            let _ = child.kill();
-            Err("Превышено время ожидания ответа от сервиса".into())
-        }
-    }
-}
-
 // ── Команда: метаданные (видео или плейлист) ───────────────────────────────────
 
 #[tauri::command]
@@ -264,14 +201,13 @@ pub async fn fetch_metadata(app: AppHandle, url: String) -> Result<FetchResult, 
     meta_args.push(url);
 
     // Жёсткий таймаут + мягкий повтор — чтобы не «крутилось вечно».
-    let output = ytdlp_output_timeout(&app, &meta_args, 30).await?;
+    let output = engine::output(&app, meta_args, 30).await?;
 
     if !output.success {
-        return Err(first_meaningful_line(&String::from_utf8_lossy(&output.stderr)));
+        return Err(first_meaningful_line(&output.stderr));
     }
 
-    let v: Value =
-        serde_json::from_str(&String::from_utf8_lossy(&output.stdout)).map_err(|e| e.to_string())?;
+    let v: Value = serde_json::from_str(&output.stdout).map_err(|e| e.to_string())?;
 
     // Результат поиска — «плейлист» из совпадений; разворачиваем в первый трек.
     let v = if is_search {
@@ -512,6 +448,8 @@ pub async fn start_download(app: AppHandle, args: DownloadArgs) -> Result<(), St
         _ => {}
     }
 
+    // На Android ffmpeg подставляет сам youtubedl-android.
+    #[cfg(desktop)]
     if let Some(dir) = ffmpeg_dir(&app) {
         yt_args.push("--ffmpeg-location".into());
         yt_args.push(dir);
@@ -574,110 +512,48 @@ pub async fn start_download(app: AppHandle, args: DownloadArgs) -> Result<(), St
     yt_args.push(input);
 
     let id = args.id.clone();
-    let mut rx = {
-        // Проверка отмены и регистрация процесса — под одним замком, чтобы отмена,
-        // пришедшая во время резолва ссылки, не потерялась между ними.
-        let state = app.state::<ActiveProcs>();
-        let mut procs = state.0.lock().map_err(|e| e.to_string())?;
-        if procs.cancelled.remove(&id) {
-            let _ = app.emit(
-                "download://done",
-                DonePayload { id, count: 0, ok: false, error: None },
-            );
-            return Ok(());
-        }
-        let (rx, child) = app
-            .shell()
-            .command(ytdlp_path(&app))
-            .env("PYTHONUTF8", "1")
-            .env("PYTHONIOENCODING", "utf-8")
-            .args(yt_args)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-        procs.running.insert(id.clone(), child);
-        rx
-    };
-
-    let mut out_buf = String::new();
-    let mut err_buf = String::new();
     let mut count: u32 = 0;
     let mut last_err = String::new();
+    let end = engine::run(&app, &id, yt_args, true, |_, line| {
+        handle_line(line, &id, &app, &mut count, &mut last_err)
+    })
+    .await?;
 
-    while let Some(event) = rx.recv().await {
-        match event {
-            CommandEvent::Stdout(bytes) => {
-                out_buf.push_str(&String::from_utf8_lossy(&bytes));
-                drain_lines(&mut out_buf, &id, &app, &mut count, &mut last_err);
-            }
-            CommandEvent::Stderr(bytes) => {
-                err_buf.push_str(&String::from_utf8_lossy(&bytes));
-                drain_lines(&mut err_buf, &id, &app, &mut count, &mut last_err);
-            }
-            CommandEvent::Error(e) => {
-                last_err = e;
-            }
-            CommandEvent::Terminated(payload) => {
-                // Процесс завершён — убираем из реестра активных.
-                if let Ok(mut procs) = app.state::<ActiveProcs>().0.lock() {
-                    procs.running.remove(&id);
-                }
-                // Успех определяем по коду выхода yt-dlp, а не только по числу
-                // перемещённых файлов: при «дозакачке» уже готовый файл
-                // пропускается (--no-overwrites) и count==0, хотя это не ошибка.
-                // Провал — ненулевой код, либо код 0, но был вывод ERROR и ни
-                // одного файла (например, весь плейлист упал под --ignore-errors).
-                let code_ok = payload.code == Some(0);
-                let ok = code_ok && (count > 0 || last_err.is_empty());
-                let _ = app.emit(
-                    "download://done",
-                    DonePayload {
-                        id: id.clone(),
-                        count,
-                        ok,
-                        error: if ok {
-                            None
-                        } else if !last_err.is_empty() {
-                            Some(last_err.clone())
-                        } else {
-                            Some(format!(
-                                "Загрузка не завершилась успешно (код {:?})",
-                                payload.code
-                            ))
-                        },
-                    },
-                );
-            }
-            _ => {}
+    let code = match end {
+        RunEnd::Exited(code) => code,
+        // Отменено, пока резолвилась ссылка: фронтенд уже показал «отменено».
+        RunEnd::CancelledBeforeStart => {
+            let _ = app.emit("download://done", DonePayload { id, count: 0, ok: false, error: None });
+            return Ok(());
         }
-    }
-
+    };
+    // Успех определяем по коду выхода yt-dlp, а не только по числу перемещённых
+    // файлов: при «дозакачке» уже готовый файл пропускается (--no-overwrites) и
+    // count==0, хотя это не ошибка. Провал — ненулевой код, либо код 0, но был
+    // вывод ERROR и ни одного файла (например, весь плейлист упал под --ignore-errors).
+    let ok = code == Some(0) && (count > 0 || last_err.is_empty());
+    let error = if ok {
+        None
+    } else if !last_err.is_empty() {
+        Some(last_err)
+    } else {
+        Some(format!("Загрузка не завершилась успешно (код {code:?})"))
+    };
+    let _ = app.emit("download://done", DonePayload { id, count, ok, error });
     Ok(())
 }
 
-/// Отменяет активную загрузку — убивает процесс yt-dlp. Если процесс ещё не
-/// запущен (идёт резолв ссылки), помечает задачу, чтобы она не стартовала.
-/// Частичные .part-файлы остаются, так что загрузку можно продолжить.
-#[tauri::command]
+/// Отменяет активную загрузку (см. `engine::cancel`).
+#[tauri::command(async)]
 pub fn cancel_download(app: AppHandle, id: String) -> Result<(), String> {
-    let child = {
-        let state = app.state::<ActiveProcs>();
-        let mut procs = state.0.lock().map_err(|e| e.to_string())?;
-        let child = procs.running.remove(&id);
-        if child.is_none() {
-            procs.cancelled.insert(id);
-        }
-        child
-    };
-    if let Some(c) = child {
-        c.kill().map_err(|e| e.to_string())?;
-    }
-    Ok(())
+    engine::cancel(&app, &id)
 }
 
 /// Самообновление yt-dlp: качаем свежий standalone-бинарник с GitHub в app-data
 /// (доступную для записи папку). `yt-dlp -U` не годится: бандл лежит рядом с exe,
 /// на Windows — в Program Files, куда нет прав на самоперезапись. После загрузки
 /// `ytdlp_path` автоматически предпочтёт эту копию бандлу.
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn update_ytdlp(app: AppHandle) -> Result<String, String> {
     let bin = ytdlp_writable(&app).ok_or("Не удалось определить папку приложения")?;
@@ -730,15 +606,15 @@ pub async fn update_ytdlp(app: AppHandle) -> Result<String, String> {
     Ok(format!("yt-dlp обновлён до {ver}"))
 }
 
-// ── Вспомогательные функции ─────────────────────────────────────────────────────
-
-/// Разбирает буфер на полные строки (по '\n') и обрабатывает каждую.
-fn drain_lines(buf: &mut String, id: &str, app: &AppHandle, count: &mut u32, last_err: &mut String) {
-    while let Some(idx) = buf.find('\n') {
-        let line: String = buf.drain(..=idx).collect();
-        handle_line(line.trim_end(), id, app, count, last_err);
-    }
+/// Android: обновление встроенного yt-dlp делает youtubedl-android (в его папку данных).
+#[cfg(mobile)]
+#[tauri::command(async)]
+pub fn update_ytdlp(app: AppHandle) -> Result<String, String> {
+    let ver = crate::mobile::update_ytdlp(&app)?;
+    Ok(if ver.is_empty() { "yt-dlp обновлён".into() } else { format!("yt-dlp обновлён до {ver}") })
 }
+
+// ── Вспомогательные функции ─────────────────────────────────────────────────────
 
 /// Обрабатывает одну строку: прогресс / готовый файл (JSON) / ошибка.
 fn handle_line(line: &str, id: &str, app: &AppHandle, count: &mut u32, last_err: &mut String) {
@@ -752,6 +628,12 @@ fn handle_line(line: &str, id: &str, app: &AppHandle, count: &mut u32, last_err:
             // чем filesize из метаданных yt-dlp, который для merged-видео часто пуст.
             if let Ok(meta) = std::fs::metadata(&item.file_path) {
                 item.size = Some(meta.len() as f64);
+            }
+            // Android: показать файл в галерее/плеерах (MediaStore) — в фоне.
+            #[cfg(mobile)]
+            {
+                let (app, path) = (app.clone(), item.file_path.clone());
+                tauri::async_runtime::spawn_blocking(move || crate::mobile::scan_file(&app, &path));
             }
             *count += 1;
             let _ = app.emit("download://item", item);
@@ -820,6 +702,7 @@ fn parse_progress(id: &str, rest: &str) -> Option<ProgressPayload> {
 }
 
 /// Абсолютный путь к бинарнику (yt-dlp/ffmpeg), который CLI кладёт рядом с exe.
+#[cfg(desktop)]
 pub(crate) fn binary_path(name: &str) -> PathBuf {
     let file = if cfg!(windows) {
         format!("{name}.exe")
@@ -844,6 +727,7 @@ pub(crate) fn binary_path(name: &str) -> PathBuf {
 
 /// Путь к обновляемой копии yt-dlp в app-data (доступна для записи, в отличие от
 /// бандл-бинарника рядом с exe — на Windows он лежит в Program Files без прав записи).
+#[cfg(desktop)]
 fn ytdlp_writable(app: &AppHandle) -> Option<PathBuf> {
     let file = if cfg!(windows) { "yt-dlp.exe" } else { "yt-dlp" };
     let dir = app.path().app_data_dir().ok()?.join("bin");
@@ -851,6 +735,7 @@ fn ytdlp_writable(app: &AppHandle) -> Option<PathBuf> {
 }
 
 /// Путь к yt-dlp: сперва обновлённая копия в app-data (если есть), иначе бандл рядом с exe.
+#[cfg(desktop)]
 pub(crate) fn ytdlp_path(app: &AppHandle) -> PathBuf {
     if let Some(p) = ytdlp_writable(app) {
         if p.exists() {
@@ -861,6 +746,7 @@ pub(crate) fn ytdlp_path(app: &AppHandle) -> PathBuf {
 }
 
 /// Имя релиз-ассета yt-dlp на GitHub под текущую ОС/архитектуру (standalone-сборки).
+#[cfg(desktop)]
 fn ytdlp_asset_name() -> &'static str {
     #[cfg(target_os = "windows")]
     {
@@ -881,6 +767,7 @@ fn ytdlp_asset_name() -> &'static str {
 }
 
 /// Ищет каталог с бинарником ffmpeg рядом с приложением / в ресурсах / в dev-папке.
+#[cfg(desktop)]
 fn ffmpeg_dir(app: &AppHandle) -> Option<String> {
     let mut candidates: Vec<PathBuf> = Vec::new();
 

@@ -7,6 +7,8 @@
     "core:default",
     "core:event:default",
     "core:path:default",
+    "core:app:allow-register-listener",
+    "core:app:allow-remove-listener",
     "core:window:allow-hide",
     "core:window:allow-close",
     "core:window:allow-set-focus",
@@ -21,7 +23,6 @@
     "sql:allow-close",
     "dialog:default",
     "notification:default",
-    "updater:default",
     "process:default",
     "clipboard-manager:allow-read-text"
   ]

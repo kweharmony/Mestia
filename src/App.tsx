@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
+import { onBackButtonPress } from "@tauri-apps/api/app";
 import { LogOut, PictureInPicture2, X } from "lucide-react";
 import Sidebar from "./components/Sidebar";
 import Settings from "./components/Settings";
@@ -12,7 +13,8 @@ import Downloader from "./views/Downloader";
 import Locker from "./views/Locker";
 import History from "./views/History";
 import Player from "./views/Player";
-import { exitApp } from "./lib/ipc";
+import { exitApp, moveAppToBack, takeSharedText } from "./lib/ipc";
+import { IS_ANDROID } from "./lib/platform";
 import { useDownloads } from "./context/DownloadsContext";
 import { useI18n } from "./context/LanguageContext";
 import type { TabId, VideoRow } from "./types";
@@ -26,6 +28,8 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [storageVersion, setStorageVersion] = useState(0);
   const [closePrompt, setClosePrompt] = useState(false);
+  // Ссылка из «Поделиться → Mestia» (Android); n — чтобы повторная та же ссылка тоже сработала.
+  const [shared, setShared] = useState<{ text: string; n: number } | null>(null);
 
   // Экран запуска.
   const [booting, setBooting] = useState(true);
@@ -55,6 +59,45 @@ export default function App() {
     };
   }, []);
 
+  // Android: забираем ссылку из «Поделиться» при запуске и при каждом возврате в
+  // приложение (singleTask-активити не перезапускается — intent приходит в onNewIntent).
+  useEffect(() => {
+    if (!IS_ANDROID) return;
+    const check = () => {
+      if (document.visibilityState !== "visible") return;
+      takeSharedText()
+        .then((text) => {
+          if (!text) return;
+          setPlaying(null);
+          setSettingsOpen(false);
+          setTab("downloader");
+          setShared((s) => ({ text, n: (s?.n ?? 0) + 1 }));
+        })
+        .catch(() => {});
+    };
+    check();
+    document.addEventListener("visibilitychange", check);
+    return () => document.removeEventListener("visibilitychange", check);
+  }, []);
+
+  // Android: системная «Назад» закрывает плеер/настройки, затем ведёт на первую
+  // вкладку, а с неё сворачивает приложение (не убивая фоновые загрузки).
+  const backState = useRef({ playing, settingsOpen, tab });
+  backState.current = { playing, settingsOpen, tab };
+  useEffect(() => {
+    if (!IS_ANDROID) return;
+    const sub = onBackButtonPress(() => {
+      const s = backState.current;
+      if (s.playing) setPlaying(null);
+      else if (s.settingsOpen) setSettingsOpen(false);
+      else if (s.tab !== "downloader") setTab("downloader");
+      else moveAppToBack().catch(() => {});
+    });
+    return () => {
+      sub.then((l) => l.unregister()).catch(() => {});
+    };
+  }, []);
+
   function hideToTray() {
     getCurrentWindow().hide().catch(() => {});
   }
@@ -73,8 +116,8 @@ export default function App() {
         onHideToTray={hideToTray}
       />
 
-      <main className="relative flex flex-1 flex-col overflow-y-auto">
-        {tab === "downloader" && <Downloader onOpenSettings={() => setSettingsOpen(true)} />}
+      <main className="relative flex flex-1 flex-col overflow-y-auto pb-16 md:pb-0">
+        {tab === "downloader" && <Downloader onOpenSettings={() => setSettingsOpen(true)} incoming={shared} />}
         {tab === "locker" && (
           <Locker key={storageVersion} onPlay={openPlayer} onGoToDownloader={() => setTab("downloader")} />
         )}

@@ -9,6 +9,7 @@ import type { TabId } from "../types";
 import { useDownloads } from "../context/DownloadsContext";
 import { useI18n } from "../context/LanguageContext";
 import Logo from "./Logo";
+import { IS_ANDROID } from "../lib/platform";
 
 interface SidebarProps {
   active: TabId;
@@ -43,7 +44,36 @@ export default function Sidebar({
     (d) => d.status === "downloading" || d.status === "queued"
   ).length;
   return (
-    <aside className="flex w-[260px] shrink-0 flex-col justify-between bg-paper no-select">
+    <>
+    {/* Узкий экран (телефон): нижняя панель вкладок вместо боковой. */}
+    <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t-2 border-fog bg-paper no-select md:hidden">
+      {NAV.map(({ id, labelKey, icon: Icon }) => (
+        <button
+          key={id}
+          onClick={() => onChange(id)}
+          className={`relative flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-semibold ${
+            active === id ? "text-accent" : "text-smoke"
+          }`}
+        >
+          <Icon className="h-5 w-5" strokeWidth={2.25} />
+          {t(labelKey)}
+          {id === "downloader" && activeCount > 0 && (
+            <span className="absolute right-[calc(50%-22px)] top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-bold text-white">
+              {activeCount}
+            </span>
+          )}
+        </button>
+      ))}
+      <button
+        onClick={onOpenSettings}
+        className="flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-semibold text-smoke"
+      >
+        <Settings className="h-5 w-5" strokeWidth={2.25} />
+        {t("sidebar.settings")}
+      </button>
+    </nav>
+
+    <aside className="hidden w-[260px] shrink-0 flex-col justify-between bg-paper no-select md:flex">
       <div className="space-y-6 p-4">
         {/* Логотип */}
         <Logo />
@@ -77,14 +107,15 @@ export default function Sidebar({
 
       {/* Подвал: мини-режим + настройки */}
       <div className="space-y-1 p-4">
-        <button
+        {/* Трея на Android нет. */}
+        {!IS_ANDROID && <button
           onClick={onHideToTray}
           title={t("sidebar.trayTitle")}
           className="mestia-nav flex w-full items-center gap-3 rounded-ui px-3 py-2 text-sm opacity-80 transition-all hover:bg-fog hover:opacity-100"
         >
           <Minus className="mestia-ico-folderplus h-4 w-4" strokeWidth={2.25} />
           {t("sidebar.tray")}
-        </button>
+        </button>}
         <button
           onClick={onOpenSettings}
           className="mestia-nav flex w-full items-center gap-3 rounded-ui px-3 py-2 text-sm opacity-80 transition-all hover:bg-fog hover:opacity-100"
@@ -94,5 +125,6 @@ export default function Sidebar({
         </button>
       </div>
     </aside>
+    </>
   );
 }

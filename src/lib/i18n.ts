@@ -85,6 +85,11 @@ const DICT: Record<string, Entry> = {
     en: "Enable “Cookies from browser” in settings — it often helps with private, 18+, subscription and anti-bot checks.",
     zh: "在设置中启用“浏览器 Cookie”——这通常有助于私密、18+、订阅内容和反机器人验证。",
   },
+  "dl.authAndroid": {
+    ru: "Источник требует вход в аккаунт. На Android куки браузера недоступны — попробуйте прокси в настройках или скачайте на компьютере.",
+    en: "The source requires signing in. Browser cookies aren't available on Android — try a proxy in settings or download on a computer.",
+    zh: "该来源需要登录。Android 上无法使用浏览器 Cookie——请在设置中尝试代理，或在电脑上下载。",
+  },
   "dl.openSettings": { ru: "Открыть настройки", en: "Open settings", zh: "打开设置" },
   "dl.serviceNotDirect": {
     ru: "{service} напрямую не качается",
@@ -272,6 +277,11 @@ const DICT: Record<string, Entry> = {
   "set.title": { ru: "Настройки", en: "Settings", zh: "设置" },
   "set.downloadFolder": { ru: "Папка загрузок", en: "Download folder", zh: "下载文件夹" },
   "set.folderBusy": { ru: "Смена папки недоступна, пока идут загрузки.", en: "Can't change the folder while downloads are running.", zh: "下载进行时无法更改文件夹。" },
+  "set.folderAndroid": {
+    ru: "Файлы видны в приложении «Файлы» (Загрузки → Mestia), видео и музыка — в галерее и плеерах.",
+    en: "Files are visible in the Files app (Downloads → Mestia); videos and music appear in the gallery and players.",
+    zh: "文件可在“文件”应用中查看（下载 → Mestia），视频和音乐会出现在相册和播放器中。",
+  },
   "set.folderApplies": {
     ru: "Применяется к новым загрузкам. Уже скачанные файлы не переносятся.",
     en: "Applies to new downloads. Already downloaded files are not moved.",

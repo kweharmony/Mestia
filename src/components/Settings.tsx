@@ -36,6 +36,7 @@ import {
   uninstallApp,
   updateYtdlp,
 } from "../lib/ipc";
+import { IS_ANDROID } from "../lib/platform";
 import Modal from "./Modal";
 import ThemeSwitcher from "./ThemeSwitcher";
 import { useToast } from "./Toast";
@@ -238,23 +239,28 @@ export default function Settings({
             <div className="flex-1 truncate rounded-ui border-2 border-fog bg-paper/40 px-3 py-2 text-sm font-semibold">
               {path || "—"}
             </div>
-            <button
-              onClick={() => openFolder(path).catch((e) => notify(humanizeError(e), "error"))}
-              title={t("lib.openExplorer")}
-              className="rounded-ui border-2 border-fog p-2 hover:bg-fog"
-            >
-              <FolderOpen className="h-4 w-4" strokeWidth={2.25} />
-            </button>
-            <button
-              onClick={pickFolder}
-              disabled={hasActive}
-              className="rounded-ui border-2 border-ink px-4 py-2 text-sm font-semibold hover:bg-fog disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {t("common.change")}
-            </button>
+            {/* Android: папка фиксирована (Download/Mestia), проводника нет. */}
+            {!IS_ANDROID && (
+              <>
+                <button
+                  onClick={() => openFolder(path).catch((e) => notify(humanizeError(e), "error"))}
+                  title={t("lib.openExplorer")}
+                  className="rounded-ui border-2 border-fog p-2 hover:bg-fog"
+                >
+                  <FolderOpen className="h-4 w-4" strokeWidth={2.25} />
+                </button>
+                <button
+                  onClick={pickFolder}
+                  disabled={hasActive}
+                  className="rounded-ui border-2 border-ink px-4 py-2 text-sm font-semibold hover:bg-fog disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {t("common.change")}
+                </button>
+              </>
+            )}
           </div>
           <p className="text-xs font-semibold text-smoke">
-            {hasActive ? t("set.folderBusy") : t("set.folderApplies")}
+            {IS_ANDROID ? t("set.folderAndroid") : hasActive ? t("set.folderBusy") : t("set.folderApplies")}
           </p>
         </section>
 
@@ -402,8 +408,8 @@ export default function Settings({
           </p>
         </section>
 
-        {/* Куки из браузера */}
-        <section className="space-y-3">
+        {/* Куки из браузера (на Android браузерных баз куки нет) */}
+        {!IS_ANDROID && <section className="space-y-3">
           <div className="flex items-center justify-between text-sm font-semibold">
             <span className="flex items-center gap-2">
               <Cookie className="h-4 w-4 text-accent" strokeWidth={2.25} />
@@ -427,7 +433,7 @@ export default function Settings({
           <p className="text-xs font-semibold text-smoke">
             {t("set.cookiesHint")}
           </p>
-        </section>
+        </section>}
 
         {/* Прокси */}
         <section className="space-y-3">
@@ -561,8 +567,8 @@ export default function Settings({
           </p>
         </section>
 
-        {/* Удаление приложения */}
-        <section className="space-y-3 border-t-2 border-fog pt-6">
+        {/* Удаление приложения (на Android — системными настройками) */}
+        {!IS_ANDROID && <section className="space-y-3 border-t-2 border-fog pt-6">
           <div className="flex items-center justify-between text-sm font-semibold">
             <span className="flex items-center gap-2">
               <Trash2 className="h-4 w-4 text-rose-500" strokeWidth={2.25} />
@@ -581,7 +587,7 @@ export default function Settings({
           <p className="text-xs font-semibold text-smoke">
             {t("set.uninstallHint")}
           </p>
-        </section>
+        </section>}
     </Modal>
 
       {/* Подтверждение удаления приложения */}

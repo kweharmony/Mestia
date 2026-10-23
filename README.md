@@ -150,6 +150,29 @@ flatpak run com.mestia.app
 > **Авто-обновление.** Во Flatpak встроенный апдейтер не применяется (обновления
 > идут через `flatpak update`); окно обновления можно игнорировать.
 
+### Android
+
+> ⚠️ **Экспериментально.** Android 11+ (minSdk 30). APK ставится вручную из релизов
+> GitHub — в Google Play приложения для скачивания с YouTube не допускаются.
+
+- yt-dlp, Python и ffmpeg встроены через [youtubedl-android](https://github.com/JunkFood02/youtubedl-android)
+  (**GPL-3.0**: Android-сборка как целое распространяется на условиях GPL-3.0; исходники
+  открыты в этом репозитории). Первый запуск чуть дольше — распаковывается Python.
+- Файлы сохраняются в **Загрузки → Mestia**; видео и музыка появляются в галерее и плеерах.
+- Ссылку можно отправить из YouTube/браузера: **Поделиться → Скачать в Mestia**.
+- Загрузки продолжаются в фоне (уведомление «Идёт загрузка…»).
+- Нет на Android: куки из браузера, выбор папки, трей, мини-окно плеера, самообновление
+  приложения (новые версии — APK из релизов). Движок yt-dlp обновляется из настроек.
+
+Сборка (нужны Android SDK + NDK, JDK 17+):
+
+```bash
+npm run tauri android build -- --apk
+```
+
+Переменные `ANDROID_HOME` и `NDK_HOME` должны указывать на SDK и NDK. Для разработки
+на эмуляторе/телефоне — `npm run tauri android dev`.
+
 ---
 
 ## Установка и запуск (dev)
@@ -237,15 +260,19 @@ mestia/
 ├── src/                     # фронтенд (React + TS)
 │   ├── context/             # Theme, Language (i18n), Downloads (очередь/события), Drag
 │   ├── components/          # Sidebar, Settings, Player-панель, Splash, Toast…
-│   ├── lib/                 # ipc.ts (мост в Rust), db.ts (SQLite), i18n.ts (словари ru/en/zh)
+│   ├── lib/                 # ipc.ts (мост в Rust), db.ts (SQLite), i18n.ts (словари ru/en/zh), platform.ts
 │   └── views/               # Downloader, Locker (Медиатека), History, Player
 └── src-tauri/               # бэкенд (Rust + Tauri v2)
     ├── tauri.conf.json      # окно, трей, sidecar, asset-протокол, NSIS
-    ├── capabilities/        # права плагинов
+    ├── tauri.android.conf.json  # Android: без sidecar, minSdk 30
+    ├── capabilities/        # права плагинов (desktop.json — только компьютер)
+    ├── gen/android/         # Android-проект: MestiaPlugin.kt (yt-dlp), DownloadService.kt
     ├── migrations/          # схема SQLite
     └── src/
         ├── lib.rs           # плагины, трей, умное закрытие, команды
-        ├── downloader.rs    # yt-dlp: метаданные, загрузка, отмена, прогресс
+        ├── downloader.rs    # yt-dlp: аргументы метаданных/загрузки, прогресс
+        ├── engine.rs        # запуск yt-dlp: sidecar на компьютере, Kotlin-плагин на Android
+        ├── mobile.rs        # мост к Kotlin-плагину (Android)
         └── storage.rs       # файлы, папки, watcher, превью, настройки
 ```
 

@@ -1,0 +1,5 @@
+<resources>
+    <string name="downloads_channel">下载</string>
+    <string name="downloads_running">正在下载…</string>
+    <string name="share_label">用 Mestia 下载</string>
+</resources>

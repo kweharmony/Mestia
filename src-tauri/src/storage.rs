@@ -1,10 +1,14 @@
+#[cfg(desktop)]
 use notify::{event::ModifyKind, EventKind, RecursiveMode, Watcher};
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::{Emitter, Manager};
+#[cfg(desktop)]
+use tauri::Emitter;
+use tauri::Manager;
 
+#[cfg(desktop)]
 const APP_DIR: &str = "Mestia";
 
 // Команды с диском/процессами помечены `#[tauri::command(async)]`: синхронная
@@ -12,10 +16,20 @@ const APP_DIR: &str = "Mestia";
 // замораживает окно. `async` уводит её в пул потоков, сигнатура остаётся прежней.
 
 /// Активный наблюдатель за папкой библиотеки.
+#[cfg(desktop)]
 #[derive(Default)]
 pub struct LibWatcher(pub Mutex<Option<notify::RecommendedWatcher>>);
 
+/// Android: события FUSE-хранилища ненадёжны — медиатека пересканирует папку при
+/// возврате в приложение (focus), слежение не нужно.
+#[cfg(mobile)]
+#[tauri::command]
+pub fn watch_library(_path: String) -> Result<(), String> {
+    Ok(())
+}
+
 /// Начинает следить за папкой (рекурсивно). При изменениях шлёт `library://changed`.
+#[cfg(desktop)]
 #[tauri::command]
 pub fn watch_library(app: tauri::AppHandle, path: String) -> Result<(), String> {
     let app2 = app.clone();
@@ -122,7 +136,7 @@ pub fn get_setting(app: tauri::AppHandle, key: String) -> Option<String> {
 }
 
 /// Поддерживает ли текущая сборка самообновление через tauri-updater.
-/// Windows/macOS — да. Linux — только AppImage; для .deb/.rpm/Flatpak бинарь
+/// Windows/macOS — да, Android — нет. Linux — только AppImage; для .deb/.rpm/Flatpak бинарь
 /// приложения недоступен для перезаписи, обновление идёт через пакетный менеджер.
 #[tauri::command]
 pub fn updater_supported() -> bool {
@@ -130,9 +144,14 @@ pub fn updater_supported() -> bool {
     {
         std::env::var_os("APPIMAGE").is_some()
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     {
         true
+    }
+    // Android: новые версии — APK из релизов GitHub, плагина обновлений нет.
+    #[cfg(mobile)]
+    {
+        false
     }
 }
 
@@ -150,22 +169,27 @@ pub fn set_setting(app: tauri::AppHandle, key: String, value: String) -> Result<
     write_setting(&app, &key, json!(value))
 }
 
-/// Корневая папка хранилища: пользовательская из настроек или Документы/Mestia.
+/// Корневая папка хранилища: пользовательская из настроек или Документы/Mestia
+/// (на Android — Download/Mestia: туда yt-dlp пишет без разрешений, а файлы видны
+/// в «Файлах» и после сканирования MediaStore — в галерее).
 pub(crate) fn storage_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let root = match configured_dir(app) {
         Some(p) => p,
+        #[cfg(desktop)]
         None => app
             .path()
             .document_dir()
             .map_err(|e| e.to_string())?
             .join(APP_DIR),
+        #[cfg(mobile)]
+        None => crate::mobile::default_storage_root(app)?,
     };
     std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
     Ok(root)
 }
 
 /// Задаёт папку загрузок (сохраняется в настройках). Возвращает применённый путь.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_storage_root(app: tauri::AppHandle, path: String) -> Result<String, String> {
     let p = PathBuf::from(&path);
     std::fs::create_dir_all(&p).map_err(|e| e.to_string())?;
@@ -267,14 +291,14 @@ fn sanitize(name: &str) -> String {
     cleaned.trim().to_string()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_storage_root(app: tauri::AppHandle) -> Result<String, String> {
     Ok(storage_root(&app)?.to_string_lossy().to_string())
 }
 
 /// Создаёт папку на диске. Если задан parent (путь родительской папки) —
 /// создаёт внутри неё, иначе в корне хранилища. Возвращает путь созданной папки.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn create_folder_dir(
     app: tauri::AppHandle,
     name: String,
@@ -343,9 +367,12 @@ fn unique_path(p: PathBuf) -> PathBuf {
 pub fn delete_file(path: String) -> Result<(), String> {
     let p = PathBuf::from(&path);
     if p.is_file() {
-        if trash::delete(&p).is_err() {
-            std::fs::remove_file(&p).map_err(|e| e.to_string())?;
+        // На Android системной корзины для произвольных путей нет — удаляем сразу.
+        #[cfg(desktop)]
+        if trash::delete(&p).is_ok() {
+            return Ok(());
         }
+        std::fs::remove_file(&p).map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -356,9 +383,11 @@ pub fn delete_file(path: String) -> Result<(), String> {
 pub fn delete_folder(path: String) -> Result<(), String> {
     let p = PathBuf::from(&path);
     if p.is_dir() {
-        if trash::delete(&p).is_err() {
-            std::fs::remove_dir_all(&p).map_err(|e| e.to_string())?;
+        #[cfg(desktop)]
+        if trash::delete(&p).is_ok() {
+            return Ok(());
         }
+        std::fs::remove_dir_all(&p).map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -398,6 +427,14 @@ pub fn exit_app(app: tauri::AppHandle) {
 /// `delete_content == true` — ещё и папку загрузок со скачанным контентом,
 /// затем запускает штатную деинсталляцию под текущую ОС. После возврата
 /// фронтенд закрывает приложение.
+#[cfg(mobile)]
+#[tauri::command]
+pub fn uninstall_app(_delete_content: bool) -> Result<(), String> {
+    // Приложение удаляется системой (Настройки → Приложения); кнопка скрыта в UI.
+    Err("На Android приложение удаляется через системные настройки".into())
+}
+
+#[cfg(desktop)]
 #[tauri::command(async)]
 pub fn uninstall_app(app: tauri::AppHandle, delete_content: bool) -> Result<(), String> {
     // 1. Скачанный контент (папка загрузок) — только по согласию пользователя.
@@ -476,6 +513,7 @@ pub fn uninstall_app(app: tauri::AppHandle, delete_content: bool) -> Result<(), 
     Ok(())
 }
 
+#[cfg(desktop)]
 /// Папка, которую нельзя удалять целиком: корень диска или системная папка пользователя.
 fn is_protected_dir(app: &tauri::AppHandle, dir: &std::path::Path) -> bool {
     let canon = |p: &std::path::Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
@@ -497,6 +535,7 @@ fn is_protected_dir(app: &tauri::AppHandle, dir: &std::path::Path) -> bool {
     .any(|p| canon(&p) == d)
 }
 
+#[cfg(desktop)]
 /// Запуск ffmpeg без мелькающего окна консоли (Windows).
 fn ffmpeg_cmd() -> std::process::Command {
     // `mut` нужен только на Windows (creation_flags) — на других ОС он не используется.
@@ -533,7 +572,14 @@ pub fn generate_thumbnail(app: tauri::AppHandle, video_path: String) -> Result<S
     }
 
     let out_str = out.to_string_lossy().to_string();
+    // Android: кадр достаёт MediaMetadataRetriever (Kotlin), ffmpeg-бинарника нет.
+    #[cfg(mobile)]
+    {
+        crate::mobile::thumbnail(&app, &video_path, &out_str)?;
+        return if out.is_file() { Ok(out_str) } else { Err("Не удалось создать превью".into()) };
+    }
     // Кадр с 3-й секунды; для совсем коротких роликов — повтор с начала.
+    #[cfg(desktop)]
     for ss in ["3", "0"] {
         let status = ffmpeg_cmd()
             .args([
@@ -546,6 +592,7 @@ pub fn generate_thumbnail(app: tauri::AppHandle, video_path: String) -> Result<S
             return Ok(out_str);
         }
     }
+    #[cfg(desktop)]
     Err("Не удалось создать превью".into())
 }
 
@@ -573,13 +620,29 @@ pub fn open_folder(path: String) -> Result<(), String> {
             .spawn()
             .map_err(|e| e.to_string())?;
     }
+    #[cfg(mobile)]
+    {
+        let _ = path;
+        return Err("Недоступно на Android".into());
+    }
+    #[cfg(desktop)]
     Ok(())
 }
 
 /// Открывает файл во внешнем приложении по умолчанию (системный плеер и т.п.).
 /// Полезно как запасной вариант, когда встроенному плееру не хватает кодеков.
-#[tauri::command]
-pub fn open_path(path: String) -> Result<(), String> {
+#[tauri::command(async)]
+#[cfg_attr(desktop, allow(unused_variables))]
+pub fn open_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    // Android: ACTION_VIEW через FileProvider (Kotlin).
+    #[cfg(mobile)]
+    return crate::mobile::open_path(&app, &path);
+    #[cfg(desktop)]
+    open_path_desktop(&path)
+}
+
+#[cfg(desktop)]
+fn open_path_desktop(path: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
@@ -640,7 +703,35 @@ pub fn reveal_in_explorer(file_path: String) -> Result<(), String> {
             .map_err(|e| e.to_string())?;
     }
 
+    #[cfg(mobile)]
+    {
+        let _ = file_path;
+        return Err("Недоступно на Android".into());
+    }
+    #[cfg(desktop)]
     Ok(())
+}
+
+/// Android: свернуть приложение («Назад» на первой вкладке) — процесс и загрузки
+/// продолжают работать. На компьютере не используется.
+#[tauri::command(async)]
+pub fn move_app_to_back(app: tauri::AppHandle) {
+    #[cfg(mobile)]
+    crate::mobile::move_to_back(&app);
+    #[cfg(desktop)]
+    let _ = app;
+}
+
+/// Ссылка, присланная в приложение через «Поделиться» (Android); на компьютере — нет.
+#[tauri::command(async)]
+pub fn take_shared_text(app: tauri::AppHandle) -> Option<String> {
+    #[cfg(mobile)]
+    return crate::mobile::take_shared_text(&app);
+    #[cfg(desktop)]
+    {
+        let _ = app;
+        None
+    }
 }
 
 /// Ищет внешние субтитры рядом с видео (`<имя>*.vtt`/`.srt`) и возвращает их в

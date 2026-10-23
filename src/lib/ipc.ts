@@ -124,7 +124,17 @@ export function exitApp(): Promise<void> {
   return invoke("exit_app");
 }
 
-/** Поддерживает ли сборка самообновление (Win/macOS — да, Linux — только AppImage). */
+/** Ссылка, присланная через «Поделиться» (Android, забирается один раз); иначе null. */
+export function takeSharedText(): Promise<string | null> {
+  return invoke<string | null>("take_shared_text");
+}
+
+/** Android: свернуть приложение (как «Домой»), не останавливая загрузки. */
+export function moveAppToBack(): Promise<void> {
+  return invoke("move_app_to_back");
+}
+
+/** Поддерживает ли сборка самообновление (Win/macOS — да, Linux — только AppImage, Android — нет). */
 export function updaterSupported(): Promise<boolean> {
   return invoke<boolean>("updater_supported");
 }

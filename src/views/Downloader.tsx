@@ -38,6 +38,7 @@ import Modal from "../components/Modal";
 import { useDownloads } from "../context/DownloadsContext";
 import { useI18n } from "../context/LanguageContext";
 import Typewriter from "../components/Typewriter";
+import { IS_ANDROID, extractUrl } from "../lib/platform";
 
 type Phase = "idle" | "fetching" | "ready";
 type PlMode = "all" | "range";
@@ -66,9 +67,20 @@ const SERVICE_LABELS: Record<string, string> = {
   zvuk: "Звук",
 };
 
+// Последняя обработанная ссылка из «Поделиться»: Downloader пересоздаётся при смене
+// вкладки, и без этого та же ссылка проверялась бы заново при каждом возврате.
+let handledShare = 0;
+
 const PLACEHOLDER_KEYS = ["dl.ph.0", "dl.ph.1", "dl.ph.2", "dl.ph.3", "dl.ph.4", "dl.ph.5"];
 
-export default function Downloader({ onOpenSettings }: { onOpenSettings: () => void }) {
+export default function Downloader({
+  onOpenSettings,
+  incoming,
+}: {
+  onOpenSettings: () => void;
+  /** Ссылка из «Поделиться» (Android) — сразу подставляем и проверяем. */
+  incoming?: { text: string; n: number } | null;
+}) {
   const { notify } = useToast();
   const { start } = useDownloads();
   const { t } = useI18n();
@@ -127,6 +139,16 @@ export default function Downloader({ onOpenSettings }: { onOpenSettings: () => v
     return () => unlisten?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!incoming || incoming.n === handledShare) return;
+    handledShare = incoming.n;
+    const link = extractUrl(incoming.text) ?? incoming.text.trim();
+    setClipHint(null);
+    setUrl(link);
+    void doFetch(looksLikeUrl(link) ? link : `ytsearch1:${link}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incoming?.n]);
 
   // Вставить предложенную из буфера ссылку и сразу получить по ней данные.
   function acceptClip() {
@@ -347,7 +369,7 @@ export default function Downloader({ onOpenSettings }: { onOpenSettings: () => v
   }
 
   return (
-    <div className="mestia-fade-in flex flex-1 flex-col items-center justify-center p-8">
+    <div className="mestia-fade-in flex flex-1 flex-col items-center justify-center p-4 md:p-8">
       <div className="flex w-full max-w-[700px] -translate-y-[6vh] flex-col items-center gap-8">
         <h1 className="text-2xl font-normal tracking-tight">{t("dl.title")}</h1>
 
@@ -466,7 +488,7 @@ export default function Downloader({ onOpenSettings }: { onOpenSettings: () => v
                     {t("dl.authTitle")}
                   </h3>
                   <p className="mt-1 text-xs font-semibold leading-snug text-amber-800">
-                    {authHint.cookiesOn ? t("dl.authOn") : t("dl.authOff")}
+                    {IS_ANDROID ? t("dl.authAndroid") : authHint.cookiesOn ? t("dl.authOn") : t("dl.authOff")}
                   </p>
                   <p className="mt-1.5 break-all text-[11px] font-medium leading-snug text-amber-700/80">
                     {authHint.detail}

@@ -15,22 +15,26 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }
-tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
-tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-notify = "6"
 # HTTP только для резолва метаданных Spotify/Apple Music (см. downloader::resolve_input).
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+# Таймаут запросов метаданных yt-dlp, очередь строк вывода (уже в дереве через Tauri).
+tokio = { version = "1", features = ["time", "sync"] }
+
+# Только компьютер: sidecar-бинарники, самообновление, слежение за папкой, корзина.
+# На Android yt-dlp/ffmpeg живут в Kotlin-плагине (см. engine.rs).
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-shell = "2"
+tauri-plugin-updater = "2"
+notify = "6"
 # Удаление файлов/папок в системную корзину (безопасное, с возможностью восстановить).
 trash = "5"
-# Таймаут запросов метаданных yt-dlp (уже в дереве зависимостей через Tauri).
-tokio = { version = "1", features = ["time"] }
 
 [profile.release]
 panic = "abort"

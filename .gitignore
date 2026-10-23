@@ -5,7 +5,9 @@ dist-ssr/
 
 # Tauri / Rust
 src-tauri/target/
-src-tauri/gen/
+# gen/schemas генерируется сборкой; gen/android — Android-проект (Kotlin-плагин,
+# манифест) — КОММИТИТСЯ, его сборочные артефакты исключает gen/android/.gitignore.
+src-tauri/gen/schemas/
 
 # Бинарники sidecar (скачиваются скриптом fetch-binaries — НЕ коммитим)
 src-tauri/binaries/
