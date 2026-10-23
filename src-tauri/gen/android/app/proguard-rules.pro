@@ -19,3 +19,14 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+# youtubedl-android разбирает JSON через Jackson (рефлексия) и грузит классы по
+# имени — R8 не должен их вырезать или переименовывать в релизной сборке.
+-keep class com.yausername.** { *; }
+-keep class com.fasterxml.jackson.** { *; }
+-dontwarn com.fasterxml.jackson.**
+-dontwarn java.beans.**
+# commons-compress (распаковка Python) и commons-io.
+-keep class org.apache.commons.** { *; }
+-dontwarn org.apache.commons.**
+# Плагин Mestia: Tauri находит его и аргументы команд (@InvokeArg) по рефлексии.
+-keep class com.mestia.app.** { *; }

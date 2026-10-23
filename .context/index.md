@@ -104,6 +104,9 @@ Build-time Node helpers.
 - **Auto-update**: on launch the updater plugin checks GitHub Releases; if newer, a
   modal offers to download, install, and relaunch. Not on Android (APK from Releases);
   yt-dlp itself updates via Settings on every platform.
+- **Release**: tag `v*` → `.github/workflows/release.yml`: `build` (tauri-action, draft
+  release + `latest.json`), `android` (signed per-ABI APKs from `ANDROID_KEYSTORE_*`
+  secrets), `release-notes` (body from `.github/release-notes.md`), `rename-mac-updater`.
 
 ## Conventions
 - Code comments are in **Russian**. UI strings are **localized via i18n** (`src/lib/i18n.ts`,

@@ -111,6 +111,101 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "${{ github.ref_name }}" Mestia_*_x86_64.flatpak --clobber
 
+  # ── Android (APK по архитектурам) ─────────────────────────────────────────────
+  # Подписывается ключом из секретов ANDROID_KEYSTORE_BASE64 (base64 от .jks),
+  # ANDROID_KEYSTORE_PASSWORD и ANDROID_KEY_ALIAS. Ключ должен быть всегда один и тот
+  # же — иначе Android не даст обновить приложение поверх старой версии. Ждёт build:
+  # draft-релиз создаёт tauri-action, сюда только докладываем APK.
+  android:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # Сторонние actions в этой ноге закреплены по SHA: рядом с ними лежит ключ подписи.
+      - name: Rust (Android targets)
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+
+      - name: Кэш Rust
+        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: src-tauri
+
+      - name: Зависимости фронтенда
+        run: npm ci
+
+      - name: Ключ подписи
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::error::Нет секрета ANDROID_KEYSTORE_BASE64 — APK не подписать (см. README → Android)."
+            exit 1
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          cat > src-tauri/gen/android/keystore.properties <<EOF
+          storeFile=$RUNNER_TEMP/release.jks
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEYSTORE_PASSWORD
+          EOF
+
+      # NDK уже есть в образе ubuntu-latest (ANDROID_NDK_LATEST_HOME).
+      - name: Сборка APK
+        env:
+          NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
+        run: npm run tauri android build -- --apk --split-per-abi --target aarch64 --target armv7
+
+      # Ключ не должен пережить сборку (post-шаги кэша и любые следующие шаги его не увидят).
+      - name: Удалить ключ подписи
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.jks" src-tauri/gen/android/keystore.properties
+
+      - name: Прикрепить APK к релизу
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          OUT=src-tauri/gen/android/app/build/outputs/apk
+          cp "$OUT/arm64/release/app-arm64-release.apk" "Mestia_${VERSION}_android_arm64.apk"
+          cp "$OUT/arm/release/app-arm-release.apk" "Mestia_${VERSION}_android_armv7.apk"
+          gh release upload "${{ github.ref_name }}" Mestia_*_android_*.apk --clobber
+
+  # ── Текст релиза ──────────────────────────────────────────────────────────────
+  # Описание берётся из .github/release-notes.md (обновляется перед каждым тегом).
+  release-notes:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Описание релиза
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ github.ref_name }}" --notes-file .github/release-notes.md
+
   # ── Версионное имя updater-артефакта macOS ────────────────────────────────────
   # Tauri называет его без версии (Mestia_universal.app.tar.gz). Приводим к стилю
   # остальных ассетов (Mestia_<ver>_universal.app.tar.gz) и СИНХРОННО правим ссылку

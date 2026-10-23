@@ -173,6 +173,20 @@ npm run tauri android build -- --apk
 Переменные `ANDROID_HOME` и `NDK_HOME` должны указывать на SDK и NDK. Для разработки
 на эмуляторе/телефоне — `npm run tauri android dev`.
 
+Релизный APK подписывается ключом из `src-tauri/gen/android/keystore.properties`
+(в `.gitignore`; поля `storeFile`, `storePassword`, `keyAlias`, `keyPassword`). В CI
+(`release.yml`, нога `android`) этот файл собирается из секретов репозитория:
+
+| Секрет | Значение |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | `.jks`-файл ключа в base64 |
+| `ANDROID_KEYSTORE_PASSWORD` | пароль хранилища и ключа |
+| `ANDROID_KEY_ALIAS` | алиас ключа |
+
+> **Ключ нельзя терять и менять.** Android ставит обновление только поверх APK,
+> подписанного тем же ключом; новый ключ = пользователям придётся удалить приложение
+> вместе с данными.
+
 ---
 
 ## Установка и запуск (dev)

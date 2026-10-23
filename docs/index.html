@@ -4,9 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Mestia — загрузчик видео и медиатека</title>
-  <meta name="description" content="Mestia — кроссплатформенный загрузчик видео/аудио с медиатекой, плеером и 8 темами. Красивая оболочка вокруг yt-dlp для Windows, macOS, Linux и Steam Deck." />
+  <meta name="description" content="Mestia — кроссплатформенный загрузчик видео/аудио с медиатекой, плеером и 8 темами. Красивая оболочка вокруг yt-dlp для Windows, macOS, Linux, Steam Deck и Android." />
   <meta property="og:title" content="Mestia — загрузчик видео и медиатека" />
-  <meta property="og:description" content="Скачивай видео с 1800+ площадок, храни в медиатеке, смотри во встроенном плеере. Windows · macOS · Linux · Steam Deck." />
+  <meta property="og:description" content="Скачивай видео с 1800+ площадок, храни в медиатеке, смотри во встроенном плеере. Windows · macOS · Linux · Steam Deck · Android." />
   <meta property="og:type" content="website" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%231a1a1a'/%3E%3Cpath d='M12 5 v8 M8 11 l4 4 4-4' stroke='white' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Crect x='8' y='17' width='8' height='2' rx='1' fill='white'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -154,7 +154,7 @@
     .fmt-btn svg { width: 13px; height: 13px; }
 
     /* Вкладки платформ — сегментированный селектор со скользящим индикатором */
-    .dl-tabs { position: relative; display: flex; gap: 4px; padding: 5px; max-width: 580px; margin: 0 auto 24px;
+    .dl-tabs { position: relative; display: flex; gap: 4px; padding: 5px; max-width: 700px; margin: 0 auto 24px;
       border: 2px solid var(--fog); border-radius: 13px; background: var(--paper); overflow-x: auto; }
     .dl-pill { position: absolute; top: 5px; bottom: 5px; left: 5px; width: 0; z-index: 0; border-radius: 9px;
       background: var(--snow); border: 2px solid var(--accent);
@@ -268,7 +268,7 @@
   <header class="hero wrap">
     <div class="glow"></div>
     <h1>Скачивай видео.<br>Храни красиво.</h1>
-    <p class="sub">Загрузчик видео и аудио с медиатекой и плеером. Windows, macOS, Linux, Steam Deck.</p>
+    <p class="sub">Загрузчик видео и аудио с медиатекой и плеером. Windows, macOS, Linux, Steam Deck, Android.</p>
     <div class="cta">
       <a class="btn" href="#download">Скачать бесплатно <span class="go">→</span></a>
       <a class="btn ghost" href="#features">Что умеет</a>
@@ -355,6 +355,9 @@
       <button class="dl-tab" data-tab="deck">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M6 11h4M8 9v4"/><circle cx="16" cy="10" r="1"/><circle cx="18.5" cy="13" r="1"/><rect x="2" y="6" width="20" height="12" rx="4"/></svg>Steam Deck
       </button>
+      <button class="dl-tab" data-tab="android">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg>Android
+      </button>
     </div>
 
     <div class="dl-panels">
@@ -382,6 +385,13 @@
           <a class="fmt-btn" data-match="\.flatpak$" href="https://github.com/kweharmony/Mestia/releases/latest"><svg class="dlicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 12l5 5 5-5M5 21h14"/></svg>Flatpak (SteamOS)</a>
         </div>
         <p class="dl-hint"><strong>⚠️ Экспериментально.</strong> Протестировано только на Windows; на Steam Deck/Linux работоспособность не гарантируется. В режиме рабочего стола: <code>flatpak install ./Mestia*.flatpak</code>.</p>
+      </div>
+      <div class="dl-panel" data-panel="android">
+        <div class="fmts">
+          <a class="fmt-btn" data-match="_android_arm64\.apk$" href="https://github.com/kweharmony/Mestia/releases/latest"><svg class="dlicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 12l5 5 5-5M5 21h14"/></svg>APK · arm64</a>
+          <a class="fmt-btn" data-match="_android_armv7\.apk$" href="https://github.com/kweharmony/Mestia/releases/latest"><svg class="dlicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 12l5 5 5-5M5 21h14"/></svg>APK · armv7 (старые)</a>
+        </div>
+        <p class="dl-hint"><strong>⚠️ Экспериментально.</strong> Android 11+. Почти всем телефонам подходит <strong>arm64</strong>; armv7 — для старых 32-битных. Скачайте APK и откройте его — Android попросит разрешить установку из этого источника. В Google Play приложения нет: загрузчики YouTube там запрещены. Ссылку можно отправить из YouTube или браузера: <em>Поделиться → Скачать в Mestia</em>.</p>
       </div>
     </div>
 
@@ -463,6 +473,10 @@
       <div class="faq-item">
         <button class="faq-q">Работает ли на Steam Deck?<svg class="chev" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
         <div class="faq-a"><div><p>Да. Для SteamOS есть сборка Flatpak — она несёт всё необходимое и ставится в пользовательском режиме, переживая обновления системы.</p></div></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">Есть ли версия для Android?<svg class="chev" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+        <div class="faq-a"><div><p>Да, для Android 11 и новее — APK во вкладке «Android» выше. yt-dlp и ffmpeg встроены, файлы сохраняются в «Загрузки → Mestia» и появляются в галерее, загрузки продолжаются в фоне. Нет только куки из браузера, трея и мини-окна плеера.</p></div></div>
       </div>
     </div>
   </section>
@@ -560,6 +574,8 @@
     }
     dlTabs.querySelectorAll(".dl-tab").forEach((t) => t.addEventListener("click", () => selectTab(t.dataset.tab)));
     function initPill() { const a = dlTabs.querySelector(".dl-tab.active"); if (a) movePill(a); }
+    // С телефона на Android сразу показываем нужную вкладку.
+    if (/Android/i.test(navigator.userAgent)) selectTab("android");
     initPill();
     window.addEventListener("load", initPill);
     window.addEventListener("resize", initPill);

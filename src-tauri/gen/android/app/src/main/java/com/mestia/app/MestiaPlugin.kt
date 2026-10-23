@@ -110,7 +110,9 @@ class MestiaPlugin(private val activity: Activity) : Plugin(activity) {
             } catch (e: YoutubeDLException) {
                 // Ненулевой код выхода: в сообщении — stderr yt-dlp (там строки ERROR).
                 invoke.resolve(JSObject().put("code", 1).put("stderr", e.message ?: ""))
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                // Throwable, а не Exception: сбой загрузки нативных библиотек/классов
+                // движка должен дойти до UI ошибкой, а не уронить приложение.
                 invoke.reject(e.message ?: e.toString())
             } finally {
                 if (a.keepAlive) DownloadService.end(activity)
@@ -134,7 +136,7 @@ class MestiaPlugin(private val activity: Activity) : Plugin(activity) {
                 val ctx = activity.applicationContext
                 YoutubeDL.getInstance().updateYoutubeDL(ctx, YoutubeDL.UpdateChannel.STABLE)
                 invoke.resolve(JSObject().put("version", YoutubeDL.getInstance().versionName(ctx) ?: ""))
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 invoke.reject(e.message ?: e.toString())
             }
         }
