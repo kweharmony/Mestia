@@ -2,13 +2,18 @@ package com.mestia.app
 
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.media.MediaScannerConnection
 import android.os.Environment
+import android.view.WindowManager
 import android.webkit.MimeTypeMap
 import android.webkit.WebView
 import androidx.core.content.FileProvider
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
@@ -40,6 +45,12 @@ class IdArgs {
 @InvokeArg
 class PathArgs {
     lateinit var path: String
+}
+
+@InvokeArg
+class FullscreenArgs {
+    var on: Boolean = false
+    var landscape: Boolean = true
 }
 
 @InvokeArg
@@ -210,6 +221,33 @@ class MestiaPlugin(private val activity: Activity) : Plugin(activity) {
     fun scanFile(invoke: Invoke) {
         val a = invoke.parseArgs(PathArgs::class.java)
         MediaScannerConnection.scanFile(activity.applicationContext, arrayOf(a.path), null, null)
+        invoke.resolve()
+    }
+
+    /**
+     * Полноэкранный плеер: HTML-fullscreen в WebView Tauri не работает, поэтому плеер
+     * растягивается сам, а здесь — скрыть системные панели (вернуть — свайпом от края),
+     * повернуть экран под ролик и не гасить его. off — всё обратно.
+     */
+    @Command
+    fun setFullscreen(invoke: Invoke) {
+        val a = invoke.parseArgs(FullscreenArgs::class.java)
+        activity.runOnUiThread {
+            val window = activity.window
+            val bars = WindowCompat.getInsetsController(window, window.decorView)
+            if (a.on) {
+                bars.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                bars.hide(WindowInsetsCompat.Type.systemBars())
+                window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                activity.requestedOrientation =
+                    if (a.landscape) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                    else ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            } else {
+                bars.show(WindowInsetsCompat.Type.systemBars())
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            }
+        }
         invoke.resolve()
     }
 

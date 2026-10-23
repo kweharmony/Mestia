@@ -6,6 +6,7 @@ import {
   ExternalLink,
   FastForward,
   Maximize,
+  Minimize,
   Music,
   Pause,
   PictureInPicture2,
@@ -19,7 +20,7 @@ import {
   X,
 } from "lucide-react";
 import type { VideoRow } from "../types";
-import { existingPaths, formatDuration, getSetting, isAudioPath, openPath, subtitleTrack } from "../lib/ipc";
+import { existingPaths, formatDuration, getSetting, isAudioPath, openPath, setFullscreen, subtitleTrack } from "../lib/ipc";
 import { useI18n } from "../context/LanguageContext";
 import { IS_ANDROID } from "../lib/platform";
 
@@ -105,6 +106,9 @@ export default function Player({
   // Причина сбоя воспроизведения: нет файла по пути / не удалось декодировать / иное.
   const [failKind, setFailKind] = useState<null | "missing" | "decode" | "unknown">(null);
   const failed = failKind !== null;
+  // Android: «свой» полноэкранный режим (HTML-fullscreen в WebView Tauri не работает) —
+  // плеер растягивается на весь экран, а нативная часть прячет панели и поворачивает экран.
+  const [immersive, setImmersive] = useState<null | { landscape: boolean }>(null);
 
   const audio = isAudioPath(video.file_path);
   const src = convertFileSrc(video.file_path);
@@ -181,9 +185,47 @@ export default function Player({
     if (audio) return; // для аудио полноэкранный режим не нужен
     const el = ref.current;
     if (!el) return;
+    if (IS_ANDROID) {
+      // Ориентация — по самому ролику: вертикальные (Shorts) остаются портретными.
+      const v = el as HTMLVideoElement;
+      setImmersive((cur) => (cur ? null : { landscape: v.videoWidth >= v.videoHeight }));
+      return;
+    }
     if (document.fullscreenElement) document.exitFullscreen();
     else el.requestFullscreen?.();
   }
+
+  // Нативная часть полноэкранного режима; выход — и при закрытии плеера/смене ролика.
+  useEffect(() => {
+    if (!immersive) return;
+    setFullscreen(true, immersive.landscape).catch(() => {});
+    return () => {
+      setFullscreen(false, true).catch(() => {});
+    };
+  }, [immersive]);
+
+  // Android: повернули телефон горизонтально с открытым видео — сразу на весь экран
+  // (как в YouTube). Выход — кнопкой или «Назад».
+  useEffect(() => {
+    if (!IS_ANDROID || audio) return;
+    const mq = window.matchMedia("(orientation: landscape)");
+    const onChange = () => {
+      if (mq.matches) setImmersive((cur) => cur ?? { landscape: true });
+    };
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [audio]);
+
+  // Системная «Назад» (см. App): сперва выходим из полноэкранного режима.
+  useEffect(() => {
+    if (!immersive) return;
+    const onBack = (e: Event) => {
+      e.preventDefault();
+      setImmersive(null);
+    };
+    window.addEventListener("mestia:back", onBack);
+    return () => window.removeEventListener("mestia:back", onBack);
+  }, [immersive]);
 
   // Общие обработчики медиа-элемента.
   const mediaProps = {
@@ -238,7 +280,8 @@ export default function Player({
     const onKey = (e: KeyboardEvent) => {
       switch (e.key) {
         case "Escape":
-          onClose();
+          if (immersive) setImmersive(null);
+          else onClose();
           break;
         case " ":
           e.preventDefault();
@@ -287,7 +330,7 @@ export default function Player({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onClose, volume, skipSec]);
+  }, [onClose, volume, skipSec, immersive]);
 
   const VolIcon = muted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2;
 
@@ -627,15 +670,23 @@ export default function Player({
   const btn = "shrink-0 rounded-ui p-2 text-smoke hover:bg-fog hover:text-ink";
   return (
     <div
-      className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-2 backdrop-blur-sm md:p-8"
-      onClick={onClose}
+      className={
+        immersive
+          ? "fixed inset-0 z-50 flex bg-black"
+          : "fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-2 backdrop-blur-sm md:p-8"
+      }
+      onClick={immersive ? undefined : onClose}
     >
       <div
-        className="flex w-full max-w-[1100px] md:w-[70vw] md:min-w-[360px] flex-col overflow-hidden rounded-ui border-2 border-ink bg-snow"
+        className={
+          immersive
+            ? "relative flex h-full w-full flex-col bg-black"
+            : "flex max-h-full w-full max-w-[1100px] md:w-[70vw] md:min-w-[360px] flex-col overflow-hidden rounded-ui border-2 border-ink bg-snow"
+        }
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Заголовок */}
-        <div className="flex items-center justify-between border-b-2 border-fog px-4 py-3">
+        {/* Заголовок (в полноэкранном режиме — только видео и контролы) */}
+        {!immersive && <div className="flex items-center justify-between border-b-2 border-fog px-4 py-3">
           <h3 className="flex min-w-0 items-center gap-2 truncate pr-4 text-sm font-semibold tracking-tight">
             <span className="truncate">{video.title}</span>
           </h3>
@@ -645,7 +696,7 @@ export default function Player({
           >
             <X className="h-5 w-5" strokeWidth={2.25} />
           </button>
-        </div>
+        </div>}
 
         {/* Медиа */}
         {failed ? (
@@ -653,7 +704,12 @@ export default function Player({
         ) : (
           <video
             {...mediaProps}
-            className="max-h-[70vh] min-h-[280px] w-full bg-black"
+            className={
+              // min-h-0: в горизонтальном телефоне видео ужимается, чтобы контролы не обрезались.
+              immersive
+                ? "min-h-0 w-full flex-1 bg-black object-contain"
+                : "max-h-[70vh] min-h-0 w-full flex-1 bg-black md:min-h-[280px]"
+            }
             onClick={togglePlay}
           >
             {subTrack}
@@ -661,7 +717,11 @@ export default function Player({
         )}
 
         {/* Контролы */}
-        <div className="flex items-center gap-1 px-2 py-2 md:gap-2 md:px-4 md:py-3">
+        <div
+          className={`flex items-center gap-1 px-2 py-2 md:gap-2 md:px-4 md:py-3 ${
+            immersive ? "absolute inset-x-0 bottom-0 bg-snow/85 backdrop-blur-sm" : ""
+          }`}
+        >
           {queue.length > 1 && (
             <button
               onClick={() => prevVideo && onChange(prevVideo)}
@@ -714,7 +774,9 @@ export default function Player({
             step={0.1}
             value={time}
             onChange={seek}
-            className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full"
+            // min-w-0: у range своя минимальная ширина — без этого на телефоне
+            // последние кнопки (полный экран) уезжали за край.
+            className="h-1.5 min-w-0 flex-1 cursor-pointer appearance-none rounded-full"
             style={{
               background: `linear-gradient(to right, var(--c-accent) ${
                 duration ? (time / duration) * 100 : 0
@@ -754,25 +816,23 @@ export default function Player({
             <ExternalLink className={ic} strokeWidth={2.25} />
           </button>
 
-          {/* Отдельных окон и HTML-fullscreen в Android WebView нет. */}
+          {/* Отдельных окон на Android нет. */}
           {!IS_ANDROID && (
-            <>
-              <button
-                onClick={() => {
-                  openMiniWindow(video);
-                  onClose();
-                }}
-                title={t("player.miniWindow")}
-                className={btn}
-              >
-                <PictureInPicture2 className={ic} strokeWidth={2.25} />
-              </button>
-
-              <button onClick={toggleFullscreen} title={`${t("player.fullscreen")} (F)`} className={btn}>
-                <Maximize className={ic} strokeWidth={2.25} />
-              </button>
-            </>
+            <button
+              onClick={() => {
+                openMiniWindow(video);
+                onClose();
+              }}
+              title={t("player.miniWindow")}
+              className={btn}
+            >
+              <PictureInPicture2 className={ic} strokeWidth={2.25} />
+            </button>
           )}
+
+          <button onClick={toggleFullscreen} title={`${t("player.fullscreen")} (F)`} className={btn}>
+            {immersive ? <Minimize className={ic} strokeWidth={2.25} /> : <Maximize className={ic} strokeWidth={2.25} />}
+          </button>
         </div>
       </div>
     </div>

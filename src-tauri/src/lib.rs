@@ -151,6 +151,7 @@ pub fn run() {
             storage::subtitle_track,
             storage::take_shared_text,
             storage::move_app_to_back,
+            storage::set_fullscreen,
         ])
         .run(tauri::generate_context!())
         .expect("Ошибка запуска приложения Mestia");

@@ -722,6 +722,15 @@ pub fn move_app_to_back(app: tauri::AppHandle) {
     let _ = app;
 }
 
+/// Android: полноэкранный режим плеера (системные панели, ориентация, экран не гаснет).
+/// На компьютере плеер использует HTML Fullscreen API, команда не нужна.
+#[tauri::command(async)]
+#[cfg_attr(desktop, allow(unused_variables))]
+pub fn set_fullscreen(app: tauri::AppHandle, on: bool, landscape: bool) {
+    #[cfg(mobile)]
+    crate::mobile::set_fullscreen(&app, on, landscape);
+}
+
 /// Ссылка, присланная в приложение через «Поделиться» (Android); на компьютере — нет.
 #[tauri::command(async)]
 pub fn take_shared_text(app: tauri::AppHandle) -> Option<String> {

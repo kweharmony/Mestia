@@ -77,6 +77,16 @@ pub fn scan_file(app: &AppHandle, path: &str) {
     let _ = call::<Value>(app, "scanFile", PathArgs { path });
 }
 
+/// Полноэкранный плеер: скрыть системные панели и повернуть экран (или вернуть всё).
+pub fn set_fullscreen(app: &AppHandle, on: bool, landscape: bool) {
+    #[derive(Serialize)]
+    struct Args {
+        on: bool,
+        landscape: bool,
+    }
+    let _ = call::<Value>(app, "setFullscreen", Args { on, landscape });
+}
+
 /// Свернуть приложение (moveTaskToBack), не завершая процесс.
 pub fn move_to_back(app: &AppHandle) {
     let _ = call::<Value>(app, "moveToBack", ());

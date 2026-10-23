@@ -87,6 +87,9 @@ export default function App() {
   useEffect(() => {
     if (!IS_ANDROID) return;
     const sub = onBackButtonPress(() => {
+      // Сначала даём плееру выйти из полноэкранного режима (он отменяет событие).
+      const ev = new Event("mestia:back", { cancelable: true });
+      if (!window.dispatchEvent(ev)) return;
       const s = backState.current;
       if (s.playing) setPlaying(null);
       else if (s.settingsOpen) setSettingsOpen(false);

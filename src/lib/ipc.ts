@@ -134,6 +134,11 @@ export function moveAppToBack(): Promise<void> {
   return invoke("move_app_to_back");
 }
 
+/** Android: полноэкранный плеер — скрыть системные панели и повернуть экран под ролик. */
+export function setFullscreen(on: boolean, landscape: boolean): Promise<void> {
+  return invoke("set_fullscreen", { on, landscape });
+}
+
 /** Поддерживает ли сборка самообновление (Win/macOS — да, Linux — только AppImage, Android — нет). */
 export function updaterSupported(): Promise<boolean> {
   return invoke<boolean>("updater_supported");
