@@ -337,43 +337,54 @@ export function isAuthError(msg: string | null | undefined): boolean {
   return !!msg && AUTH_ERROR_RE.test(msg);
 }
 
+// Сигнатуры ошибок yt-dlp/ОС по категориям — общие для текста (humanizeError) и
+// CTA-категории (classifyError), чтобы списки не расходились.
+const SIG = {
+  network: ["timed out", "timeout", "connection", "getaddrinfo", "temporary failure",
+    "network is unreachable", "connection refused", "unable to download webpage",
+    "failed to resolve", "name or service not known", "socket", "ssl", "winerror 100",
+    "http error 403", "http error 429", "too many requests", "http error 500",
+    "http error 502", "http error 503"],
+  disk: ["no space left", "not enough space", "os error 112", "disk full", "enospc"],
+  busy: ["being used by another process", "os error 32", "resource busy", "sharing violation"],
+  access: ["access is denied", "permission denied", "os error 5", "operation not permitted", "eacces"],
+  notfound: ["not found", "cannot find", "no such file", "os error 2", "os error 3", "enoent"],
+  unavailable: ["video unavailable", "this video is unavailable", "has been removed", "has been deleted",
+    "account has been terminated", "no longer available", "video does not exist"],
+  geo: ["not available in your country", "geo restrict", "geo-restricted", "in your country"],
+  unsupported: ["unsupported url", "is not a valid url", "unable to extract", "no video formats",
+    "unable to download json metadata", "unable to extract player", "unable to extract initial data",
+    "nsig extraction failed", "requested format is not available", "requested format not available",
+    "player response"],
+};
+
+function errText(e: unknown): string {
+  return (e instanceof Error ? e.message : String(e ?? "")).trim();
+}
+
+function matches(raw: string, sigs: string[]): boolean {
+  const s = raw.toLowerCase();
+  return sigs.some((x) => s.includes(x));
+}
+
 /**
  * Превращает техническую ошибку (от Rust/yt-dlp/JS, часто английскую) в понятное
  * пользователю сообщение на русском. Наши собственные русские сообщения проходят
  * как есть; нераспознанное техническое — заменяется общим дружелюбным текстом.
  */
 export function humanizeError(e: unknown): string {
-  const raw = (e instanceof Error ? e.message : String(e ?? "")).trim();
+  const raw = errText(e);
   if (!raw) return t("err.generic");
   if (/^DRM:/i.test(raw)) return t("err.drm");
-  const s = raw.toLowerCase();
-  const has = (...subs: string[]) => subs.some((x) => s.includes(x));
-
   if (isAuthError(raw)) return t("err.auth");
-  if (has("timed out", "timeout", "connection", "getaddrinfo", "temporary failure",
-          "network is unreachable", "connection refused", "unable to download webpage",
-          "failed to resolve", "name or service not known", "socket", "ssl", "winerror 100",
-          "http error 403", "http error 429", "too many requests", "http error 500",
-          "http error 502", "http error 503"))
-    return t("err.network");
-  if (has("no space left", "not enough space", "os error 112", "disk full", "enospc"))
-    return t("err.disk");
-  if (has("being used by another process", "os error 32", "resource busy", "sharing violation"))
-    return t("err.busy");
-  if (has("access is denied", "permission denied", "os error 5", "operation not permitted", "eacces"))
-    return t("err.access");
-  if (has("not found", "cannot find", "no such file", "os error 2", "os error 3", "enoent"))
-    return t("err.notfound");
-  if (has("video unavailable", "this video is unavailable", "has been removed", "has been deleted",
-          "account has been terminated", "no longer available", "video does not exist"))
-    return t("err.unavailable");
-  if (has("not available in your country", "geo restrict", "geo-restricted", "in your country"))
-    return t("err.geo");
-  if (has("unsupported url", "is not a valid url", "unable to extract", "no video formats",
-          "unable to download json metadata", "unable to extract player", "unable to extract initial data",
-          "nsig extraction failed", "requested format is not available", "requested format not available",
-          "player response", "ничего не найдено"))
-    return t("err.unsupported");
+  if (matches(raw, SIG.network)) return t("err.network");
+  if (matches(raw, SIG.disk)) return t("err.disk");
+  if (matches(raw, SIG.busy)) return t("err.busy");
+  if (matches(raw, SIG.access)) return t("err.access");
+  if (matches(raw, SIG.notfound)) return t("err.notfound");
+  if (matches(raw, SIG.unavailable)) return t("err.unavailable");
+  if (matches(raw, SIG.geo)) return t("err.geo");
+  if (matches(raw, [...SIG.unsupported, "ничего не найдено"])) return t("err.unsupported");
 
   // Сообщение бэкенда на русском (Rust отдаёт по-русски) — оставляем как есть.
   if (/[а-яё]/i.test(raw)) return raw;
@@ -396,30 +407,15 @@ export type DownloadFailureKind =
  * сигнатуры, что и `humanizeError` (текст), но возвращает только категорию.
  */
 export function classifyError(e: unknown): DownloadFailureKind {
-  const raw = (e instanceof Error ? e.message : String(e ?? "")).trim();
+  const raw = errText(e);
   if (!raw) return "unknown";
   // Маркер жёсткого DRM из Rust (resolve_input) — финальная ошибка без действий.
   if (/^DRM:/i.test(raw)) return "drm";
-  const s = raw.toLowerCase();
-  const has = (...subs: string[]) => subs.some((x) => s.includes(x));
-
   if (isAuthError(raw)) return "auth";
-  if (has("not available in your country", "geo restrict", "geo-restricted", "in your country"))
-    return "geo";
-  if (has("video unavailable", "this video is unavailable", "has been removed", "has been deleted",
-          "account has been terminated", "no longer available", "video does not exist"))
-    return "unavailable";
-  if (has("unsupported url", "is not a valid url", "unable to extract", "no video formats",
-          "unable to download json metadata", "unable to extract player", "unable to extract initial data",
-          "nsig extraction failed", "requested format is not available", "requested format not available",
-          "player response"))
-    return "unsupported";
-  if (has("timed out", "timeout", "connection", "getaddrinfo", "temporary failure",
-          "network is unreachable", "connection refused", "unable to download webpage",
-          "failed to resolve", "name or service not known", "socket", "ssl", "winerror 100",
-          "http error 403", "http error 429", "too many requests", "http error 500",
-          "http error 502", "http error 503"))
-    return "network";
+  if (matches(raw, SIG.geo)) return "geo";
+  if (matches(raw, SIG.unavailable)) return "unavailable";
+  if (matches(raw, SIG.unsupported)) return "unsupported";
+  if (matches(raw, SIG.network)) return "network";
   return "unknown";
 }
 

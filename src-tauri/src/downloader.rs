@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -12,7 +12,14 @@ use tauri_plugin_shell::{
 
 /// Активные дочерние процессы yt-dlp (id задачи → процесс) — для отмены.
 #[derive(Default)]
-pub struct ActiveProcs(pub Mutex<HashMap<String, CommandChild>>);
+pub struct ActiveProcs(pub Mutex<Procs>);
+
+#[derive(Default)]
+pub struct Procs {
+    running: HashMap<String, CommandChild>,
+    /// Отменены до запуска процесса (пока шёл резолв ссылки) — не стартуем их вовсе.
+    cancelled: HashSet<String>,
+}
 
 // Маркеры в выводе yt-dlp, по которым отличаем строки прогресса и итоговых файлов.
 const MARK_PROGRESS: &str = "[[MP]]";
@@ -99,7 +106,7 @@ struct DonePayload {
 /// Пусто, если в настройках браузер не выбран.
 fn cookies_args(app: &AppHandle) -> Vec<String> {
     match crate::storage::setting(app, "cookiesBrowser") {
-        Some(b) if !b.trim().is_empty() => vec!["--cookies-from-browser".into(), b],
+        Some(b) if !b.trim().is_empty() => vec!["--cookies-from-browser".into(), b.trim().to_string()],
         _ => Vec::new(),
     }
 }
@@ -177,36 +184,56 @@ pub fn normalize_url(input: &str) -> String {
     }
 }
 
+/// Итог запуска yt-dlp: код выхода и собранные stdout/stderr.
+struct RunOutput {
+    success: bool,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+}
+
 /// Запуск yt-dlp с жёстким таймаутом (чтобы не висеть вечно) и одним мягким
-/// повтором на транзиентной ошибке запуска/сети. На таймаут — сразу ошибка.
-async fn ytdlp_output_timeout(
-    app: &AppHandle,
-    args: &[String],
-    secs: u64,
-) -> Result<tauri_plugin_shell::process::Output, String> {
+/// повтором на ошибке запуска процесса. На таймаут — процесс убивается (иначе
+/// осиротевший yt-dlp продолжал бы работать в фоне) и сразу ошибка.
+async fn ytdlp_output_timeout(app: &AppHandle, args: &[String], secs: u64) -> Result<RunOutput, String> {
     use tokio::time::{sleep, timeout, Duration};
-    let mut last = "Не удалось получить данные по ссылке".to_string();
-    for attempt in 0..2u8 {
-        let cmd = app
+    let mut attempt = 0u8;
+    let (mut rx, child) = loop {
+        let spawned = app
             .shell()
             .command(ytdlp_path(app))
             .env("PYTHONUTF8", "1")
             .env("PYTHONIOENCODING", "utf-8")
-            .args(args.to_vec());
-        match timeout(Duration::from_secs(secs), cmd.output()).await {
-            Ok(Ok(out)) => return Ok(out),
-            Ok(Err(e)) => {
-                last = e.to_string();
-                if attempt == 0 {
-                    sleep(Duration::from_millis(500)).await; // мягкий повтор
-                    continue;
-                }
-                break;
+            .args(args.to_vec())
+            .spawn();
+        match spawned {
+            Ok(x) => break x,
+            Err(_) if attempt == 0 => {
+                attempt += 1;
+                sleep(Duration::from_millis(500)).await; // мягкий повтор
             }
-            Err(_) => return Err("Превышено время ожидания ответа от сервиса".into()),
+            Err(e) => return Err(e.to_string()),
+        }
+    };
+
+    let collect = async {
+        let mut out = RunOutput { success: false, stdout: Vec::new(), stderr: Vec::new() };
+        while let Some(ev) = rx.recv().await {
+            match ev {
+                CommandEvent::Stdout(b) => out.stdout.extend_from_slice(&b),
+                CommandEvent::Stderr(b) => out.stderr.extend_from_slice(&b),
+                CommandEvent::Terminated(p) => out.success = p.code == Some(0),
+                _ => {}
+            }
+        }
+        out
+    };
+    match timeout(Duration::from_secs(secs), collect).await {
+        Ok(out) => Ok(out),
+        Err(_) => {
+            let _ = child.kill();
+            Err("Превышено время ожидания ответа от сервиса".into())
         }
     }
-    Err(last)
 }
 
 // ── Команда: метаданные (видео или плейлист) ───────────────────────────────────
@@ -232,13 +259,14 @@ pub async fn fetch_metadata(app: AppHandle, url: String) -> Result<FetchResult, 
     }
     meta_args.extend(cookies_args(&app)); // приватные/возрастные — по кукам браузера
     meta_args.extend(proxy_args(&app)); // пользовательский прокси (если задан)
+    // «--» — дальше только позиционные: ввод вида «--exec=…» не станет опцией yt-dlp.
+    meta_args.push("--".into());
     meta_args.push(url);
 
-    // Жёсткий таймаут + мягкий повтор — чтобы не «крутилось вечно» и переживало
-    // единичный сетевой сбой.
+    // Жёсткий таймаут + мягкий повтор — чтобы не «крутилось вечно».
     let output = ytdlp_output_timeout(&app, &meta_args, 30).await?;
 
-    if !output.status.success() {
+    if !output.success {
         return Err(first_meaningful_line(&String::from_utf8_lossy(&output.stderr)));
     }
 
@@ -409,7 +437,6 @@ pub async fn start_download(app: AppHandle, args: DownloadArgs) -> Result<(), St
     let out_tmpl = base_dir.join(name_tmpl).to_string_lossy().to_string();
 
     let mut yt_args: Vec<String> = vec![
-        input.clone(),
         "--newline".into(),
         "--progress".into(),
         "--no-color".into(),
@@ -542,21 +569,35 @@ pub async fn start_download(app: AppHandle, args: DownloadArgs) -> Result<(), St
         yt_args.push("default".into());
     }
 
-    let (mut rx, child) = app
-        .shell()
-        .command(ytdlp_path(&app))
-        .env("PYTHONUTF8", "1")
-        .env("PYTHONIOENCODING", "utf-8")
-        .args(yt_args)
-        .spawn()
-        .map_err(|e| e.to_string())?;
-
-    // Регистрируем процесс, чтобы его можно было отменить.
-    if let Ok(mut procs) = app.state::<ActiveProcs>().0.lock() {
-        procs.insert(args.id.clone(), child);
-    }
+    // Ссылка — последней и после «--», чтобы её нельзя было принять за опцию.
+    yt_args.push("--".into());
+    yt_args.push(input);
 
     let id = args.id.clone();
+    let mut rx = {
+        // Проверка отмены и регистрация процесса — под одним замком, чтобы отмена,
+        // пришедшая во время резолва ссылки, не потерялась между ними.
+        let state = app.state::<ActiveProcs>();
+        let mut procs = state.0.lock().map_err(|e| e.to_string())?;
+        if procs.cancelled.remove(&id) {
+            let _ = app.emit(
+                "download://done",
+                DonePayload { id, count: 0, ok: false, error: None },
+            );
+            return Ok(());
+        }
+        let (rx, child) = app
+            .shell()
+            .command(ytdlp_path(&app))
+            .env("PYTHONUTF8", "1")
+            .env("PYTHONIOENCODING", "utf-8")
+            .args(yt_args)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        procs.running.insert(id.clone(), child);
+        rx
+    };
+
     let mut out_buf = String::new();
     let mut err_buf = String::new();
     let mut count: u32 = 0;
@@ -578,7 +619,7 @@ pub async fn start_download(app: AppHandle, args: DownloadArgs) -> Result<(), St
             CommandEvent::Terminated(payload) => {
                 // Процесс завершён — убираем из реестра активных.
                 if let Ok(mut procs) = app.state::<ActiveProcs>().0.lock() {
-                    procs.remove(&id);
+                    procs.running.remove(&id);
                 }
                 // Успех определяем по коду выхода yt-dlp, а не только по числу
                 // перемещённых файлов: при «дозакачке» уже готовый файл
@@ -613,16 +654,20 @@ pub async fn start_download(app: AppHandle, args: DownloadArgs) -> Result<(), St
     Ok(())
 }
 
-/// Отменяет активную загрузку — убивает процесс yt-dlp.
+/// Отменяет активную загрузку — убивает процесс yt-dlp. Если процесс ещё не
+/// запущен (идёт резолв ссылки), помечает задачу, чтобы она не стартовала.
 /// Частичные .part-файлы остаются, так что загрузку можно продолжить.
 #[tauri::command]
 pub fn cancel_download(app: AppHandle, id: String) -> Result<(), String> {
-    let child = app
-        .state::<ActiveProcs>()
-        .0
-        .lock()
-        .map_err(|e| e.to_string())?
-        .remove(&id);
+    let child = {
+        let state = app.state::<ActiveProcs>();
+        let mut procs = state.0.lock().map_err(|e| e.to_string())?;
+        let child = procs.running.remove(&id);
+        if child.is_none() {
+            procs.cancelled.insert(id);
+        }
+        child
+    };
     if let Some(c) = child {
         c.kill().map_err(|e| e.to_string())?;
     }
@@ -880,7 +925,8 @@ fn first_meaningful_line(text: &str) -> String {
 /// - Spotify / Apple Music → `ytsearch1:Исполнитель Название` (своих экстракторов нет, DRM);
 /// - VK Music / Звук → `Err("MANUAL_QUERY:<сервис>")` — имя из URL не достать, фронтенд
 ///   просит ввести запрос вручную;
-/// - всё остальное (YouTube, SoundCloud, Yandex Music, Bandcamp, готовый `ytsearch…`) — без изменений.
+/// - DRM-сервисы (Netflix, Яндекс Музыка, Кинопоиск…) → `Err("DRM:<сервис>")`;
+/// - всё остальное (YouTube, SoundCloud, Bandcamp, готовый `ytsearch…`) — без изменений.
 pub async fn resolve_input(url: &str) -> Result<String, String> {
     // Сначала чистим ссылку (трекинг-параметры, ловушка «видео+плейлист»).
     let normalized = normalize_url(url);
@@ -895,19 +941,18 @@ pub async fn resolve_input(url: &str) -> Result<String, String> {
     // Жёсткий DRM: видео/аудио за Widevine/FairPlay — скачать нельзя в принципе.
     // Не тратим время пользователя на заведомо провальный запуск yt-dlp — сразу
     // честная финальная ошибка. Фронтенд по маркеру `DRM:` не предлагает действий.
+    // Сверяем только хост (а не всю строку): иначе «max.com» ловил бы «3dsmax.com»,
+    // а «ivi.ru» — любой путь/параметр с этой подстрокой. Запись с точкой на конце —
+    // префикс домена любой зоны (music.yandex.ru/.com/.by…).
     const DRM_HOSTS: &[&str] = &[
-        "netflix.com", "music.yandex.", "kinopoisk.", "hd.kinopoisk", "okko.tv",
+        "netflix.com", "music.yandex.", "kinopoisk.", "okko.tv",
         "wink.ru", "more.tv", "ivi.ru", "start.ru", "premier.one",
         "disneyplus.com", "hbomax.com", "max.com", "primevideo.com",
-        "hulu.com", "tv.apple.com", "play.max.com",
+        "hulu.com", "tv.apple.com",
     ];
-    if DRM_HOSTS.iter().any(|h| low.contains(h)) {
-        let svc = DRM_HOSTS
-            .iter()
-            .find(|h| low.contains(**h))
-            .map(|h| h.trim_end_matches('.'))
-            .unwrap_or("stream");
-        return Err(format!("DRM:{svc}"));
+    let host = url_host(&low);
+    if let Some(svc) = DRM_HOSTS.iter().find(|h| host_matches(host, h)) {
+        return Err(format!("DRM:{}", svc.trim_end_matches('.')));
     }
 
     if low.contains("open.spotify.com") || low.starts_with("spotify:") {
@@ -933,6 +978,24 @@ pub async fn resolve_input(url: &str) -> Result<String, String> {
     }
 
     Ok(u.to_string())
+}
+
+/// Хост ссылки без схемы, учётки и порта (`https://user@a.b:8080/x` → `a.b`).
+fn url_host(url: &str) -> &str {
+    let rest = url.split_once("://").map_or(url, |(_, r)| r);
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or(rest);
+    let host = authority.rsplit('@').next().unwrap_or(authority);
+    host.split(':').next().unwrap_or(host)
+}
+
+/// Хост совпадает с доменом или его поддоменом; `pat` с точкой на конце — префикс
+/// домена любой зоны (`music.yandex.` ↔ `music.yandex.ru`, `www.music.yandex.com`).
+fn host_matches(host: &str, pat: &str) -> bool {
+    if pat.ends_with('.') {
+        host.starts_with(pat) || host.contains(&format!(".{pat}"))
+    } else {
+        host == pat || host.ends_with(&format!(".{pat}"))
+    }
 }
 
 /// GET с коротким таймаутом; None при любой сетевой/HTTP-ошибке.
@@ -970,7 +1033,9 @@ async fn spotify_scrape(url: &str) -> Option<String> {
 
 /// Официальный oEmbed Spotify — стабильный JSON, но `title` часто без исполнителя.
 async fn spotify_oembed(url: &str) -> Option<String> {
-    let body = http_get_text(&format!("https://open.spotify.com/oembed?url={url}")).await?;
+    // Ссылку кодируем: её собственные `?si=…&…` иначе разорвут query oEmbed.
+    let endpoint = reqwest::Url::parse_with_params("https://open.spotify.com/oembed", &[("url", url)]).ok()?;
+    let body = http_get_text(endpoint.as_str()).await?;
     let v: Value = serde_json::from_str(&body).ok()?;
     let title = v.get("title").and_then(Value::as_str)?.trim();
     if title.is_empty() {
@@ -1210,6 +1275,17 @@ mod tests {
         // не-http (поиск/схема) — без изменений
         assert_eq!(normalize_url("ytsearch1:rick astley"), "ytsearch1:rick astley");
         assert_eq!(normalize_url("spotify:track:xyz"), "spotify:track:xyz");
+    }
+
+    #[test]
+    fn drm_host_matching_is_by_host_only() {
+        assert_eq!(url_host("https://user@hd.kinopoisk.ru:443/film/1?x=1"), "hd.kinopoisk.ru");
+        assert!(host_matches(url_host("https://play.max.com/movie"), "max.com"));
+        assert!(host_matches(url_host("https://music.yandex.ru/album/1"), "music.yandex."));
+        assert!(host_matches(url_host("https://hd.kinopoisk.ru/film/1"), "kinopoisk."));
+        // похожие подстроки в чужих доменах и в пути — не DRM
+        assert!(!host_matches(url_host("https://3dsmax.com/x"), "max.com"));
+        assert!(!host_matches(url_host("https://youtube.com/watch?v=ivi.ru"), "ivi.ru"));
     }
 
     #[test]

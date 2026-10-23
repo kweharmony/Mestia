@@ -135,13 +135,9 @@ export default function Player({
   function togglePlay() {
     const el = ref.current;
     if (!el) return;
-    if (el.paused) {
-      el.play();
-      setPlaying(true);
-    } else {
-      el.pause();
-      setPlaying(false);
-    }
+    // Состояние playing обновляют события onPlay/onPause элемента.
+    if (el.paused) el.play().catch(() => {});
+    else el.pause();
   }
 
   function skip(delta: number) {
@@ -195,6 +191,10 @@ export default function Player({
     },
     src,
     autoPlay: true,
+    // Истина — у самого элемента: autoplay может не сработать, а пауза прийти из
+    // системных медиа-клавиш или нативного полноэкранного режима.
+    onPlay: () => setPlaying(true),
+    onPause: () => setPlaying(false),
     onTimeUpdate: (e: React.SyntheticEvent<HTMLMediaElement>) => {
       const t = e.currentTarget.currentTime;
       setTime(t);
@@ -216,7 +216,6 @@ export default function Player({
       clearPosition(video.id);
       // Автопереход к следующему треку очереди.
       if (nextVideo) onChange(nextVideo);
-      else setPlaying(false);
     },
     onError: () => {
       // Различаем «файла нет по пути» (это и есть «проблема с путём») и сбой
@@ -232,7 +231,8 @@ export default function Player({
     setFailKind(null);
   }, [video.id]);
 
-  // Горячие клавиши: Esc, пробел, ←/→ (±шаг), ↑/↓ (громкость), F (полный экран).
+  // Горячие клавиши: Esc, пробел, ←/→ (±шаг), ↑/↓ (громкость), F (полный экран),
+  // M (звук), N/P (след./пред.); дублируем русскую раскладку.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       switch (e.key) {
@@ -263,12 +263,22 @@ export default function Player({
         case "А":
           toggleFullscreen();
           break;
+        case "m":
+        case "M":
+        case "ь":
+        case "Ь":
+          toggleMute();
+          break;
         case "n":
         case "N":
+        case "т":
+        case "Т":
           if (nextVideo) onChange(nextVideo);
           break;
         case "p":
         case "P":
+        case "з":
+        case "З":
           if (prevVideo) onChange(prevVideo);
           break;
       }
@@ -322,14 +332,6 @@ export default function Player({
       </div>
     );
   }
-
-  // Компактные размеры контролов в отдельном окне — чтобы видео было больше.
-  const ic = embedded ? "h-4 w-4" : "h-5 w-5";
-  const btn = `shrink-0 rounded-ui ${embedded ? "p-1" : "p-2"} text-smoke hover:bg-fog hover:text-ink`;
-  const headCls = `flex items-center justify-between border-b-2 border-fog ${
-    embedded ? "px-2 py-1" : "px-4 py-3"
-  }`;
-  const rowCls = `flex items-center ${embedded ? "gap-1 px-2 py-1.5" : "gap-2 px-4 py-3"}`;
 
   // Дорожка субтитров для <video>.
   const subTrack = subs ? (
@@ -616,27 +618,21 @@ export default function Player({
     );
   }
 
+  // ── Видеоплеер в главном окне (мини-окно и аудио обработаны выше) ──────────
+  const ic = "h-5 w-5";
+  const btn = "shrink-0 rounded-ui p-2 text-smoke hover:bg-fog hover:text-ink";
   return (
     <div
-      className={
-        embedded
-          ? "flex h-screen w-screen flex-col bg-snow text-ink"
-          : "fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-8 backdrop-blur-sm"
-      }
-      onClick={embedded ? undefined : onClose}
+      className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-8 backdrop-blur-sm"
+      onClick={onClose}
     >
       <div
-        className={
-          embedded
-            ? "flex h-full w-full flex-col overflow-hidden bg-snow"
-            : "flex w-[70vw] min-w-[360px] max-w-[1100px] flex-col overflow-hidden rounded-ui border-2 border-ink bg-snow"
-        }
+        className="flex w-[70vw] min-w-[360px] max-w-[1100px] flex-col overflow-hidden rounded-ui border-2 border-ink bg-snow"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Заголовок */}
-        <div className={headCls}>
+        <div className="flex items-center justify-between border-b-2 border-fog px-4 py-3">
           <h3 className="flex min-w-0 items-center gap-2 truncate pr-4 text-sm font-semibold tracking-tight">
-            {audio && <Music className="h-4 w-4 shrink-0 text-accent" strokeWidth={2.5} />}
             <span className="truncate">{video.title}</span>
           </h3>
           <button
@@ -650,50 +646,10 @@ export default function Player({
         {/* Медиа */}
         {failed ? (
           <ErrorView compact={false} />
-        ) : audio ? (
-          <div
-            className={`relative flex w-full flex-col items-center justify-center gap-4 overflow-hidden bg-gradient-to-br from-accent/20 to-accent/5 px-6 ${
-              embedded ? "min-h-0 flex-1" : "min-h-[280px]"
-            }`}
-          >
-            {video.thumbnail_path ? (
-              <div
-                className={`h-40 w-40 overflow-hidden rounded-ui border-2 border-fog shadow-lg ${
-                  playing ? "mestia-pulse" : ""
-                }`}
-              >
-                <img
-                  src={
-                    /^https?:/i.test(video.thumbnail_path)
-                      ? video.thumbnail_path
-                      : convertFileSrc(video.thumbnail_path)
-                  }
-                  alt=""
-                  className="h-full w-full object-cover"
-                />
-              </div>
-            ) : (
-              <div
-                className={`flex h-28 w-28 items-center justify-center rounded-full bg-accent text-white shadow-lg ${
-                  playing ? "mestia-pulse" : ""
-                }`}
-              >
-                <Music className="h-12 w-12" strokeWidth={2} />
-              </div>
-            )}
-            <div className="line-clamp-2 max-w-[80%] text-center text-sm font-semibold">
-              {video.title}
-            </div>
-            <audio {...mediaProps} className="hidden" />
-          </div>
         ) : (
           <video
             {...mediaProps}
-            className={
-              embedded
-                ? "min-h-0 w-full flex-1 bg-black object-contain"
-                : "max-h-[70vh] min-h-[280px] w-full bg-black"
-            }
+            className="max-h-[70vh] min-h-[280px] w-full bg-black"
             onClick={togglePlay}
           >
             {subTrack}
@@ -701,7 +657,7 @@ export default function Player({
         )}
 
         {/* Контролы */}
-        <div className={rowCls}>
+        <div className="flex items-center gap-2 px-4 py-3">
           {queue.length > 1 && (
             <button
               onClick={() => prevVideo && onChange(prevVideo)}
@@ -719,9 +675,7 @@ export default function Player({
 
           <button
             onClick={togglePlay}
-            className={`flex shrink-0 items-center justify-center rounded-ui bg-accent text-white transition-all hover:opacity-90 active:scale-95 ${
-              embedded ? "h-8 w-8" : "h-10 w-10"
-            }`}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-ui bg-accent text-white transition-all hover:opacity-90 active:scale-95"
           >
             {playing ? (
               <Pause className={`${ic} fill-current`} strokeWidth={2.25} />
@@ -764,62 +718,52 @@ export default function Player({
             }}
           />
 
-          {!embedded && (
-            <span className="w-12 shrink-0 text-right text-xs font-semibold tabular-nums text-smoke">
-              {formatDuration(duration)}
-            </span>
-          )}
+          <span className="w-12 shrink-0 text-right text-xs font-semibold tabular-nums text-smoke">
+            {formatDuration(duration)}
+          </span>
 
-          {/* Громкость (в мини-окне — только кнопка mute) */}
+          {/* Громкость */}
           <button onClick={toggleMute} title={`${t("player.sound")} (M)`} className={btn}>
             <VolIcon className={ic} strokeWidth={2.25} />
           </button>
-          {!embedded && (
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={muted ? 0 : volume}
-              onChange={(e) => applyVolume(Number(e.target.value))}
-              title={`${t("player.volume")} (↑/↓)`}
-              className="h-1.5 w-20 shrink-0 cursor-pointer appearance-none rounded-full"
-              style={{
-                background: `linear-gradient(to right, var(--c-accent) ${
-                  (muted ? 0 : volume) * 100
-                }%, var(--c-fog) 0%)`,
-              }}
-            />
-          )}
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={muted ? 0 : volume}
+            onChange={(e) => applyVolume(Number(e.target.value))}
+            title={`${t("player.volume")} (↑/↓)`}
+            className="h-1.5 w-20 shrink-0 cursor-pointer appearance-none rounded-full"
+            style={{
+              background: `linear-gradient(to right, var(--c-accent) ${
+                (muted ? 0 : volume) * 100
+              }%, var(--c-fog) 0%)`,
+            }}
+          />
 
-          {!embedded && (
-            <button
-              onClick={() => openPath(video.file_path).catch(() => {})}
-              title={t("player.external")}
-              className={btn}
-            >
-              <ExternalLink className={ic} strokeWidth={2.25} />
-            </button>
-          )}
+          <button
+            onClick={() => openPath(video.file_path).catch(() => {})}
+            title={t("player.external")}
+            className={btn}
+          >
+            <ExternalLink className={ic} strokeWidth={2.25} />
+          </button>
 
-          {!embedded && (
-            <button
-              onClick={() => {
-                openMiniWindow(video);
-                onClose();
-              }}
-              title={t("player.miniWindow")}
-              className={btn}
-            >
-              <PictureInPicture2 className={ic} strokeWidth={2.25} />
-            </button>
-          )}
+          <button
+            onClick={() => {
+              openMiniWindow(video);
+              onClose();
+            }}
+            title={t("player.miniWindow")}
+            className={btn}
+          >
+            <PictureInPicture2 className={ic} strokeWidth={2.25} />
+          </button>
 
-          {!audio && (
-            <button onClick={toggleFullscreen} title={`${t("player.fullscreen")} (F)`} className={btn}>
-              <Maximize className={ic} strokeWidth={2.25} />
-            </button>
-          )}
+          <button onClick={toggleFullscreen} title={`${t("player.fullscreen")} (F)`} className={btn}>
+            <Maximize className={ic} strokeWidth={2.25} />
+          </button>
         </div>
       </div>
     </div>

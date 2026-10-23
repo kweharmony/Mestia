@@ -4,10 +4,17 @@ import type { FolderRow, HistoryRow, HistoryStatus, VideoRow } from "../types";
 // Имя БД должно совпадать с тем, что регистрируется в Rust (lib.rs).
 const DB_URL = "sqlite:mestia.db";
 
-let _db: Database | null = null;
+// Кэшируем сам промис, а не результат: параллельные первые вызовы (Locker,
+// History, DownloadsContext при старте) иначе открыли бы несколько подключений.
+let _db: Promise<Database> | null = null;
 
-export async function db(): Promise<Database> {
-  if (!_db) _db = await Database.load(DB_URL);
+export function db(): Promise<Database> {
+  if (!_db) {
+    _db = Database.load(DB_URL).catch((e) => {
+      _db = null; // не кэшируем провал — следующий вызов попробует снова
+      throw e;
+    });
+  }
   return _db;
 }
 
@@ -174,19 +181,6 @@ export async function findVideoByUrl(url: string): Promise<VideoRow | null> {
   return rows[0] ?? null;
 }
 
-export async function moveVideoToFolder(
-  videoId: number,
-  folderId: number | null,
-  newPath: string
-): Promise<void> {
-  const d = await db();
-  await d.execute("UPDATE videos SET folder_id = $1, file_path = $2 WHERE id = $3", [
-    folderId,
-    newPath,
-    videoId,
-  ]);
-}
-
 /**
  * Привязывает уже известные видео (по пути файла) к папке folderId, если в БД
  * у них остался прежний/ошибочный folder_id. Чинит случай, когда файл физически
@@ -265,16 +259,20 @@ export async function renameFolderRows(
   newName: string
 ): Promise<void> {
   const d = await db();
-  const n = oldPath.length;
+  // Префикс — вместе с разделителем: иначе «Music» зацепил бы и соседнюю «Music2».
+  const sep = oldPath.includes("\\") ? "\\" : "/";
+  const prefix = oldPath + sep;
+  // substr() в SQLite считает символы, а .length в JS — UTF-16-единицы (эмодзи = 2).
+  const n = [...prefix].length;
   // Вложенные видео.
   await d.execute(
     "UPDATE videos SET file_path = $1 || substr(file_path, $2) WHERE substr(file_path, 1, $3) = $4",
-    [newPath, n + 1, n, oldPath]
+    [newPath + sep, n + 1, n, prefix]
   );
-  // Вложенные подпапки (исключая саму папку).
+  // Вложенные подпапки (сама папка под префикс с разделителем не попадает).
   await d.execute(
     "UPDATE folders SET path = $1 || substr(path, $2) WHERE substr(path, 1, $3) = $4 AND id != $5",
-    [newPath, n + 1, n, oldPath, id]
+    [newPath + sep, n + 1, n, prefix, id]
   );
   // Сама папка.
   await d.execute("UPDATE folders SET name = $1, path = $2 WHERE id = $3", [

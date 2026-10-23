@@ -33,14 +33,9 @@ export default function History({ onPlay, onGoToDownloader }: HistoryProps) {
     setRows(await listHistory());
   }
 
+  // Загрузка при открытии и живое обновление статусов (запуск/завершение загрузок).
   useEffect(() => {
     refresh().catch((e) => notify(humanizeError(e), "error"));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Живое обновление статусов (запуск/прогресс/завершение загрузок).
-  useEffect(() => {
-    refresh().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [libraryVersion]);
 

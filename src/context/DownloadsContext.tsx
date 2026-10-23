@@ -129,15 +129,19 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
     markInterrupted().catch(() => {});
   }, []);
 
-  // Когда активных загрузок не осталось — убираем карточки, чтобы кружок
-  // загрузок пропал после завершения (о результате уже сообщает тост).
+  // Когда активных загрузок не осталось — убираем завершённые/отменённые карточки,
+  // чтобы кружок загрузок пропал (о результате уже сообщает тост). Проваленные
+  // оставляем: на них кнопки-решения (повтор, куки, обновление движка).
   useEffect(() => {
-    if (downloads.length === 0) return;
     const anyActive = downloads.some(
       (d) => d.status === "downloading" || d.status === "queued"
     );
-    if (!anyActive) {
-      const t = window.setTimeout(() => setDownloads([]), 1500);
+    const anyFinished = downloads.some((d) => d.status === "done" || d.status === "cancelled");
+    if (!anyActive && anyFinished) {
+      const t = window.setTimeout(
+        () => setDownloads((ds) => ds.filter((d) => d.status === "error")),
+        1500
+      );
       return () => window.clearTimeout(t);
     }
   }, [downloads]);
@@ -220,7 +224,14 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
         // Процесс завершился (успех/ошибка/после kill при отмене) — освобождаем слот.
         activeRef.current = Math.max(0, activeRef.current - 1);
         const m = metaMap.current.get(d.id);
-        if (m?.historyId) {
+        // Нет меты — задачу отменил пользователь (cancel уже всё обновил и показал
+        // тост); не шлём поверх ложное «ошибка загрузки».
+        if (!m) {
+          void pumpQueue();
+          return;
+        }
+        if (d.ok) optsMap.current.delete(d.id); // повтор успешной не нужен
+        if (m.historyId) {
           await updateHistoryStatus(m.historyId, d.ok ? "success" : "error", null);
         }
         metaMap.current.delete(d.id);
@@ -268,15 +279,13 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
 
     try {
       if (opts.meta.isPlaylist) {
-        if (outDir) {
-          folderId =
-            folderId ??
-            (await findFolderByPath(outDir)) ??
-            (await createFolder(opts.meta.title, outDir, null));
-        } else {
-          outDir = await createFolderOnDisk(opts.meta.title, null);
-          folderId = await createFolder(opts.meta.title, outDir, null);
-        }
+        // Папка с таким именем могла остаться от прошлой загрузки — переиспользуем
+        // её запись в БД, а не плодим дубликат с тем же путём.
+        if (!outDir) outDir = await createFolderOnDisk(opts.meta.title, null);
+        folderId =
+          folderId ??
+          (await findFolderByPath(outDir)) ??
+          (await createFolder(opts.meta.title, outDir, null));
       }
 
       let historyId = opts.historyId ?? 0;

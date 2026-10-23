@@ -29,7 +29,6 @@ import {
   insertVideo,
   listFolders,
   listVideos,
-  moveVideoToFolder,
   pruneOutsideRoot,
   reassignVideosToFolder,
   renameFolderRows,
@@ -168,7 +167,9 @@ export default function Locker({
         markGen(v.id, true);
         try {
           const thumb = await generateThumbnail(v.file_path);
-          if (cancelled) return;
+          // Результат сохраняем даже после cleanup: эффект перезапускается на каждое
+          // setVideos (в т.ч. от соседнего воркера), и выброшенный кадр больше не
+          // запросился бы — id уже в thumbAttempts. `cancelled` лишь не берёт новые.
           await updateVideoThumb(v.id, thumb);
           setVideos((cur) =>
             cur.map((x) => (x.id === v!.id ? { ...x, thumbnail_path: thumb } : x))
@@ -513,7 +514,7 @@ export default function Locker({
     try {
       for (const v of toMove) {
         const newPath = await moveVideoFile(v.file_path, target.path);
-        await moveVideoToFolder(v.id, target.id, newPath);
+        await updateVideoPath(v.id, newPath, target.id);
       }
       window.setTimeout(async () => {
         setLeavingIds(new Set());
@@ -528,6 +529,7 @@ export default function Locker({
     } catch (e) {
       setLeavingIds(new Set());
       notify(humanizeError(e), "error");
+      await reload().catch(() => {}); // часть файлов могла уже переехать
     }
   }
 
@@ -545,15 +547,28 @@ export default function Locker({
     moveVideosTo(target, vids);
   }
 
+  // Enter и последующий blur (или Escape + blur при размонтировании) вызвали бы
+  // commit дважды: папка переименовалась бы повторно по уже несуществующему пути.
+  const renameDoneRef = useRef(false);
   function startRename(kind: "folder" | "video", id: number, value: string) {
+    renameDoneRef.current = false;
     setRenaming({ kind, id });
     setRenameValue(value);
   }
+  function cancelRename() {
+    renameDoneRef.current = true;
+    setRenaming(null);
+  }
 
   async function commitRename() {
-    if (!renaming) return;
+    if (!renaming || renameDoneRef.current) return;
+    renameDoneRef.current = true;
     const val = renameValue.trim();
-    if (!val) {
+    const prev =
+      renaming.kind === "folder"
+        ? folders.find((x) => x.id === renaming.id)?.name
+        : displayed.find((x) => x.id === renaming.id)?.title;
+    if (!val || val === prev) {
       setRenaming(null);
       return;
     }
@@ -571,6 +586,7 @@ export default function Locker({
       await reload();
       notify(t("lib.renamed"));
     } catch (e) {
+      renameDoneRef.current = false; // поле остаётся открытым — даём исправить имя
       notify(humanizeError(e), "error");
     }
   }
@@ -835,7 +851,7 @@ export default function Locker({
                   renameValue={renameValue}
                   setRenameValue={setRenameValue}
                   onCommit={commitRename}
-                  onCancel={() => setRenaming(null)}
+                  onCancel={cancelRename}
                   onPlay={() => onPlay(v)}
                   onRename={() => startRename("video", v.id, v.title)}
                   onDelete={() => askDeleteVideo(v)}
@@ -871,7 +887,7 @@ export default function Locker({
                 renameValue={renameValue}
                 setRenameValue={setRenameValue}
                 onCommit={commitRename}
-                onCancel={() => setRenaming(null)}
+                onCancel={cancelRename}
                 onEnter={() => enterFolder(folder)}
                 onRename={() => startRename("folder", folder.id, folder.name)}
                 onDelete={() => askDeleteFolder(folder)}
@@ -899,7 +915,7 @@ export default function Locker({
                 renameValue={renameValue}
                 setRenameValue={setRenameValue}
                 onCommit={commitRename}
-                onCancel={() => setRenaming(null)}
+                onCancel={cancelRename}
                 onPlay={() => onPlay(video)}
                 onRename={() => startRename("video", video.id, video.title)}
                 onDelete={() => askDeleteVideo(video)}

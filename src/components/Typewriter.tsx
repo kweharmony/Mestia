@@ -13,6 +13,9 @@ export default function Typewriter({
   const [i, setI] = useState(0);
   const [text, setText] = useState("");
   const [deleting, setDeleting] = useState(false);
+  // Родитель передаёт новый массив на каждый рендер — зависим от содержимого,
+  // иначе любой ререндер (прогресс загрузки) сбрасывал бы таймер и печать замирала.
+  const key = phrases.join("|");
 
   useEffect(() => {
     const full = phrases[i % phrases.length] ?? "";
@@ -32,7 +35,8 @@ export default function Typewriter({
     }, delay);
 
     return () => window.clearTimeout(t);
-  }, [text, deleting, i, phrases]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text, deleting, i, key]);
 
   return (
     <span className={className}>

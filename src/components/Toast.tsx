@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -27,9 +28,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     visible: false,
   });
 
+  // Таймер предыдущего тоста сбрасываем: иначе он скрыл бы новый раньше срока.
+  const hideTimer = useRef<number | undefined>(undefined);
   const notify = useCallback((text: string, kind: ToastKind = "success") => {
     setToast({ text, kind, visible: true });
-    window.setTimeout(
+    window.clearTimeout(hideTimer.current);
+    hideTimer.current = window.setTimeout(
       () => setToast((t) => ({ ...t, visible: false })),
       2600
     );

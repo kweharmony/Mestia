@@ -7,6 +7,10 @@ use tauri::{Emitter, Manager};
 
 const APP_DIR: &str = "Mestia";
 
+// Команды с диском/процессами помечены `#[tauri::command(async)]`: синхронная
+// команда Tauri выполняется в главном потоке и на время ffmpeg/копирования/корзины
+// замораживает окно. `async` уводит её в пул потоков, сигнатура остаётся прежней.
+
 /// Активный наблюдатель за папкой библиотеки.
 #[derive(Default)]
 pub struct LibWatcher(pub Mutex<Option<notify::RecommendedWatcher>>);
@@ -37,8 +41,8 @@ pub fn watch_library(app: tauri::AppHandle, path: String) -> Result<(), String> 
     Ok(())
 }
 
-/// Параллельно проверяет существование путей (файлов/папок).
-#[tauri::command]
+/// Проверяет существование путей (файлов/папок) пачкой — одним IPC-вызовом.
+#[tauri::command(async)]
 pub fn existing_paths(paths: Vec<String>) -> Vec<bool> {
     paths
         .iter()
@@ -190,7 +194,7 @@ pub struct DirEntry {
 }
 
 /// Возвращает непосредственные подпапки папки dir (без скрытых).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn scan_dirs(dir: String) -> Result<Vec<DirEntry>, String> {
     let mut out = Vec::new();
     let entries = match std::fs::read_dir(&dir) {
@@ -219,7 +223,7 @@ pub fn scan_dirs(dir: String) -> Result<Vec<DirEntry>, String> {
 }
 
 /// Возвращает медиафайлы (видео/аудио), лежащие непосредственно в папке dir.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn scan_media(dir: String) -> Result<Vec<MediaFile>, String> {
     let mut out = Vec::new();
     let entries = match std::fs::read_dir(&dir) {
@@ -290,7 +294,7 @@ pub fn create_folder_dir(
 }
 
 /// Перемещает файл видео в указанную папку (абсолютный путь). Возвращает новый путь.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn move_video_file(file_path: String, dest_dir: String) -> Result<String, String> {
     let src = PathBuf::from(&file_path);
     if !src.is_file() {
@@ -303,6 +307,12 @@ pub fn move_video_file(file_path: String, dest_dir: String) -> Result<String, St
     let dest_dir = PathBuf::from(&dest_dir);
     std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
     let dest = dest_dir.join(file_name);
+    // Уже лежит в этой папке — ничего не делаем (иначе copy-ветка удалила бы исходник).
+    if dest == src {
+        return Ok(file_path);
+    }
+    // Одноимённый файл в папке назначения не затираем — берём «имя (2).ext».
+    let dest = unique_path(dest);
 
     // rename работает в пределах одного тома; иначе — copy + remove.
     if std::fs::rename(&src, &dest).is_err() {
@@ -312,10 +322,24 @@ pub fn move_video_file(file_path: String, dest_dir: String) -> Result<String, St
     Ok(dest.to_string_lossy().to_string())
 }
 
+/// Свободный путь: сам `p`, если он не занят, иначе `stem (2).ext`, `stem (3).ext`…
+fn unique_path(p: PathBuf) -> PathBuf {
+    if !p.exists() {
+        return p;
+    }
+    let stem = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let ext = p.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    let dir = p.parent().map(PathBuf::from).unwrap_or_default();
+    (2..)
+        .map(|n| dir.join(format!("{stem} ({n}){ext}")))
+        .find(|c| !c.exists())
+        .unwrap_or(p)
+}
+
 /// Удаляет файл в системную корзину (можно восстановить). Если корзина
 /// недоступна (сетевой диск, некоторые Linux-окружения) — удаляет безвозвратно,
 /// чтобы действие всё же выполнилось.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn delete_file(path: String) -> Result<(), String> {
     let p = PathBuf::from(&path);
     if p.is_file() {
@@ -328,7 +352,7 @@ pub fn delete_file(path: String) -> Result<(), String> {
 
 /// Удаляет папку со всем содержимым в системную корзину (с запасным
 /// безвозвратным удалением, если корзина недоступна).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn delete_folder(path: String) -> Result<(), String> {
     let p = PathBuf::from(&path);
     if p.is_dir() {
@@ -340,7 +364,7 @@ pub fn delete_folder(path: String) -> Result<(), String> {
 }
 
 /// Переименовывает папку (в том же родителе). Возвращает новый путь.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn rename_folder(old_path: String, new_name: String) -> Result<String, String> {
     let safe = sanitize(&new_name);
     if safe.is_empty() {
@@ -351,6 +375,15 @@ pub fn rename_folder(old_path: String, new_name: String) -> Result<String, Strin
         .parent()
         .ok_or_else(|| "Нет родительского каталога".to_string())?;
     let new_path = parent.join(&safe);
+    if new_path == old {
+        return Ok(old_path);
+    }
+    // На Unix rename молча заменяет пустую папку-цель, на Windows падает — единое поведение.
+    // Смена одного регистра (Music → music) на нечувствительных ФС — не конфликт.
+    let case_only = new_path.to_string_lossy().to_lowercase() == old.to_string_lossy().to_lowercase();
+    if new_path.exists() && !case_only {
+        return Err("Папка с таким именем уже существует".into());
+    }
     std::fs::rename(&old, &new_path).map_err(|e| e.to_string())?;
     Ok(new_path.to_string_lossy().to_string())
 }
@@ -365,12 +398,16 @@ pub fn exit_app(app: tauri::AppHandle) {
 /// `delete_content == true` — ещё и папку загрузок со скачанным контентом,
 /// затем запускает штатную деинсталляцию под текущую ОС. После возврата
 /// фронтенд закрывает приложение.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn uninstall_app(app: tauri::AppHandle, delete_content: bool) -> Result<(), String> {
     // 1. Скачанный контент (папка загрузок) — только по согласию пользователя.
+    // Если пользователь сделал папкой загрузок корень диска, домашнюю папку или
+    // «Документы/Загрузки/Рабочий стол» целиком — не сносим её: там не только наше.
     if delete_content {
         if let Ok(root) = storage_root(&app) {
-            let _ = std::fs::remove_dir_all(&root);
+            if !is_protected_dir(&app, &root) {
+                let _ = std::fs::remove_dir_all(&root);
+            }
         }
     }
 
@@ -410,11 +447,11 @@ pub fn uninstall_app(app: tauri::AppHandle, delete_content: bool) -> Result<(), 
         // Самоудаление .app: .../Mestia.app/Contents/MacOS/<bin> → подняться к .app.
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         if let Some(app_bundle) = exe.ancestors().find(|p| p.extension().map_or(false, |e| e == "app")) {
-            let target = app_bundle.to_string_lossy().to_string();
-            // Ждём закрытия приложения, затем удаляем бандл.
+            // Ждём закрытия приложения, затем удаляем бандл. Путь — позиционным
+            // аргументом ($1), а не подстановкой в строку скрипта (кавычки/`$` в пути).
             std::process::Command::new("sh")
-                .arg("-c")
-                .arg(format!("sleep 1; rm -rf \"{}\"", target))
+                .args(["-c", "sleep 1; rm -rf -- \"$1\"", "sh"])
+                .arg(app_bundle)
                 .spawn()
                 .map_err(|e| e.to_string())?;
         }
@@ -430,8 +467,7 @@ pub fn uninstall_app(app: tauri::AppHandle, delete_content: bool) -> Result<(), 
         } else if let Ok(appimage) = std::env::var("APPIMAGE") {
             // Портативный AppImage — просто удаляем файл после выхода.
             let _ = std::process::Command::new("sh")
-                .arg("-c")
-                .arg(format!("sleep 1; rm -f \"{}\"", appimage))
+                .args(["-c", "sleep 1; rm -f -- \"$1\"", "sh", &appimage])
                 .spawn();
         }
         // Для .deb/.rpm штатно удаляется пакетным менеджером — данные уже стёрты.
@@ -440,11 +476,34 @@ pub fn uninstall_app(app: tauri::AppHandle, delete_content: bool) -> Result<(), 
     Ok(())
 }
 
+/// Папка, которую нельзя удалять целиком: корень диска или системная папка пользователя.
+fn is_protected_dir(app: &tauri::AppHandle, dir: &std::path::Path) -> bool {
+    let canon = |p: &std::path::Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    let d = canon(dir);
+    if d.parent().is_none() {
+        return true;
+    }
+    let pr = app.path();
+    [
+        pr.home_dir(),
+        pr.document_dir(),
+        pr.download_dir(),
+        pr.desktop_dir(),
+        pr.video_dir(),
+        pr.audio_dir(),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|p| canon(&p) == d)
+}
+
 /// Запуск ffmpeg без мелькающего окна консоли (Windows).
 fn ffmpeg_cmd() -> std::process::Command {
     // `mut` нужен только на Windows (creation_flags) — на других ОС он не используется.
     #[allow(unused_mut)]
     let mut cmd = std::process::Command::new(crate::downloader::binary_path("ffmpeg"));
+    // Без stdin: ffmpeg иначе может ждать ввода (интерактивные клавиши) и висеть.
+    cmd.stdin(std::process::Stdio::null());
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
@@ -455,7 +514,7 @@ fn ffmpeg_cmd() -> std::process::Command {
 
 /// Генерирует превью-кадр видео (jpg в кэше приложения). Возвращает путь.
 /// Результат кэшируется по хэшу пути — повторные вызовы мгновенны.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn generate_thumbnail(app: tauri::AppHandle, video_path: String) -> Result<String, String> {
     use std::hash::{Hash, Hasher};
 
@@ -478,7 +537,7 @@ pub fn generate_thumbnail(app: tauri::AppHandle, video_path: String) -> Result<S
     for ss in ["3", "0"] {
         let status = ffmpeg_cmd()
             .args([
-                "-y", "-ss", ss, "-i", &video_path,
+                "-v", "error", "-y", "-ss", ss, "-i", &video_path,
                 "-frames:v", "1", "-vf", "scale=480:-2", &out_str,
             ])
             .status()
@@ -524,9 +583,11 @@ pub fn open_path(path: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
-        // `start` — встроенная команда cmd; первый "" — это заголовок окна.
+        // `start` — встроенная команда cmd; первый "" — это заголовок окна. Путь
+        // всегда в кавычках (raw_arg): без пробелов Rust их не ставит, и `&`/`^` в
+        // имени файла cmd принял бы за свои операторы. `"` в путях Windows запрещена.
         std::process::Command::new("cmd")
-            .args(["/C", "start", "", &path])
+            .raw_arg(format!("/C start \"\" \"{path}\""))
             .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
             .spawn()
             .map_err(|e| e.to_string())?;
@@ -584,7 +645,7 @@ pub fn reveal_in_explorer(file_path: String) -> Result<(), String> {
 
 /// Ищет внешние субтитры рядом с видео (`<имя>*.vtt`/`.srt`) и возвращает их в
 /// формате WebVTT (браузерный `<track>` понимает только его). `.srt` конвертируется.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn subtitle_track(video_path: String) -> Option<String> {
     let p = PathBuf::from(&video_path);
     let dir = p.parent()?;
@@ -762,6 +823,35 @@ mod tests {
         assert!(!src.exists());
         assert!(dest_dir.join("video.mp4").is_file());
         assert!(new_path.ends_with("video.mp4"));
+    }
+
+    #[test]
+    fn move_video_file_never_overwrites_and_same_dir_is_noop() {
+        let t = TempDir::new();
+        let dest_dir = t.join("dest");
+        std::fs::create_dir(&dest_dir).unwrap();
+        std::fs::write(dest_dir.join("video.mp4"), b"old").unwrap();
+        let src = t.join("video.mp4");
+        std::fs::write(&src, b"new").unwrap();
+
+        let moved = move_video_file(src.to_string_lossy().to_string(), dest_dir.to_string_lossy().to_string()).unwrap();
+        // одноимённый файл в папке не затёрт — новый получил суффикс
+        assert_eq!(std::fs::read(dest_dir.join("video.mp4")).unwrap(), b"old");
+        assert!(moved.ends_with("video (2).mp4"));
+
+        // перенос в ту же папку — без изменений и без потери файла
+        let same = move_video_file(moved.clone(), dest_dir.to_string_lossy().to_string()).unwrap();
+        assert_eq!(same, moved);
+        assert!(std::path::Path::new(&moved).is_file());
+    }
+
+    #[test]
+    fn rename_folder_refuses_existing_target() {
+        let t = TempDir::new();
+        std::fs::create_dir(t.join("a")).unwrap();
+        std::fs::create_dir(t.join("b")).unwrap();
+        assert!(rename_folder(t.join("a").to_string_lossy().to_string(), "b".into()).is_err());
+        assert!(t.join("a").is_dir());
     }
 
     #[test]

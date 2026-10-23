@@ -23,18 +23,6 @@
     "notification:default",
     "updater:default",
     "process:default",
-    "clipboard-manager:allow-read-text",
-    {
-      "identifier": "shell:allow-execute",
-      "allow": [
-        { "name": "binaries/yt-dlp", "sidecar": true, "args": true }
-      ]
-    },
-    {
-      "identifier": "shell:allow-spawn",
-      "allow": [
-        { "name": "binaries/yt-dlp", "sidecar": true, "args": true }
-      ]
-    }
+    "clipboard-manager:allow-read-text"
   ]
 }
