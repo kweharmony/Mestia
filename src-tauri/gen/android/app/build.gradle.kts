@@ -27,7 +27,8 @@ android {
     compileSdk = 36
     namespace = "com.mestia.app"
     defaultConfig {
-        manifestPlaceholders["usesCleartextTraffic"] = "false"
+        // Локальная сеть: плеер WebView берёт видео комнаты по http://<ip устройства> (lan.rs).
+        manifestPlaceholders["usesCleartextTraffic"] = "true"
         applicationId = "com.mestia.app"
         // Android 11+: запись в Download/ без разрешений (scoped storage)
         minSdk = 30

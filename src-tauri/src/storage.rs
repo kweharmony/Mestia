@@ -91,7 +91,7 @@ fn read_settings(app: &tauri::AppHandle) -> serde_json::Map<String, Value> {
 /// (во временный файл + rename), а если существующий файл повреждён (например,
 /// усечён прерванной записью при обновлении), он не затирается молча, а
 /// откладывается в `.bak` — иначе один `set_setting` стёр бы все остальные ключи.
-fn write_setting(app: &tauri::AppHandle, key: &str, value: Value) -> Result<(), String> {
+pub(crate) fn write_setting(app: &tauri::AppHandle, key: &str, value: Value) -> Result<(), String> {
     let _guard = SETTINGS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     upsert_setting_file(&settings_file(app)?, key, value)
 }
@@ -447,7 +447,7 @@ pub fn scan_media(dir: String) -> Result<Vec<MediaFile>, String> {
 }
 
 /// Очистка имени папки от недопустимых для файловой системы символов.
-fn sanitize(name: &str) -> String {
+pub(crate) fn sanitize(name: &str) -> String {
     let cleaned: String = name
         .chars()
         .map(|c| if "\\/:*?\"<>|".contains(c) { '_' } else { c })
@@ -511,7 +511,7 @@ pub fn move_video_file(file_path: String, dest_dir: String) -> Result<String, St
 }
 
 /// Свободный путь: сам `p`, если он не занят, иначе `stem (2).ext`, `stem (3).ext`…
-fn unique_path(p: PathBuf) -> PathBuf {
+pub(crate) fn unique_path(p: PathBuf) -> PathBuf {
     if !p.exists() {
         return p;
     }

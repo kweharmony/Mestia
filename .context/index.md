@@ -49,8 +49,11 @@ Build-time Node helpers.
     defaults to OS locale on first run.
   - `DownloadsContext` — download queue, concurrency limit, live progress events.
   - `DragContext` — drag-and-drop state for the library.
+  - `LanContext` — LAN: visibility (setting `lanVisible`), discovered peers, transfers,
+    incoming-offer modal, current watch-together room.
 - `components/` — reusable UI: `Sidebar`, `Settings`, `DownloadsPanel`, `Splash`,
-  `Toast`, `Typewriter`, `ThemeSwitcher`, `Logo`.
+  `Toast`, `Typewriter`, `ThemeSwitcher`, `Logo`, `LibraryPicker` (library + storage-root
+  files for LAN send and the room queue).
 - `lib/`:
   - `ipc.ts` — typed wrappers over Tauri `invoke` (the single bridge to Rust).
   - `db.ts` — SQLite access (history, library structure, metadata).
@@ -58,12 +61,16 @@ Build-time Node helpers.
     non-React code (e.g. `humanizeError`, desktop notifications).
   - `platform.ts` — `IS_ANDROID` (hides tray, explorer, mini-window, cookies, uninstall)
     and URL extraction from shared text.
+  - `roomSync.ts` — watch-together drift correction (seek on big drift, ±6% rate on small).
 - `views/` — top-level screens:
   - `Downloader` — paste URL, pick format/quality, start downloads.
   - `Locker` — the media library (folders + videos grid, multi-select, drag-drop).
   - `History` — past downloads with statuses; resume interrupted (`.part`) downloads.
   - `Player` / `MiniPlayer` — main and floating video/audio players; playback position
     persisted per file.
+  - `Nearby` — LAN devices: visibility toggle, send files, manual add by address, rooms.
+  - `Room` — watch-together player with a queue (host adds/reorders, auto-advance;
+    guests suggest their own files).
 - `types.ts` — shared TypeScript types.
 
 ### `src-tauri/` — Backend
@@ -83,6 +90,10 @@ Build-time Node helpers.
   target, `extractNativeLibs`.
 - `src/storage.rs` — filesystem ops: files/folders, real-time file-watcher, thumbnail
   generation (ffmpeg, cached), settings.
+- `src/lan.rs` — LAN: UDP announces (multicast 239.255.77.18 + subnet broadcast, port
+  53318), axum HTTP/WS server on TCP 53318 (`/api/info`, `/api/offer`, `/api/upload`,
+  `/api/room`, `/api/room/media` with Range, `/api/room/ws`), sender via reqwest,
+  watch-together guest via tokio-tungstenite with NTP-like clock offset.
 - `migrations/0001_init.sql` — SQLite schema (applied automatically).
 - `capabilities/default.json` — Tauri plugin permissions; `desktop.json` — desktop-only
   (updater). `tauri.android.conf.json` drops sidecars and sets minSdk 30.
@@ -90,6 +101,17 @@ Build-time Node helpers.
   installer, and GitHub-Releases auto-updater config.
 
 ## Key flows
+- **LAN share**: sender `lan_send` → POST `/api/offer` → receiver shows modal (90 s) →
+  `lan_answer_offer` → session → PUT `/api/upload` per file into the storage root
+  (`.name.mestia-part` → rename) → `lan://received`.
+- **Watch together**: host `lan_room_start` (room title in announces) and pushes player
+  state via `lan_room_state`; guest `lan_room_join` streams `/api/room/media`, gets
+  `lan://room-state` (time already in local clock) and corrects drift (`roomSync.ts`);
+  guest controls send `lan_room_cmd` to the host. Queue: host owns it (`lan_room_add/move/
+  remove/play`), broadcasts `{t:"queue"}`; on `ended` the host plays the next item. A guest
+  `lan_room_propose` registers a token in its own `/api/share/media` and the item streams
+  from the guest's device; its items drop when the guest leaves. Android: `MulticastLock`
+  (`lanMulticast`), cleartext HTTP allowed for LAN media.
 
 - **Download**: `Downloader` view → `ipc.ts` → `downloader.rs` (builds args) →
   `engine.rs` (sidecar on desktop / `MestiaPlugin.execute` on Android) → progress events →

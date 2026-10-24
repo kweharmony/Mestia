@@ -66,6 +66,25 @@ pub fn pick_folder(app: &AppHandle) -> Result<Option<String>, String> {
     call::<Picked>(app, "pickFolder", ()).map(|p| p.path)
 }
 
+/// Wi-Fi MulticastLock: без него Android отбрасывает multicast-анонсы других устройств.
+pub fn multicast_lock(app: &AppHandle, on: bool) {
+    #[derive(Serialize)]
+    struct Args {
+        on: bool,
+    }
+    let _ = call::<Value>(app, "lanMulticast", Args { on });
+}
+
+/// Имя устройства из настроек Android (или производитель + модель).
+pub fn device_name(app: &AppHandle) -> Option<String> {
+    #[derive(Deserialize)]
+    struct Named {
+        #[serde(default)]
+        name: Option<String>,
+    }
+    call::<Named>(app, "deviceName", ()).ok().and_then(|n| n.name)
+}
+
 /// Кадр из видео в jpg `out` (MediaMetadataRetriever вместо ffmpeg).
 pub fn thumbnail(app: &AppHandle, video: &str, out: &str) -> Result<(), String> {
     #[derive(Serialize)]

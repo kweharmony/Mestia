@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Локальная сеть: приём multicast-анонсов устройств с Mestia (lan.rs) -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <!-- Своя папка загрузок вне Download/: yt-dlp пишет по путям, SAF ему не подходит.
          Запрашивается только при выборе такой папки (MestiaPlugin.pickFolder). -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"

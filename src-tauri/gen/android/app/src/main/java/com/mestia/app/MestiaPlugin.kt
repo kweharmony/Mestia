@@ -1,12 +1,15 @@
 package com.mestia.app
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.media.MediaScannerConnection
 import android.net.Uri
+import android.net.wifi.WifiManager
+import android.os.Build
 import android.os.Environment
 import android.provider.DocumentsContract
 import android.provider.Settings
@@ -59,6 +62,11 @@ class FullscreenArgs {
 }
 
 @InvokeArg
+class OnArgs {
+    var on: Boolean = false
+}
+
+@InvokeArg
 class ThumbArgs {
     lateinit var videoPath: String
     lateinit var outPath: String
@@ -79,6 +87,9 @@ class MestiaPlugin(private val activity: Activity) : Plugin(activity) {
 
     // Папка, выбранная в pickFolder, пока пользователь выдаёт «Доступ ко всем файлам».
     private var pendingFolder: String? = null
+
+    // Держится, пока включена видимость в локальной сети (lan.rs).
+    private var multicastLock: WifiManager.MulticastLock? = null
 
     // Ссылка из «Поделиться», которую фронтенд ещё не забрал.
     @Volatile
@@ -325,6 +336,34 @@ class MestiaPlugin(private val activity: Activity) : Plugin(activity) {
     fun moveToBack(invoke: Invoke) {
         activity.runOnUiThread { activity.moveTaskToBack(true) }
         invoke.resolve()
+    }
+
+    /** Локальная сеть: принимать multicast-анонсы (Wi-Fi по умолчанию их отбрасывает). */
+    @Command
+    fun lanMulticast(invoke: Invoke) {
+        val a = invoke.parseArgs(OnArgs::class.java)
+        val wifi = activity.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        if (a.on) {
+            if (multicastLock == null) {
+                multicastLock = wifi.createMulticastLock("mestia-lan").apply {
+                    setReferenceCounted(false)
+                    acquire()
+                }
+            }
+        } else {
+            multicastLock?.release()
+            multicastLock = null
+        }
+        invoke.resolve()
+    }
+
+    /** Имя устройства для других в сети: из настроек «О телефоне», иначе модель. */
+    @Command
+    fun deviceName(invoke: Invoke) {
+        val name = runCatching {
+            Settings.Global.getString(activity.contentResolver, Settings.Global.DEVICE_NAME)
+        }.getOrNull()?.takeIf { it.isNotBlank() } ?: "${Build.MANUFACTURER} ${Build.MODEL}"
+        invoke.resolve(JSObject().put("name", name))
     }
 
     /** Забрать ссылку из «Поделиться» (один раз). */

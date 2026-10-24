@@ -23,9 +23,18 @@ tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # HTTP только для резолва метаданных Spotify/Apple Music (см. downloader::resolve_input).
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
 # Таймаут запросов метаданных yt-dlp, очередь строк вывода (уже в дереве через Tauri).
-tokio = { version = "1", features = ["time", "sync"] }
+tokio = { version = "1", features = ["time", "sync", "net", "fs", "io-util", "macros", "rt"] }
+# Локальная сеть (lan.rs): HTTP/WebSocket-сервер, клиент комнаты, UDP-обнаружение.
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "ws", "tokio"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["fs"] }
+tokio-tungstenite = "0.26"
+tokio-util = { version = "0.7", features = ["io"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+socket2 = "0.6"
+if-addrs = "0.13"
 
 # Только компьютер: sidecar-бинарники, самообновление, слежение за папкой, корзина.
 # На Android yt-dlp/ffmpeg живут в Kotlin-плагине (см. engine.rs).

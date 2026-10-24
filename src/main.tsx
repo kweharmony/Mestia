@@ -8,6 +8,7 @@ import { LanguageProvider } from "./context/LanguageContext";
 import { ToastProvider } from "./components/Toast";
 import { DragProvider } from "./context/DragContext";
 import { DownloadsProvider } from "./context/DownloadsContext";
+import { LanProvider } from "./context/LanContext";
 import MiniPlayer from "./views/MiniPlayer";
 
 // Отдельное окно плеера: index.html?mini=<id> — рендерим только проигрыватель.
@@ -24,9 +25,11 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
           ) : (
             <ToastProvider>
               <DownloadsProvider>
-                <DragProvider>
-                  <App />
-                </DragProvider>
+                <LanProvider>
+                  <DragProvider>
+                    <App />
+                  </DragProvider>
+                </LanProvider>
               </DownloadsProvider>
             </ToastProvider>
           )}

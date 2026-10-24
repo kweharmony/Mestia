@@ -1,5 +1,6 @@
 mod downloader;
 mod engine;
+mod lan;
 #[cfg(mobile)]
 mod mobile;
 mod storage;
@@ -63,6 +64,7 @@ pub fn run() {
 
     let builder = tauri::Builder::default()
         .manage(engine::ActiveProcs::default())
+        .manage(lan::Lan::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
@@ -153,6 +155,25 @@ pub fn run() {
             storage::take_shared_text,
             storage::move_app_to_back,
             storage::set_fullscreen,
+            lan::lan_info,
+            lan::lan_start,
+            lan::lan_stop,
+            lan::lan_peers,
+            lan::lan_probe,
+            lan::lan_answer_offer,
+            lan::lan_send,
+            lan::lan_room_start,
+            lan::lan_room_state,
+            lan::lan_room_stop,
+            lan::lan_room_join,
+            lan::lan_room_cmd,
+            lan::lan_room_leave,
+            lan::lan_room_add,
+            lan::lan_room_move,
+            lan::lan_room_remove,
+            lan::lan_room_play,
+            lan::lan_room_queue,
+            lan::lan_room_propose,
         ])
         .run(tauri::generate_context!())
         .expect("Ошибка запуска приложения Mestia");

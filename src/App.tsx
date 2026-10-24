@@ -13,15 +13,19 @@ import Downloader from "./views/Downloader";
 import Locker from "./views/Locker";
 import History from "./views/History";
 import Player from "./views/Player";
+import Nearby from "./views/Nearby";
+import Room from "./views/Room";
 import { exitApp, moveAppToBack, takeSharedText } from "./lib/ipc";
 import { IS_ANDROID } from "./lib/platform";
 import { useDownloads } from "./context/DownloadsContext";
+import { useLan } from "./context/LanContext";
 import { useI18n } from "./context/LanguageContext";
 import type { TabId, VideoRow } from "./types";
 
 export default function App() {
   const { hasActive } = useDownloads();
   const { t } = useI18n();
+  const { room, closeRoom } = useLan();
   const [tab, setTab] = useState<TabId>("downloader");
   const [playing, setPlaying] = useState<VideoRow | null>(null);
   const [playQueue, setPlayQueue] = useState<VideoRow[]>([]);
@@ -82,8 +86,8 @@ export default function App() {
 
   // Android: системная «Назад» закрывает плеер/настройки, затем ведёт на первую
   // вкладку, а с неё сворачивает приложение (не убивая фоновые загрузки).
-  const backState = useRef({ playing, settingsOpen, tab });
-  backState.current = { playing, settingsOpen, tab };
+  const backState = useRef({ playing, settingsOpen, tab, room, closeRoom });
+  backState.current = { playing, settingsOpen, tab, room, closeRoom };
   useEffect(() => {
     if (!IS_ANDROID) return;
     const sub = onBackButtonPress(() => {
@@ -91,7 +95,8 @@ export default function App() {
       const ev = new Event("mestia:back", { cancelable: true });
       if (!window.dispatchEvent(ev)) return;
       const s = backState.current;
-      if (s.playing) setPlaying(null);
+      if (s.room) s.closeRoom();
+      else if (s.playing) setPlaying(null);
       else if (s.settingsOpen) setSettingsOpen(false);
       else if (s.tab !== "downloader") setTab("downloader");
       else moveAppToBack().catch(() => {});
@@ -125,6 +130,7 @@ export default function App() {
           <Locker key={storageVersion} onPlay={openPlayer} onGoToDownloader={() => setTab("downloader")} />
         )}
         {tab === "history" && <History onPlay={openPlayer} onGoToDownloader={() => setTab("downloader")} />}
+        {tab === "nearby" && <Nearby />}
       </main>
 
       <DownloadsPanel onOpenSettings={() => setSettingsOpen(true)} />
@@ -138,6 +144,8 @@ export default function App() {
           onClose={() => setPlaying(null)}
         />
       )}
+
+      {room && <Room room={room} />}
 
       <Settings
         open={settingsOpen}

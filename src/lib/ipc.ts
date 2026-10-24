@@ -457,3 +457,100 @@ export function isAudioPath(path: string | null | undefined): boolean {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
   return AUDIO_EXTS.includes(ext);
 }
+
+// ── Локальная сеть (lan.rs): обмен файлами и совместный просмотр ─────────────
+
+export interface LanInfo {
+  running: boolean;
+  id: string;
+  name: string;
+  port: number;
+  ips: string[];
+}
+
+export interface LanPeer {
+  id: string;
+  name: string;
+  platform: string;
+  /** ip:port сервера устройства. */
+  addr: string;
+  /** Название открытой на устройстве комнаты совместного просмотра. */
+  room: string | null;
+  manual: boolean;
+}
+
+export interface LanOffer {
+  id: string;
+  from: string;
+  files: { id: string; name: string; size: number }[];
+  total: number;
+}
+
+export interface LanProgress {
+  id: string;
+  name: string;
+  done: number;
+  total: number;
+  dir: "in" | "out";
+  peer: string;
+  error?: boolean;
+}
+
+/** Состояние плеера ведущего; at — момент (в наших часах, мс), к которому относится pos. */
+export interface RoomState {
+  playing: boolean;
+  pos: number;
+  rate: number;
+  at: number;
+  peers: number;
+  /** id элемента очереди, к которому относится состояние. */
+  item?: string | null;
+}
+
+export interface RoomJoin {
+  title: string;
+  kind: "video" | "audio";
+}
+
+/** Элемент очереди комнаты: path — свой файл ведущего, url — поток с другого устройства. */
+export interface QueueItem {
+  id: string;
+  title: string;
+  kind: "video" | "audio";
+  /** Кто из гостей предложил (null — добавил ведущий). */
+  by: string | null;
+  path: string | null;
+  url: string | null;
+}
+
+export interface RoomQueue {
+  items: QueueItem[];
+  current: string | null;
+}
+
+export const lanInfo = () => invoke<LanInfo>("lan_info");
+export const lanStart = () => invoke<LanInfo>("lan_start");
+export const lanStop = () => invoke<void>("lan_stop");
+export const lanPeers = () => invoke<LanPeer[]>("lan_peers");
+export const lanProbe = (addr: string) => invoke<LanPeer>("lan_probe", { addr });
+export const lanAnswerOffer = (id: string, accept: boolean) =>
+  invoke<void>("lan_answer_offer", { id, accept });
+export const lanSend = (addr: string, peer: string, paths: string[]) =>
+  invoke<void>("lan_send", { addr, peer, paths });
+export const lanRoomStart = (path: string, title: string, kind: string) =>
+  invoke<string>("lan_room_start", { path, title, kind });
+export const lanRoomState = (playing: boolean, pos: number, rate: number) =>
+  invoke<void>("lan_room_state", { playing, pos, rate });
+export const lanRoomStop = () => invoke<void>("lan_room_stop");
+export const lanRoomJoin = (addr: string) => invoke<RoomJoin>("lan_room_join", { addr });
+export const lanRoomCmd = (action: "play" | "pause" | "seek", pos: number) =>
+  invoke<void>("lan_room_cmd", { action, pos });
+export const lanRoomLeave = () => invoke<void>("lan_room_leave");
+export const lanRoomAdd = (path: string, title: string, kind: string) =>
+  invoke<void>("lan_room_add", { path, title, kind });
+export const lanRoomMove = (id: string, delta: number) => invoke<void>("lan_room_move", { id, delta });
+export const lanRoomRemove = (id: string) => invoke<void>("lan_room_remove", { id });
+export const lanRoomPlay = (id: string) => invoke<void>("lan_room_play", { id });
+export const lanRoomQueue = () => invoke<RoomQueue | null>("lan_room_queue");
+export const lanRoomPropose = (path: string, title: string, kind: string) =>
+  invoke<void>("lan_room_propose", { path, title, kind });

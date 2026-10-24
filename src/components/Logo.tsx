@@ -2,9 +2,9 @@
  * Логотип Mestia: акцентный «лоток загрузки» с анимированной стрелкой,
  * которая ритмично «падает» в основание — намёк на скачивание.
  */
-export default function Logo() {
+export default function Logo({ compact = false }: { compact?: boolean }) {
   return (
-    <div className="mestia-logo flex items-center gap-2.5 px-2 no-select">
+    <div className={`mestia-logo flex items-center gap-2.5 no-select ${compact ? "px-0" : "px-2"}`}>
       <span className="relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-[9px] bg-accent shadow-sm">
         {/* падающая стрелка */}
         <svg
@@ -21,9 +21,9 @@ export default function Logo() {
         {/* основание (лоток) */}
         <span className="absolute bottom-[5px] h-[2.5px] w-3.5 rounded-full bg-white/90" />
       </span>
-      <span className="bg-gradient-to-r from-ink to-accent bg-clip-text text-lg font-bold tracking-tight text-transparent">
+      {!compact && <span className="bg-gradient-to-r from-ink to-accent bg-clip-text text-lg font-bold tracking-tight text-transparent">
         Mestia
-      </span>
+      </span>}
     </div>
   );
 }

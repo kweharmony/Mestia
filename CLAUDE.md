@@ -60,11 +60,14 @@ docs/               GitHub Pages landing site (self-contained index.html: all 8 
                     part of the app build.
 scripts/            Node scripts: fetch-binaries.mjs, free-port.mjs
 src/                Frontend (React + TS)
-  context/          React contexts: ThemeContext, LanguageContext (i18n), DownloadsContext (queue/events), DragContext
-  components/       UI: Sidebar, Settings, DownloadsPanel, Splash, Toast, Typewriter, ThemeSwitcher, Logo
+  context/          React contexts: ThemeContext, LanguageContext (i18n), DownloadsContext (queue/events), DragContext,
+                    LanContext (LAN visibility/peers/transfers/incoming offers/room)
+  components/       UI: Sidebar, Settings, DownloadsPanel, Splash, Toast, Typewriter, ThemeSwitcher, Logo,
+                    LibraryPicker (pick library/disk files for LAN send & room queue)
   lib/              ipc.ts (bridge to Rust commands), db.ts (SQLite access), i18n.ts (ru/en/zh dictionary + t()),
-                    platform.ts (IS_ANDROID, share-text URL extraction)
-  views/            Downloader, Locker (library), History, Player, MiniPlayer
+                    platform.ts (IS_ANDROID, share-text URL extraction), roomSync.ts (watch-together drift correction)
+  views/            Downloader, Locker (library), History, Player, MiniPlayer, Nearby (LAN devices/transfers),
+                    Room (watch-together player + queue)
   types.ts          Shared TS types
 src-tauri/          Backend (Rust + Tauri v2)
   src/lib.rs        Plugins, tray, smart-close, command registration (mestia_lib::run)
@@ -72,6 +75,7 @@ src-tauri/          Backend (Rust + Tauri v2)
   src/engine.rs     yt-dlp runner: desktop sidecar / Android Kotlin plugin; cancel
   src/mobile.rs     Android bridge to MestiaPlugin (storage root, thumbnails, share, update)
   src/storage.rs    Files, folders, file-watcher, thumbnails, settings
+  src/lan.rs        LAN: UDP discovery, axum HTTP/WS server, file offers/uploads, watch-together room + clock sync
   src/main.rs       Entry point -> mestia_lib::run()
   migrations/       SQLite schema
   capabilities/     Plugin permissions (default.json; desktop.json — desktop-only)

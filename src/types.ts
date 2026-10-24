@@ -10,7 +10,7 @@ export type ThemeName =
   | "forest"
   | "graphite";
 
-export type TabId = "downloader" | "locker" | "history";
+export type TabId = "downloader" | "locker" | "history" | "nearby";
 
 /** Результат получения метаданных: одиночное видео или плейлист. */
 export interface FetchResult {

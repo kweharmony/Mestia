@@ -208,6 +208,12 @@ export async function reassignVideosToFolder(
   }
 }
 
+/** Вся медиатека, новые сверху (выбор файлов для отправки/комнаты). */
+export async function allVideos(): Promise<VideoRow[]> {
+  const d = await db();
+  return d.select<VideoRow[]>("SELECT * FROM videos ORDER BY created_at DESC LIMIT 2000");
+}
+
 export async function searchVideos(query: string): Promise<VideoRow[]> {
   const q = query.trim().toLowerCase();
   if (!q) return [];

@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useRef,
@@ -77,6 +78,8 @@ interface DownloadsCtx {
   cancel: (id: string) => Promise<void>;
   dismiss: (id: string) => void;
   retry: (id: string) => Promise<void>;
+  /** Медиатека изменилась извне загрузчика (например, файл принят по локальной сети). */
+  bumpLibrary: () => void;
 }
 
 const Ctx = createContext<DownloadsCtx | null>(null);
@@ -109,6 +112,7 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
   const { notify } = useToast();
   const [downloads, setDownloads] = useState<ActiveDownload[]>([]);
   const [libraryVersion, setLibraryVersion] = useState(0);
+  const bumpLibrary = useCallback(() => setLibraryVersion((v) => v + 1), []);
   const metaMap = useRef(new Map<string, Meta>());
   // Исходные параметры задачи — для повтора проваленной загрузки (CTA «Повторить»).
   const optsMap = useRef(new Map<string, StartOpts>());
@@ -398,7 +402,7 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <Ctx.Provider value={{ downloads, hasActive, libraryVersion, start, cancel, dismiss, retry }}>
+    <Ctx.Provider value={{ downloads, hasActive, libraryVersion, start, cancel, dismiss, retry, bumpLibrary }}>
       {children}
     </Ctx.Provider>
   );
