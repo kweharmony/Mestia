@@ -62,7 +62,11 @@ Build-time Node helpers.
   - `platform.ts` — `IS_ANDROID` (hides tray, explorer, mini-window, cookies, uninstall)
   - `appIcon.ts` — logo marks (`LOGO_MARK`) + `applyThemeIcon()`: favicon/window/tray icon in the theme accent (called from ThemeContext); concept sources in `design/logo/`
     and URL extraction from shared text.
-  - `roomSync.ts` — watch-together drift correction (seek on big drift, ±6% rate on small).
+  - `roomSync.ts` — watch-together drift correction (seek on big drift, ±10% rate on small,
+    self-tuning start lead).
+  - `media.ts` — `useMediaSrc` (desktop: asset://; Android: `local_media_url` from media.rs,
+    because Tauri's Android asset protocol serves Range in 1 MB chunks and audio >1 MB never
+    loads) and `setPlaybackActive` (Android PlaybackService while something plays).
 - `views/` — top-level screens:
   - `Downloader` — paste URL, pick format/quality, start downloads.
   - `Locker` — the media library (folders + videos grid, multi-select, drag-drop).
@@ -87,14 +91,17 @@ Build-time Node helpers.
   move-to-back, yt-dlp update.
 - `gen/android/` — Android Studio project. `MestiaPlugin.kt` wraps youtubedl-android
   (Python + yt-dlp + ffmpeg); `DownloadService.kt` — foreground service while downloads
-  run; `MainActivity.kt` — system-bar insets; manifest — `ACTION_SEND text/plain` share
+  run; `PlaybackService.kt` — mediaPlayback foreground service + wake/Wi-Fi lock while
+  the player or a room plays (works with the screen off); `MainActivity.kt` — system-bar insets; manifest — `ACTION_SEND text/plain` share
   target, `extractNativeLibs`.
 - `src/storage.rs` — filesystem ops: files/folders, real-time file-watcher, thumbnail
   generation (ffmpeg, cached), settings.
 - `src/lan.rs` — LAN: UDP announces (multicast 239.255.77.18 + subnet broadcast, port
   53318), axum HTTP/WS server on TCP 53318 (`/api/info`, `/api/offer`, `/api/upload`,
   `/api/room`, `/api/room/media` with Range, `/api/room/ws`), sender via reqwest,
-  watch-together guest via tokio-tungstenite with NTP-like clock offset.
+  watch-together guest via tokio-tungstenite with NTP-like clock offset. Every route rejects
+  `Origin` (browser pages) and non-IP `Host` (DNS rebinding); LAN clients bypass system proxy.
+- `src/media.rs` — Android loopback media server (127.0.0.1, random port, per-file token).
 - `migrations/0001_init.sql` — SQLite schema (applied automatically).
 - `capabilities/default.json` — Tauri plugin permissions; `desktop.json` — desktop-only
   (updater). `tauri.android.conf.json` drops sidecars and sets minSdk 30.
@@ -112,7 +119,8 @@ Build-time Node helpers.
   remove/play`), broadcasts `{t:"queue"}`; on `ended` the host plays the next item. A guest
   `lan_room_propose` registers a token in its own `/api/share/media` and the item streams
   from the guest's device; its items drop when the guest leaves. Android: `MulticastLock`
-  (`lanMulticast`), cleartext HTTP allowed for LAN media.
+  (`lanMulticast`), cleartext HTTP allowed for LAN media. The room can be minimized to a
+  pill (playback continues); Library selection → «Отправить» (`SendToDevice`) / «В очередь».
 
 - **Download**: `Downloader` view → `ipc.ts` → `downloader.rs` (builds args) →
   `engine.rs` (sidecar on desktop / `MestiaPlugin.execute` on Android) → progress events →

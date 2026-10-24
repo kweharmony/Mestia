@@ -64,10 +64,11 @@ src/                Frontend (React + TS)
   context/          React contexts: ThemeContext, LanguageContext (i18n), DownloadsContext (queue/events), DragContext,
                     LanContext (LAN visibility/peers/transfers/incoming offers/room)
   components/       UI: Sidebar, Settings, DownloadsPanel, Splash, Toast, Typewriter, ThemeSwitcher, Logo,
-                    LibraryPicker (pick library/disk files for LAN send & room queue)
+                    LibraryPicker (pick library/disk files for LAN send & room queue), SendToDevice (peer chooser)
   lib/              ipc.ts (bridge to Rust commands), db.ts (SQLite access), i18n.ts (ru/en/zh dictionary + t()),
                     platform.ts (IS_ANDROID, share-text URL extraction),
-                    appIcon.ts (logo marks + theme-coloured favicon/window/tray icon), roomSync.ts (watch-together drift correction)
+                    appIcon.ts (logo marks + theme-coloured favicon/window/tray icon), roomSync.ts (watch-together drift correction),
+                    media.ts (player src: Android via local media server; playback keep-alive)
   views/            Downloader, Locker (library), History, Player, MiniPlayer, Nearby (LAN devices/transfers),
                     Room (watch-together player + queue)
   types.ts          Shared TS types
@@ -78,13 +79,15 @@ src-tauri/          Backend (Rust + Tauri v2)
   src/mobile.rs     Android bridge to MestiaPlugin (storage root, thumbnails, share, update)
   src/storage.rs    Files, folders, file-watcher, thumbnails, settings
   src/lan.rs        LAN: UDP discovery, axum HTTP/WS server, file offers/uploads, watch-together room + clock sync
+  src/media.rs      Android: loopback HTTP for player media (asset:// breaks audio >1 MB on Android)
   src/main.rs       Entry point -> mestia_lib::run()
   migrations/       SQLite schema
   capabilities/     Plugin permissions (default.json; desktop.json — desktop-only)
   tauri.conf.json   Window, tray, sidecar, asset protocol, NSIS, updater
   tauri.android.conf.json  Android overrides (no sidecars, minSdk 30)
   gen/android/      Android Studio project: MestiaPlugin.kt, DownloadService.kt (foreground
-                    service), MainActivity.kt (insets), manifest (share intent), Gradle deps
+                    service), PlaybackService.kt (playback with screen off), MainActivity.kt (insets),
+                    manifest (share intent), Gradle deps
 ```
 
 The frontend calls Rust via `src/lib/ipc.ts`. Rust emits download progress and

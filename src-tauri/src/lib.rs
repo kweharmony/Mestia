@@ -1,6 +1,7 @@
 mod downloader;
 mod engine;
 mod lan;
+mod media;
 #[cfg(mobile)]
 mod mobile;
 mod storage;
@@ -65,6 +66,7 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .manage(engine::ActiveProcs::default())
         .manage(lan::Lan::default())
+        .manage(media::LocalMedia::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
@@ -156,6 +158,8 @@ pub fn run() {
             storage::move_app_to_back,
             storage::set_fullscreen,
             storage::set_app_icon,
+            storage::set_playback_active,
+            media::local_media_url,
             lan::lan_info,
             lan::lan_start,
             lan::lan_stop,

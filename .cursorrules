@@ -24,11 +24,11 @@ Cross-platform (desktop + Android) video downloader & media library.
 
 ## Architecture
 - `src/context/` — ThemeContext, LanguageContext (i18n), DownloadsContext (queue/events), DragContext, LanContext (LAN peers/transfers/room)
-- `src/components/` — Sidebar, Settings, DownloadsPanel, Splash, Toast, LibraryPicker, etc.
-- `src/lib/` — ipc.ts (bridge to Rust), db.ts (SQLite), i18n.ts (ru/en/zh dictionary + t()), platform.ts (IS_ANDROID), appIcon.ts (logo marks + theme-coloured favicon/window/tray icon), roomSync.ts (watch-together drift)
+- `src/components/` — Sidebar, Settings, DownloadsPanel, Splash, Toast, LibraryPicker, SendToDevice, etc.
+- `src/lib/` — ipc.ts (bridge to Rust), db.ts (SQLite), i18n.ts (ru/en/zh dictionary + t()), platform.ts (IS_ANDROID), appIcon.ts (logo marks + theme-coloured favicon/window/tray icon), roomSync.ts (watch-together drift), media.ts (player src / playback keep-alive)
 - `src/views/` — Downloader, Locker (library), History, Player, MiniPlayer, Nearby (LAN), Room (watch together + queue)
-- `src-tauri/src/` — lib.rs (plugins/tray/commands), downloader.rs (yt-dlp args/events), engine.rs (yt-dlp runner: sidecar / Android plugin), mobile.rs (Android bridge), storage.rs (files/watcher/thumbnails), lan.rs (LAN discovery/server/transfers/room)
-- `src-tauri/gen/android/` — Android project: MestiaPlugin.kt, DownloadService.kt, MainActivity.kt, manifest, Gradle deps
+- `src-tauri/src/` — lib.rs (plugins/tray/commands), downloader.rs (yt-dlp args/events), engine.rs (yt-dlp runner: sidecar / Android plugin), mobile.rs (Android bridge), storage.rs (files/watcher/thumbnails), lan.rs (LAN discovery/server/transfers/room), media.rs (Android loopback media server)
+- `src-tauri/gen/android/` — Android project: MestiaPlugin.kt, DownloadService.kt, PlaybackService.kt, MainActivity.kt, manifest, Gradle deps
 - `flatpak/` — Flatpak packaging for Steam Deck/SteamOS (manifest + desktop/metainfo); wraps the built .deb in the GNOME runtime, built in CI.
 - `design/logo/` — logo concept SVGs + concepts.png; not part of the build.
 - `docs/` — GitHub Pages landing site (self-contained index.html, all 8 themes + download links); static, not part of the app build.

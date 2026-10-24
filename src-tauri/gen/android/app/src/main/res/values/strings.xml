@@ -4,5 +4,7 @@
     <!-- Язык по умолчанию — русский, как и в интерфейсе (src/lib/i18n.ts) -->
     <string name="downloads_channel">Загрузки</string>
     <string name="downloads_running">Идёт загрузка…</string>
+    <string name="playback_channel">Воспроизведение</string>
+    <string name="playback_running">Идёт воспроизведение</string>
     <string name="share_label">Скачать в Mestia</string>
 </resources>

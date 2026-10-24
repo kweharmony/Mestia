@@ -23,6 +23,7 @@ import type { VideoRow } from "../types";
 import { existingPaths, formatDuration, getSetting, isAudioPath, openPath, setFullscreen, subtitleTrack } from "../lib/ipc";
 import { useI18n } from "../context/LanguageContext";
 import { IS_ANDROID } from "../lib/platform";
+import { setPlaybackActive, useMediaSrc } from "../lib/media";
 
 // Linux (webkit2gtk) без Android — на нём чаще всего не хватает GStreamer-кодеков.
 const IS_LINUX = /Linux/i.test(navigator.userAgent) && !/Android/i.test(navigator.userAgent);
@@ -111,7 +112,7 @@ export default function Player({
   const [immersive, setImmersive] = useState<null | { landscape: boolean }>(null);
 
   const audio = isAudioPath(video.file_path);
-  const src = convertFileSrc(video.file_path);
+  const src = useMediaSrc(video.file_path);
   const cover = video.thumbnail_path
     ? /^https?:/i.test(video.thumbnail_path)
       ? video.thumbnail_path
@@ -253,8 +254,14 @@ export default function Player({
     autoPlay: true,
     // Истина — у самого элемента: autoplay может не сработать, а пауза прийти из
     // системных медиа-клавиш или нативного полноэкранного режима.
-    onPlay: () => setPlaying(true),
-    onPause: () => setPlaying(false),
+    onPlay: () => {
+      setPlaying(true);
+      setPlaybackActive(true);
+    },
+    onPause: () => {
+      setPlaying(false);
+      setPlaybackActive(false);
+    },
     onTimeUpdate: (e: React.SyntheticEvent<HTMLMediaElement>) => {
       const t = e.currentTarget.currentTime;
       setTime(t);
@@ -285,6 +292,9 @@ export default function Player({
         .catch(() => setFailKind("unknown"));
     },
   };
+
+  // Закрыли плеер — телефону снова можно засыпать.
+  useEffect(() => () => setPlaybackActive(false), []);
 
   // При смене видео сбрасываем прежнюю ошибку.
   useEffect(() => {

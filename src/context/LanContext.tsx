@@ -14,8 +14,11 @@ import {
   lanInfo,
   lanPeers,
   lanRoomJoin,
+  lanRoomAdd,
   lanRoomLeave,
+  lanRoomPropose,
   lanRoomStart,
+  lanSend,
   lanRoomStop,
   lanStart,
   lanStop,
@@ -43,6 +46,15 @@ interface LanValue {
   hostRoom: (video: VideoRow) => Promise<void>;
   joinRoom: (peer: LanPeer) => Promise<void>;
   closeRoom: () => void;
+  /** Комната свёрнута в плашку: воспроизведение идёт, можно ходить по приложению. */
+  roomMinimized: boolean;
+  setRoomMinimized: (v: boolean) => void;
+  /** Отправить файлы устройству (запрос → подтверждение получателем → передача). */
+  sendFiles: (peer: LanPeer, paths: string[]) => Promise<void>;
+  /** id устройств, которым сейчас идёт отправка. */
+  sending: Set<string>;
+  /** В очередь открытой комнаты: ведущий — добавляет, гость — предлагает. */
+  queueFiles: (files: { file_path: string; title: string }[]) => Promise<void>;
 }
 
 const LanContext = createContext<LanValue | null>(null);
@@ -66,6 +78,8 @@ export function LanProvider({ children }: { children: ReactNode }) {
   const [transfers, setTransfers] = useState<LanProgress[]>([]);
   const [offers, setOffers] = useState<LanOffer[]>([]);
   const [room, setRoom] = useState<LanRoom | null>(null);
+  const [roomMinimized, setRoomMinimized] = useState(false);
+  const [sending, setSending] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const subs = [
@@ -141,7 +155,46 @@ export function LanProvider({ children }: { children: ReactNode }) {
     [notify]
   );
 
+  const sendFiles = useCallback(
+    async (peer: LanPeer, paths: string[]) => {
+      if (!paths.length) return;
+      setSending((s) => new Set(s).add(peer.id));
+      notify(t("lan.waitingAnswer", { name: peer.name }));
+      try {
+        await lanSend(peer.addr, peer.name, paths);
+        notify(t("lan.sent", { name: peer.name }));
+      } catch (e) {
+        notify(humanizeError(e), "error");
+      } finally {
+        setSending((s) => {
+          const n = new Set(s);
+          n.delete(peer.id);
+          return n;
+        });
+      }
+    },
+    [notify, t]
+  );
+
+  const queueFiles = useCallback(
+    async (files: { file_path: string; title: string }[]) => {
+      if (!room || !files.length) return;
+      try {
+        for (const f of files) {
+          const kind = isAudioPath(f.file_path) ? "audio" : "video";
+          if (room.role === "host") await lanRoomAdd(f.file_path, f.title, kind);
+          else await lanRoomPropose(f.file_path, f.title, kind);
+        }
+        notify(t("room.proposed", { n: files.length }));
+      } catch (e) {
+        notify(humanizeError(e), "error");
+      }
+    },
+    [room, notify, t]
+  );
+
   const closeRoom = useCallback(() => {
+    setRoomMinimized(false);
     setRoom((r) => {
       if (r?.role === "host") lanRoomStop().catch(() => {});
       if (r?.role === "guest") lanRoomLeave().catch(() => {});
@@ -169,6 +222,11 @@ export function LanProvider({ children }: { children: ReactNode }) {
         hostRoom,
         joinRoom,
         closeRoom,
+        roomMinimized,
+        setRoomMinimized,
+        sendFiles,
+        sending,
+        queueFiles,
       }}
     >
       {children}

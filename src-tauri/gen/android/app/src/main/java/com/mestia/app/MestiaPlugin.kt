@@ -366,6 +366,14 @@ class MestiaPlugin(private val activity: Activity) : Plugin(activity) {
         invoke.resolve(JSObject().put("name", name))
     }
 
+    /** Идёт воспроизведение: служба PlaybackService держит процессор и Wi-Fi при выключенном экране. */
+    @Command
+    fun playbackKeepAlive(invoke: Invoke) {
+        val a = invoke.parseArgs(OnArgs::class.java)
+        PlaybackService.set(activity.applicationContext, a.on)
+        invoke.resolve()
+    }
+
     /** Забрать ссылку из «Поделиться» (один раз). */
     @Command
     fun takeShared(invoke: Invoke) {

@@ -25,7 +25,7 @@ import type { TabId, VideoRow } from "./types";
 export default function App() {
   const { hasActive } = useDownloads();
   const { t } = useI18n();
-  const { room, closeRoom } = useLan();
+  const { room, roomMinimized, setRoomMinimized } = useLan();
   const [tab, setTab] = useState<TabId>("downloader");
   const [playing, setPlaying] = useState<VideoRow | null>(null);
   const [playQueue, setPlayQueue] = useState<VideoRow[]>([]);
@@ -86,8 +86,8 @@ export default function App() {
 
   // Android: системная «Назад» закрывает плеер/настройки, затем ведёт на первую
   // вкладку, а с неё сворачивает приложение (не убивая фоновые загрузки).
-  const backState = useRef({ playing, settingsOpen, tab, room, closeRoom });
-  backState.current = { playing, settingsOpen, tab, room, closeRoom };
+  const backState = useRef({ playing, settingsOpen, tab, room, roomMinimized, setRoomMinimized });
+  backState.current = { playing, settingsOpen, tab, room, roomMinimized, setRoomMinimized };
   useEffect(() => {
     if (!IS_ANDROID) return;
     const sub = onBackButtonPress(() => {
@@ -95,7 +95,8 @@ export default function App() {
       const ev = new Event("mestia:back", { cancelable: true });
       if (!window.dispatchEvent(ev)) return;
       const s = backState.current;
-      if (s.room) s.closeRoom();
+      // Комнату «Назад» сворачивает, а не закрывает: воспроизведение у всех продолжается.
+      if (s.room && !s.roomMinimized) s.setRoomMinimized(true);
       else if (s.playing) setPlaying(null);
       else if (s.settingsOpen) setSettingsOpen(false);
       else if (s.tab !== "downloader") setTab("downloader");

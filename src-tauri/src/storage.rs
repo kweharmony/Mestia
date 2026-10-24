@@ -916,6 +916,15 @@ pub fn set_app_icon(app: tauri::AppHandle, rgba: Vec<u8>, width: u32, height: u3
     }
 }
 
+/// Android: идёт воспроизведение — не давать телефону засыпать (служба + wake/Wi-Fi lock).
+/// На компьютере не нужно.
+#[tauri::command(async)]
+#[cfg_attr(desktop, allow(unused_variables))]
+pub fn set_playback_active(app: tauri::AppHandle, on: bool) {
+    #[cfg(mobile)]
+    crate::mobile::set_playback_active(&app, on);
+}
+
 /// Ссылка, присланная в приложение через «Поделиться» (Android); на компьютере — нет.
 #[tauri::command(async)]
 pub fn take_shared_text(app: tauri::AppHandle) -> Option<String> {

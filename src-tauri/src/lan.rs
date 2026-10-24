@@ -115,7 +115,7 @@ fn now_ms() -> f64 {
 }
 
 /// Случайный идентификатор (RandomState засеивается ОС; криптостойкость не нужна).
-fn rand_id() -> String {
+pub(crate) fn rand_id() -> String {
     use std::hash::{BuildHasher, Hasher};
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -130,6 +130,12 @@ fn rand_id() -> String {
 
 fn es(e: impl std::fmt::Display) -> String {
     e.to_string()
+}
+
+/// HTTP-клиент для соседних устройств: мимо системного прокси (HTTP_PROXY, прокси Windows) —
+/// иначе запрос к 192.168.x.x уходит в прокси и устройство «не отвечает».
+fn lan_client() -> reqwest::ClientBuilder {
+    reqwest::Client::builder().no_proxy()
 }
 
 // ── Устройство ──────────────────────────────────────────────────────────────
@@ -292,7 +298,7 @@ fn emit_peers(app: &AppHandle) {
 pub async fn lan_probe(app: AppHandle, addr: String) -> Result<Peer, String> {
     let addr = addr.trim().trim_start_matches("http://").trim_end_matches('/').to_string();
     let addr = if addr.contains(':') { addr } else { format!("{addr}:{PORT}") };
-    let v: Value = reqwest::Client::new()
+    let v: Value = lan_client().build().map_err(es)?
         .get(format!("http://{addr}/api/info"))
         .timeout(Duration::from_secs(4))
         .send()
@@ -439,7 +445,7 @@ fn routes(app: AppHandle) -> Router {
 /// устройстве. Браузер ставит Origin на WebSocket и на запросы через CORS — у Mestia
 /// (reqwest/tungstenite) его нет, а <video> гостя при обычной загрузке медиа его не шлёт.
 /// Host — только IP: имя вместо адреса означает DNS-rebinding.
-async fn only_native_peers(req: Request, next: Next) -> Response {
+pub(crate) async fn only_native_peers(req: Request, next: Next) -> Response {
     let host_ok = req
         .headers()
         .get(header::HOST)
@@ -631,7 +637,7 @@ pub async fn lan_send(app: AppHandle, addr: String, peer: String, paths: Vec<Str
     if files.is_empty() {
         return Err("Файлы не найдены".into());
     }
-    let client = reqwest::Client::builder()
+    let client = lan_client()
         .connect_timeout(Duration::from_secs(5))
         .build()
         .map_err(es)?;
@@ -1099,7 +1105,7 @@ pub struct JoinInfo {
 #[tauri::command]
 pub async fn lan_room_join(app: AppHandle, addr: String) -> Result<JoinInfo, String> {
     leave(&app);
-    let info: Value = reqwest::Client::new()
+    let info: Value = lan_client().build().map_err(es)?
         .get(format!("http://{addr}/api/room"))
         .timeout(Duration::from_secs(5))
         .send()

@@ -1,5 +1,7 @@
 <resources>
     <string name="downloads_channel">Downloads</string>
     <string name="downloads_running">Downloading…</string>
+    <string name="playback_channel">Playback</string>
+    <string name="playback_running">Playing</string>
     <string name="share_label">Download with Mestia</string>
 </resources>

@@ -11,13 +11,16 @@ import {
   FolderOpen,
   FolderPlus,
   Image as ImageIcon,
+  ListPlus,
   Music,
   Pencil,
   Play,
   RefreshCw,
   Search,
+  Send,
   Trash2,
   Check,
+  CheckCheck,
   X,
 } from "lucide-react";
 import {
@@ -65,6 +68,8 @@ import Modal from "../components/Modal";
 import { useI18n } from "../context/LanguageContext";
 import Typewriter from "../components/Typewriter";
 import { IS_ANDROID } from "../lib/platform";
+import { useLan } from "../context/LanContext";
+import SendToDevice from "../components/SendToDevice";
 
 const SEARCH_HINT_KEYS = ["lib.sh.0", "lib.sh.1", "lib.sh.2", "lib.sh.3", "lib.sh.4", "lib.sh.5"];
 
@@ -124,6 +129,9 @@ export default function Locker({
   // Множественный выбор видео.
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const selectionMode = selected.size > 0;
+  const { room, queueFiles } = useLan();
+  // Файлы, для которых выбираем устройство (окно «Отправить на…»).
+  const [sendList, setSendList] = useState<VideoRow[] | null>(null);
 
   const current = trail.length ? trail[trail.length - 1] : null;
   const currentId = current?.id ?? null;
@@ -803,33 +811,74 @@ export default function Locker({
                 animate={{ opacity: 1, y: 0, x: "-50%" }}
                 exit={{ opacity: 0, y: 24, x: "-50%" }}
                 transition={{ type: "spring", stiffness: 400, damping: 32 }}
-                className="fixed bottom-20 left-1/2 z-40 md:bottom-6 flex items-center gap-2 rounded-ui border-2 border-ink bg-snow px-3 py-2 text-sm font-semibold shadow-lg no-select"
+                className="fixed bottom-20 left-1/2 z-40 md:bottom-6 flex max-w-[calc(100vw-1rem)] items-center gap-1.5 whitespace-nowrap rounded-ui border-2 border-ink bg-snow px-2 py-2 text-sm font-semibold shadow-lg no-select sm:gap-2 sm:px-3"
               >
-                <span className="px-1">{t("lib.selected", { count: selected.size })}</span>
+                <span className="px-1">
+                  <span className="hidden sm:inline">{t("lib.selected", { count: selected.size })}</span>
+                  <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-accent px-1.5 text-xs text-white sm:hidden">
+                    {selected.size}
+                  </span>
+                </span>
                 <button
                   onClick={() => setSelected(new Set(shownVideos.map((v) => v.id)))}
-                  className="rounded-ui border-2 border-ink px-3 py-1.5 hover:bg-fog"
+                  title={t("lib.selectAll")}
+                  className="flex items-center gap-1.5 rounded-ui border-2 border-ink px-2.5 py-1.5 hover:bg-fog sm:px-3"
                 >
-                  {t("lib.selectAll")}
+                  <CheckCheck className="h-4 w-4 sm:hidden" strokeWidth={2.25} />
+                  <span className="hidden sm:inline">{t("lib.selectAll")}</span>
                 </button>
+                {/* Отправить на устройство рядом / в очередь открытой комнаты */}
+                <button
+                  onClick={() => setSendList(shownVideos.filter((v) => selected.has(v.id)))}
+                  title={t("lan.sendFiles")}
+                  className="flex items-center gap-1.5 rounded-ui border-2 border-ink px-2.5 py-1.5 hover:bg-fog sm:px-3"
+                >
+                  <Send className="h-4 w-4" strokeWidth={2.25} />
+                  <span className="hidden sm:inline">{t("lan.send")}</span>
+                </button>
+                {room && (
+                  <button
+                    onClick={() => {
+                      void queueFiles(shownVideos.filter((v) => selected.has(v.id)));
+                      setSelected(new Set());
+                    }}
+                    title={room.role === "host" ? t("room.addTitle") : t("room.proposeTitle")}
+                    className="flex items-center gap-1.5 rounded-ui border-2 border-ink px-2.5 py-1.5 hover:bg-fog sm:px-3"
+                  >
+                    <ListPlus className="h-4 w-4" strokeWidth={2.25} />
+                    <span className="hidden sm:inline">{t("room.toQueue")}</span>
+                  </button>
+                )}
                 <button
                   onClick={askDeleteSelected}
-                  className="flex items-center gap-1.5 rounded-ui border-2 border-ink bg-rose-600 px-3 py-1.5 text-white hover:opacity-90"
+                  title={t("lib.delete")}
+                  className="flex items-center gap-1.5 rounded-ui border-2 border-ink bg-rose-600 px-2.5 py-1.5 text-white hover:opacity-90 sm:px-3"
                 >
                   <Trash2 className="h-4 w-4" strokeWidth={2.25} />
-                  {t("lib.delete")}
+                  <span className="hidden sm:inline">{t("lib.delete")}</span>
                 </button>
                 <button
                   onClick={() => setSelected(new Set())}
-                  className="rounded-ui border-2 border-fog px-3 py-1.5 hover:bg-fog"
+                  title={t("lib.deselect")}
+                  className="flex items-center rounded-ui border-2 border-fog px-2.5 py-1.5 hover:bg-fog sm:px-3"
                 >
-                  {t("lib.deselect")}
+                  <X className="h-4 w-4 sm:hidden" strokeWidth={2.25} />
+                  <span className="hidden sm:inline">{t("lib.deselect")}</span>
                 </button>
               </motion.div>
             )}
           </AnimatePresence>,
           document.body
         )}
+
+        <SendToDevice
+          files={sendList}
+          onClose={() => setSendList(null)}
+          onSent={() => {
+            setSendList(null);
+            setSelected(new Set());
+          }}
+        />
 
         {/* Контент — с выделением рамкой */}
         <div ref={gridRef} onMouseDown={onGridMouseDown} className="relative min-h-[300px]">

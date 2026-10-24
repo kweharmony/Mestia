@@ -121,6 +121,15 @@ pub fn move_to_back(app: &AppHandle) {
     let _ = call::<Value>(app, "moveToBack", ());
 }
 
+/// Служба воспроизведения: держит процессор и Wi-Fi, пока что-то играет (экран может гаснуть).
+pub fn set_playback_active(app: &AppHandle, on: bool) {
+    #[derive(Serialize)]
+    struct Args {
+        on: bool,
+    }
+    let _ = call::<Value>(app, "playbackKeepAlive", Args { on });
+}
+
 /// Ссылка, присланная через «Поделиться» (забирается один раз).
 pub fn take_shared_text(app: &AppHandle) -> Option<String> {
     #[derive(Deserialize)]

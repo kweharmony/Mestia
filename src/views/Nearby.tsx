@@ -25,7 +25,7 @@ import LibraryPicker from "../components/LibraryPicker";
 import { useToast } from "../components/Toast";
 import { useLan } from "../context/LanContext";
 import { useI18n } from "../context/LanguageContext";
-import { formatBytes, humanizeError, lanProbe, lanSend, type LanPeer } from "../lib/ipc";
+import { formatBytes, humanizeError, lanProbe, type LanPeer } from "../lib/ipc";
 import { IS_ANDROID } from "../lib/platform";
 
 /** Адреса для подсказки пользователю: только домашние сети (без VPN/мобильных/Docker). */
@@ -40,7 +40,7 @@ function lanAddrs(ips: string[], port: number): string[] {
 export default function Nearby() {
   const { t } = useI18n();
   const { notify } = useToast();
-  const { info, peers, transfers, setVisible, rename, clearTransfers, hostRoom, joinRoom } = useLan();
+  const { info, peers, transfers, setVisible, rename, clearTransfers, hostRoom, joinRoom, sendFiles, sending } = useLan();
   const [name, setName] = useState("");
   const [editingName, setEditingName] = useState(false);
   const [manual, setManual] = useState("");
@@ -49,7 +49,6 @@ export default function Nearby() {
   const [help, setHelp] = useState(false);
   // Для чего выбираем файлы: отправка устройству или комната.
   const [picker, setPicker] = useState<null | { mode: "send"; peer: LanPeer } | { mode: "room" }>(null);
-  const [sending, setSending] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (info) setName(info.name);
@@ -84,23 +83,7 @@ export default function Nearby() {
     }
   }
 
-  async function send(peer: LanPeer, paths: string[]) {
-    if (!paths.length) return;
-    setSending((s) => new Set(s).add(peer.id));
-    notify(t("lan.waitingAnswer", { name: peer.name }));
-    try {
-      await lanSend(peer.addr, peer.name, paths);
-      notify(t("lan.sent", { name: peer.name }));
-    } catch (e) {
-      notify(humanizeError(e), "error");
-    } finally {
-      setSending((s) => {
-        const n = new Set(s);
-        n.delete(peer.id);
-        return n;
-      });
-    }
-  }
+  const send = sendFiles;
 
   async function pickFromDisk(peer: LanPeer) {
     setPicker(null);

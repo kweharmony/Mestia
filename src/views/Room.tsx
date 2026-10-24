@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
   ArrowDown,
   ArrowUp,
+  ChevronDown,
+  Maximize2,
   ListPlus,
   ListVideo,
   Loader2,
@@ -22,15 +23,13 @@ import { useLan, type LanRoom } from "../context/LanContext";
 import { useI18n } from "../context/LanguageContext";
 import { useToast } from "../components/Toast";
 import LibraryPicker from "../components/LibraryPicker";
+import Modal from "../components/Modal";
 import {
   formatDuration,
-  humanizeError,
   isAudioPath,
-  lanRoomAdd,
   lanRoomCmd,
   lanRoomMove,
   lanRoomPlay,
-  lanRoomPropose,
   lanRoomQueue,
   lanRoomRemove,
   lanRoomState,
@@ -39,8 +38,9 @@ import {
   type RoomQueue,
   type RoomState,
 } from "../lib/ipc";
-import { syncStep } from "../lib/roomSync";
+import { PLAY_LEAD, expectedPos, nextLead, syncStep } from "../lib/roomSync";
 import { IS_ANDROID } from "../lib/platform";
+import { setPlaybackActive, useMediaSrc } from "../lib/media";
 
 /**
  * Совместный просмотр с очередью. Ведущий играет текущий элемент и рассылает состояние
@@ -52,7 +52,7 @@ import { IS_ANDROID } from "../lib/platform";
 export default function Room({ room }: { room: LanRoom }) {
   const { t } = useI18n();
   const { notify } = useToast();
-  const { closeRoom } = useLan();
+  const { closeRoom, queueFiles, roomMinimized, setRoomMinimized } = useLan();
   const ref = useRef<HTMLVideoElement>(null);
   const host = room.role === "host";
 
@@ -64,6 +64,7 @@ export default function Room({ room }: { room: LanRoom }) {
   const [guests, setGuests] = useState<string[]>([]);
   const [peers, setPeers] = useState(1);
   const [picking, setPicking] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(false);
   // Гость: autoplay без жеста пользователя WebView может запретить — просим нажать один раз.
   const [needTap, setNeedTap] = useState(false);
   const [waiting, setWaiting] = useState(!host);
@@ -79,17 +80,17 @@ export default function Room({ room }: { room: LanRoom }) {
   const curId = cur?.id ?? null;
   const curRef = useRef<string | null>(null);
   curRef.current = curId;
-  const src = cur
-    ? cur.path
-      ? convertFileSrc(cur.path)
-      : cur.url ?? undefined
-    : room.role === "host"
-      ? convertFileSrc(room.video.file_path)
-      : undefined;
+  // Свой файл ведущего — локально (на Android через media.rs), чужой — поток по сети.
+  const localPath = cur ? cur.path : room.role === "host" ? room.video.file_path : null;
+  const localSrc = useMediaSrc(localPath);
+  const src = localPath ? localSrc : cur?.url ?? undefined;
   const title = cur?.title ?? (room.role === "host" ? room.video.title : room.title);
   const audio = cur ? cur.kind === "audio" : room.role === "host" ? isAudioPath(room.video.file_path) : room.kind === "audio";
   const idx = queue && cur ? queue.items.findIndex((i) => i.id === cur.id) : -1;
   const next = queue && idx >= 0 ? queue.items[idx + 1] ?? null : null;
+
+  // Вышли из комнаты — телефону снова можно засыпать.
+  useEffect(() => () => setPlaybackActive(false), []);
 
   // Очередь: начальная (могла прийти до монтирования) + обновления.
   useEffect(() => {
@@ -181,14 +182,30 @@ export default function Room({ room }: { room: LanRoom }) {
         closeRoom();
       }),
     ];
+    // Пока play() стартует (буферизация после перемотки), новые шаги его бы сбивали.
+    let starting = false;
+    let lead = PLAY_LEAD;
     const iv = window.setInterval(() => {
       const s = target.current;
-      if (!s || el.readyState < 1) return;
-      const step = syncStep(s, Date.now(), el.currentTime, el.paused);
+      if (!s || el.readyState < 1 || starting) return;
+      const step = syncStep(s, Date.now(), el.currentTime, el.paused, lead);
       if (step.play) {
+        starting = true;
+        if (step.seek !== null) el.currentTime = step.seek;
+        el.playbackRate = step.rate;
         el.play()
           .then(() => setNeedTap(false))
-          .catch(() => setNeedTap(true));
+          .catch(() => setNeedTap(true))
+          .finally(() => {
+            starting = false;
+            // Через полсекунды после старта смотрим промах и учимся на нём.
+            window.setTimeout(() => {
+              const cur = target.current;
+              if (!cur?.playing || el.paused) return;
+              lead = nextLead(lead, el.currentTime - expectedPos(cur, Date.now()));
+            }, 500);
+          });
+        return;
       }
       if (step.pause) el.pause();
       if (step.seek !== null) el.currentTime = step.seek;
@@ -246,16 +263,7 @@ export default function Room({ room }: { room: LanRoom }) {
 
   async function addPicked(paths: { file_path: string; title: string }[]) {
     setPicking(false);
-    try {
-      for (const v of paths) {
-        const kind = isAudioPath(v.file_path) ? "audio" : "video";
-        if (host) await lanRoomAdd(v.file_path, v.title, kind);
-        else await lanRoomPropose(v.file_path, v.title, kind);
-      }
-      if (!host && paths.length) notify(t("room.proposed", { n: paths.length }));
-    } catch (e) {
-      notify(humanizeError(e), "error");
-    }
+    await queueFiles(paths);
   }
 
   // Компьютер: состояние берём из Fullscreen API (выход — и по Esc).
@@ -284,6 +292,17 @@ export default function Room({ room }: { room: LanRoom }) {
     };
   }, [full]);
 
+  // Android: телефон повернули горизонтально — видео сразу на весь экран, как в плеере.
+  useEffect(() => {
+    if (!IS_ANDROID || audio) return;
+    const mq = window.matchMedia("(orientation: landscape)");
+    const onChange = () => {
+      if (mq.matches) setFull((f) => f ?? { landscape: true });
+    };
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [audio]);
+
   // В полном экране кнопки прячутся через 4 с без касаний (на паузе — видны).
   useEffect(() => {
     if (!full || !playing) {
@@ -299,7 +318,13 @@ export default function Room({ room }: { room: LanRoom }) {
   const timeCls = full ? "text-white/80" : "text-smoke";
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-2 backdrop-blur-sm md:p-8">
+    <>
+    {/* Свёрнута — плеер остаётся на странице (звук идёт), видна только плашка. */}
+    <div
+      className={`fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-2 backdrop-blur-sm md:p-8 ${
+        roomMinimized && !full ? "hidden" : ""
+      }`}
+    >
       {/* В полном экране без анимации: transform предка сломал бы fixed у сцены. */}
       <div
         className={`${full ? "" : "mestia-fade-in "}flex max-h-full w-full max-w-[960px] flex-col overflow-hidden rounded-ui border-2 border-ink bg-snow`}
@@ -319,13 +344,22 @@ export default function Room({ room }: { room: LanRoom }) {
               </span>
             </p>
           </div>
-          <button
-            onClick={closeRoom}
-            title={host ? t("room.close") : t("room.leave")}
-            className="rounded-ui p-1.5 text-smoke hover:bg-fog hover:text-ink"
-          >
-            <X className="h-5 w-5" strokeWidth={2.25} />
-          </button>
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              onClick={() => setRoomMinimized(true)}
+              title={t("room.minimize")}
+              className="rounded-ui p-1.5 text-smoke hover:bg-fog hover:text-ink"
+            >
+              <ChevronDown className="h-5 w-5" strokeWidth={2.25} />
+            </button>
+            <button
+              onClick={closeRoom}
+              title={host ? t("room.close") : t("room.leave")}
+              className="rounded-ui p-1.5 text-smoke hover:bg-fog hover:text-ink"
+            >
+              <X className="h-5 w-5" strokeWidth={2.25} />
+            </button>
+          </div>
         </div>
 
         {/* Сцена: видео + управление (это и уходит в полный экран) */}
@@ -348,11 +382,17 @@ export default function Room({ room }: { room: LanRoom }) {
             }}
             onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
             onDurationChange={(e) => setDuration(e.currentTarget.duration || 0)}
-            onPlay={() => setPlaying(true)}
-            onPause={() => setPlaying(false)}
+            onPlay={() => {
+              setPlaying(true);
+              setPlaybackActive(true);
+            }}
+            onPause={() => {
+              setPlaying(false);
+              setPlaybackActive(false);
+            }}
             onEnded={onEnded}
             onError={() => notify(t("room.mediaError"), "error")}
-            className={audio ? "hidden" : full ? "h-full w-full object-contain" : "max-h-[50vh] w-full"}
+            className={audio ? "hidden" : full ? "h-full w-full object-contain" : "max-h-[60vh] w-full object-contain"}
           />
           {audio && (
             <div className="flex flex-col items-center gap-3 py-14 text-white/80">
@@ -425,6 +465,18 @@ export default function Room({ room }: { room: LanRoom }) {
           <span className={`shrink-0 text-xs font-semibold tabular-nums ${timeCls}`}>
             {formatDuration(duration)}
           </span>
+          <button
+            onClick={() => setQueueOpen(true)}
+            title={t("room.queue")}
+            className={`relative ${btnCls}`}
+          >
+            <ListVideo className="h-4 w-4" strokeWidth={2.25} />
+            {(queue?.items.length ?? 0) > 1 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-bold text-white">
+                {queue?.items.length}
+              </span>
+            )}
+          </button>
           <button onClick={() => setMuted((m) => !m)} className={btnCls}>
             {muted ? <VolumeX className="h-4 w-4" strokeWidth={2.25} /> : <Volume2 className="h-4 w-4" strokeWidth={2.25} />}
           </button>
@@ -435,29 +487,44 @@ export default function Room({ room }: { room: LanRoom }) {
           )}
         </div>
         </div>
+      </div>
 
-        {/* Очередь */}
-        <div className="flex min-h-0 flex-1 flex-col border-t-2 border-fog">
-          <div className="flex items-center justify-between gap-2 px-4 py-2.5">
-            <span className="flex items-center gap-2 text-sm font-semibold">
-              <ListVideo className="h-4 w-4 text-accent" strokeWidth={2.25} />
-              {t("room.queue")}
-              <span className="text-xs text-smoke">{queue?.items.length ?? 0}</span>
-            </span>
+      {/* Очередь — всплывающим окном по кнопке (видео не теряет места). */}
+      <Modal
+        open={queueOpen}
+        onClose={() => setQueueOpen(false)}
+        z={60}
+        cardClassName="mestia-anim flex max-h-[80vh] w-full max-w-[480px] flex-col gap-3 rounded-ui border-2 border-ink bg-snow p-4"
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="flex items-center gap-2 text-base font-semibold tracking-tight">
+            <ListVideo className="h-5 w-5 text-accent" strokeWidth={2.25} />
+            {t("room.queue")}
+            <span className="text-sm text-smoke">{queue?.items.length ?? 0}</span>
+          </span>
+          <div className="flex items-center gap-1">
             <button
-              onClick={() => setPicking(true)}
+              onClick={() => {
+                setQueueOpen(false);
+                setPicking(true);
+              }}
               className="flex items-center gap-1.5 rounded-ui border-2 border-ink px-3 py-1 text-xs font-semibold hover:bg-fog"
             >
               <ListPlus className="h-4 w-4" strokeWidth={2.25} />
               {host ? t("room.add") : t("room.propose")}
             </button>
+            <button onClick={() => setQueueOpen(false)} className="rounded-ui p-1.5 text-smoke hover:bg-fog hover:text-ink">
+              <X className="h-5 w-5" strokeWidth={2.25} />
+            </button>
           </div>
-          <ol className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-3">
+        </div>
+          <ol className="-mx-2 min-h-0 flex-1 space-y-1 overflow-y-auto">
             {(queue?.items ?? []).map((it, i) => {
               const isCur = it.id === curId;
               return (
                 <li
                   key={it.id}
+                  ref={isCur ? (el) => el?.scrollIntoView({ block: "nearest" }) : undefined}
                   className={`flex items-center gap-2 rounded-ui px-2 py-1.5 text-sm font-semibold ${
                     isCur ? "bg-fog" : ""
                   }`}
@@ -466,7 +533,7 @@ export default function Room({ room }: { room: LanRoom }) {
                     {isCur ? <Play className="h-3.5 w-3.5 text-accent" strokeWidth={2.5} /> : i + 1}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className={`block truncate ${isCur ? "text-accent" : ""}`}>{it.title}</span>
+                    <span className={`line-clamp-2 break-words leading-snug ${isCur ? "text-accent" : ""}`}>{it.title}</span>
                     {it.by && (
                       <span className="block truncate text-[11px] text-smoke">{t("room.proposedBy", { name: it.by })}</span>
                     )}
@@ -517,8 +584,7 @@ export default function Room({ room }: { room: LanRoom }) {
               </li>
             )}
           </ol>
-        </div>
-      </div>
+      </Modal>
 
       <LibraryPicker
         open={picking}
@@ -530,5 +596,39 @@ export default function Room({ room }: { room: LanRoom }) {
         onPick={(videos) => void addPicked(videos)}
       />
     </div>
+
+    {/* Плашка свёрнутой комнаты: над нижней панелью вкладок (на телефоне) и панелью выбора. */}
+    {roomMinimized && !full && (
+      <div className="mestia-fade-in fixed bottom-[9.5rem] right-3 z-40 flex max-w-[calc(100vw-1.5rem)] items-center gap-2 rounded-ui border-2 border-ink bg-snow py-1.5 pl-3 pr-1.5 shadow-lg md:bottom-6 md:right-6">
+        {audio ? (
+          <Music className="h-4 w-4 shrink-0 text-accent" strokeWidth={2.25} />
+        ) : (
+          <ListVideo className="h-4 w-4 shrink-0 text-accent" strokeWidth={2.25} />
+        )}
+        <button
+          onClick={() => setRoomMinimized(false)}
+          className="min-w-0 max-w-[220px] text-left text-xs font-semibold"
+        >
+          <span className="block truncate">{title}</span>
+          <span className="block truncate text-[11px] text-smoke">
+            {host ? t("room.minimizedHost") : t("room.minimizedGuest", { host: room.host })}
+          </span>
+        </button>
+        <button
+          onClick={togglePlay}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-white hover:opacity-90"
+        >
+          {playing ? <Pause className="h-4 w-4" strokeWidth={2.5} /> : <Play className="h-4 w-4" strokeWidth={2.5} />}
+        </button>
+        <button
+          onClick={() => setRoomMinimized(false)}
+          title={t("room.expand")}
+          className="rounded-ui p-1.5 text-smoke hover:bg-fog hover:text-ink"
+        >
+          <Maximize2 className="h-4 w-4" strokeWidth={2.25} />
+        </button>
+      </div>
+    )}
+    </>
   );
 }

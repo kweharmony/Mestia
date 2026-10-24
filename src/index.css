@@ -234,8 +234,19 @@ input[type="range"]::-webkit-slider-thumb {
 .mestia-splash-badge {
   animation: mestia-pop-in 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
-.mestia-splash-arrow {
-  animation: mestia-logo-dl 1.3s ease-in-out infinite;
+/* Знак поднимается на плитке после её появления */
+.mestia-splash-mark {
+  animation: mestia-splash-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.25s both;
+}
+@keyframes mestia-splash-rise {
+  0% {
+    transform: translateY(14px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 .mestia-splash-word {
   animation: mestia-fade-in 0.6s ease 0.2s both;
