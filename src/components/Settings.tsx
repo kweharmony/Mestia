@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   Bell,
   Captions,
+  ChevronDown,
   Cookie,
   FastForward,
   FolderCog,
@@ -22,6 +23,7 @@ import {
   Palette,
   RefreshCw,
   Scissors,
+  SlidersHorizontal,
   Trash2,
   X,
 } from "lucide-react";
@@ -31,11 +33,13 @@ import {
   getStorageRoot,
   humanizeError,
   openFolder,
+  pickStorageDir,
   setSetting,
   setStorageRoot,
   uninstallApp,
   updateYtdlp,
 } from "../lib/ipc";
+import { rebaseRoot } from "../lib/db";
 import { IS_ANDROID } from "../lib/platform";
 import Modal from "./Modal";
 import ThemeSwitcher from "./ThemeSwitcher";
@@ -70,6 +74,8 @@ export default function Settings({
   const [confirmUninstall, setConfirmUninstall] = useState(false);
   const [deleteContent, setDeleteContent] = useState(false);
   const [uninstalling, setUninstalling] = useState(false);
+  const [advanced, setAdvanced] = useState(false);
+  const [moving, setMoving] = useState(false);
 
   useEffect(() => {
     if (!open) return; // подгружаем настройки только при открытии окна
@@ -106,15 +112,23 @@ export default function Settings({
       return;
     }
     try {
-      const dir = await openDialog({ directory: true, multiple: false, defaultPath: path || undefined });
+      // Android: свой выбор папки (SAF → путь), прежние файлы переносятся за пользователем.
+      const dir = IS_ANDROID
+        ? await pickStorageDir()
+        : await openDialog({ directory: true, multiple: false, defaultPath: path || undefined });
       if (typeof dir === "string") {
-        const applied = await setStorageRoot(dir);
-        setPath(applied);
+        setMoving(true);
+        const r = await setStorageRoot(dir, IS_ANDROID);
+        if (r.moved) await rebaseRoot(r.old, r.path, r.renamed);
+        setPath(r.path);
         onFolderChanged();
-        notify(t("set.folderUpdated"));
+        if (r.failed) notify(t("set.folderMovedPartial", { n: r.failed }), "error");
+        else notify(r.moved ? t("set.folderMoved", { n: r.moved }) : t("set.folderUpdated"));
       }
     } catch (e) {
       notify(humanizeError(e), "error");
+    } finally {
+      setMoving(false);
     }
   }
 
@@ -239,103 +253,27 @@ export default function Settings({
             <div className="flex-1 truncate rounded-ui border-2 border-fog bg-paper/40 px-3 py-2 text-sm font-semibold">
               {path || "—"}
             </div>
-            {/* Android: папка фиксирована (Download/Mestia), проводника нет. */}
+            {/* Android: проводника нет — только смена папки. */}
             {!IS_ANDROID && (
-              <>
-                <button
-                  onClick={() => openFolder(path).catch((e) => notify(humanizeError(e), "error"))}
-                  title={t("lib.openExplorer")}
-                  className="rounded-ui border-2 border-fog p-2 hover:bg-fog"
-                >
-                  <FolderOpen className="h-4 w-4" strokeWidth={2.25} />
-                </button>
-                <button
-                  onClick={pickFolder}
-                  disabled={hasActive}
-                  className="rounded-ui border-2 border-ink px-4 py-2 text-sm font-semibold hover:bg-fog disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {t("common.change")}
-                </button>
-              </>
+              <button
+                onClick={() => openFolder(path).catch((e) => notify(humanizeError(e), "error"))}
+                title={t("lib.openExplorer")}
+                className="rounded-ui border-2 border-fog p-2 hover:bg-fog"
+              >
+                <FolderOpen className="h-4 w-4" strokeWidth={2.25} />
+              </button>
             )}
+            <button
+              onClick={pickFolder}
+              disabled={hasActive || moving}
+              className="flex items-center gap-2 rounded-ui border-2 border-ink px-4 py-2 text-sm font-semibold hover:bg-fog disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {moving && <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.25} />}
+              {moving ? t("set.folderMoving") : t("common.change")}
+            </button>
           </div>
           <p className="text-xs font-semibold text-smoke">
-            {IS_ANDROID ? t("set.folderAndroid") : hasActive ? t("set.folderBusy") : t("set.folderApplies")}
-          </p>
-        </section>
-
-        {/* Одновременные загрузки */}
-        <section className="space-y-3">
-          <div className="flex items-center justify-between text-sm font-semibold">
-            <span className="flex items-center gap-2">
-              <Layers className="h-4 w-4 text-accent" strokeWidth={2.25} />
-              {t("set.parallel")}
-            </span>
-            <span className="text-accent">{parallel}</span>
-          </div>
-          <div className="flex gap-1.5">
-            {[1, 2, 3, 4, 5].map((n) => {
-              const active = parallel === n;
-              return (
-                <button
-                  key={n}
-                  onClick={() => changeParallel(n)}
-                  className={`relative flex-1 rounded-ui border-2 border-transparent py-1.5 text-sm font-semibold ${
-                    active ? "text-accent" : "hover:bg-fog"
-                  }`}
-                >
-                  {active && (
-                    <motion.span
-                      layoutId="parallelPill"
-                      transition={{ type: "spring", stiffness: 500, damping: 38 }}
-                      className="mestia-anim absolute -inset-[2px] z-0 rounded-ui border-2 border-accent bg-snow"
-                    />
-                  )}
-                  <span className="relative z-10">{n}</span>
-                </button>
-              );
-            })}
-          </div>
-          <p className="text-xs font-semibold text-smoke">
-            {t("set.parallelHint")}
-          </p>
-        </section>
-
-        {/* Скорость загрузки (потоки на видео) */}
-        <section className="space-y-3">
-          <div className="flex items-center gap-2 text-sm font-semibold">
-            <Gauge className="h-4 w-4 text-accent" strokeWidth={2.25} />
-            {t("set.speed")}
-          </div>
-          <div className="flex gap-1.5">
-            {[
-              { label: t("set.speedNormal"), v: 3 },
-              { label: t("set.speedFast"), v: 5 },
-              { label: t("set.speedMax"), v: 10 },
-            ].map((opt) => {
-              const active = fragments === opt.v;
-              return (
-                <button
-                  key={opt.v}
-                  onClick={() => changeFragments(opt.v)}
-                  className={`relative flex-1 rounded-ui border-2 border-transparent py-1.5 text-sm font-semibold ${
-                    active ? "text-accent" : "hover:bg-fog"
-                  }`}
-                >
-                  {active && (
-                    <motion.span
-                      layoutId="speedPill"
-                      transition={{ type: "spring", stiffness: 500, damping: 38 }}
-                      className="mestia-anim absolute -inset-[2px] z-0 rounded-ui border-2 border-accent bg-snow"
-                    />
-                  )}
-                  <span className="relative z-10">{opt.label}</span>
-                </button>
-              );
-            })}
-          </div>
-          <p className="text-xs font-semibold text-smoke">
-            {t("set.speedHint")}
+            {hasActive ? t("set.folderBusy") : IS_ANDROID ? t("set.folderAndroid") : t("set.folderApplies")}
           </p>
         </section>
 
@@ -405,50 +343,6 @@ export default function Settings({
           </div>
           <p className="text-xs font-semibold text-smoke">
             {t("set.notificationsHint")}
-          </p>
-        </section>
-
-        {/* Куки из браузера (на Android браузерных баз куки нет) */}
-        {!IS_ANDROID && <section className="space-y-3">
-          <div className="flex items-center justify-between text-sm font-semibold">
-            <span className="flex items-center gap-2">
-              <Cookie className="h-4 w-4 text-accent" strokeWidth={2.25} />
-              {t("set.cookies")}
-            </span>
-            <select
-              value={cookiesBrowser}
-              onChange={(e) => changeCookies(e.target.value)}
-              className="rounded-ui border-2 border-fog bg-snow px-2 py-1.5 text-sm font-semibold text-ink outline-none focus:border-accent"
-            >
-              <option value="">{t("set.cookiesOff")}</option>
-              <option value="chrome">Chrome</option>
-              <option value="firefox">Firefox</option>
-              <option value="edge">Edge</option>
-              <option value="brave">Brave</option>
-              <option value="opera">Opera</option>
-              <option value="vivaldi">Vivaldi</option>
-              <option value="chromium">Chromium</option>
-            </select>
-          </div>
-          <p className="text-xs font-semibold text-smoke">
-            {t("set.cookiesHint")}
-          </p>
-        </section>}
-
-        {/* Прокси */}
-        <section className="space-y-3">
-          <div className="flex items-center gap-2 text-sm font-semibold">
-            <Globe className="h-4 w-4 text-accent" strokeWidth={2.25} />
-            {t("set.proxy")}
-          </div>
-          <input
-            value={proxy}
-            onChange={(e) => changeProxy(e.target.value)}
-            placeholder={t("set.proxyPlaceholder")}
-            className="w-full rounded-ui border-2 border-fog bg-snow px-3 py-2 text-sm font-semibold text-ink placeholder-smoke outline-none focus:border-accent"
-          />
-          <p className="text-xs font-semibold text-smoke">
-            {t("set.proxyHint")}
           </p>
         </section>
 
@@ -565,6 +459,160 @@ export default function Settings({
           <p className="text-xs font-semibold text-smoke">
             {t("set.themeHint")}
           </p>
+        </section>
+
+        {/* Расширенные настройки: по умолчанию свёрнуты */}
+        <section className="space-y-3 border-t-2 border-fog pt-6">
+          <button
+            onClick={() => setAdvanced((v) => !v)}
+            aria-expanded={advanced}
+            className="flex w-full items-center justify-between text-sm font-semibold"
+          >
+            <span className="flex items-center gap-2">
+              <SlidersHorizontal className="h-4 w-4 text-accent" strokeWidth={2.25} />
+              {t("set.advanced")}
+            </span>
+            <motion.span
+              animate={{ rotate: advanced ? 180 : 0 }}
+              transition={{ duration: 0.2 }}
+              className="mestia-anim text-smoke"
+            >
+              <ChevronDown className="h-4 w-4" strokeWidth={2.25} />
+            </motion.span>
+          </button>
+          <AnimatePresence initial={false}>
+            {advanced && (
+              <motion.div
+                key="advanced"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.22, ease: "easeOut" }}
+                className="mestia-anim overflow-hidden"
+              >
+                <div className="space-y-7 pt-4">
+              {/* Одновременные загрузки */}
+              <section className="space-y-3">
+                <div className="flex items-center justify-between text-sm font-semibold">
+                  <span className="flex items-center gap-2">
+                    <Layers className="h-4 w-4 text-accent" strokeWidth={2.25} />
+                    {t("set.parallel")}
+                  </span>
+                  <span className="text-accent">{parallel}</span>
+                </div>
+                <div className="flex gap-1.5">
+                  {[1, 2, 3, 4, 5].map((n) => {
+                    const active = parallel === n;
+                    return (
+                      <button
+                        key={n}
+                        onClick={() => changeParallel(n)}
+                        className={`relative flex-1 rounded-ui border-2 border-transparent py-1.5 text-sm font-semibold ${
+                          active ? "text-accent" : "hover:bg-fog"
+                        }`}
+                      >
+                        {active && (
+                          <motion.span
+                            layoutId="parallelPill"
+                            transition={{ type: "spring", stiffness: 500, damping: 38 }}
+                            className="mestia-anim absolute -inset-[2px] z-0 rounded-ui border-2 border-accent bg-snow"
+                          />
+                        )}
+                        <span className="relative z-10">{n}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs font-semibold text-smoke">
+                  {t("set.parallelHint")}
+                </p>
+              </section>
+
+              {/* Скорость загрузки (потоки на видео) */}
+              <section className="space-y-3">
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <Gauge className="h-4 w-4 text-accent" strokeWidth={2.25} />
+                  {t("set.speed")}
+                </div>
+                <div className="flex gap-1.5">
+                  {[
+                    { label: t("set.speedNormal"), v: 3 },
+                    { label: t("set.speedFast"), v: 5 },
+                    { label: t("set.speedMax"), v: 10 },
+                  ].map((opt) => {
+                    const active = fragments === opt.v;
+                    return (
+                      <button
+                        key={opt.v}
+                        onClick={() => changeFragments(opt.v)}
+                        className={`relative flex-1 rounded-ui border-2 border-transparent py-1.5 text-sm font-semibold ${
+                          active ? "text-accent" : "hover:bg-fog"
+                        }`}
+                      >
+                        {active && (
+                          <motion.span
+                            layoutId="speedPill"
+                            transition={{ type: "spring", stiffness: 500, damping: 38 }}
+                            className="mestia-anim absolute -inset-[2px] z-0 rounded-ui border-2 border-accent bg-snow"
+                          />
+                        )}
+                        <span className="relative z-10">{opt.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs font-semibold text-smoke">
+                  {t("set.speedHint")}
+                </p>
+              </section>
+
+              {/* Куки из браузера (на Android браузерных баз куки нет) */}
+              {!IS_ANDROID && <section className="space-y-3">
+                <div className="flex items-center justify-between text-sm font-semibold">
+                  <span className="flex items-center gap-2">
+                    <Cookie className="h-4 w-4 text-accent" strokeWidth={2.25} />
+                    {t("set.cookies")}
+                  </span>
+                  <select
+                    value={cookiesBrowser}
+                    onChange={(e) => changeCookies(e.target.value)}
+                    className="rounded-ui border-2 border-fog bg-snow px-2 py-1.5 text-sm font-semibold text-ink outline-none focus:border-accent"
+                  >
+                    <option value="">{t("set.cookiesOff")}</option>
+                    <option value="chrome">Chrome</option>
+                    <option value="firefox">Firefox</option>
+                    <option value="edge">Edge</option>
+                    <option value="brave">Brave</option>
+                    <option value="opera">Opera</option>
+                    <option value="vivaldi">Vivaldi</option>
+                    <option value="chromium">Chromium</option>
+                  </select>
+                </div>
+                <p className="text-xs font-semibold text-smoke">
+                  {t("set.cookiesHint")}
+                </p>
+              </section>}
+
+              {/* Прокси */}
+              <section className="space-y-3">
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <Globe className="h-4 w-4 text-accent" strokeWidth={2.25} />
+                  {t("set.proxy")}
+                </div>
+                <input
+                  value={proxy}
+                  onChange={(e) => changeProxy(e.target.value)}
+                  placeholder={t("set.proxyPlaceholder")}
+                  className="w-full rounded-ui border-2 border-fog bg-snow px-3 py-2 text-sm font-semibold text-ink placeholder-smoke outline-none focus:border-accent"
+                />
+                <p className="text-xs font-semibold text-smoke">
+                  {t("set.proxyHint")}
+                </p>
+              </section>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </section>
 
         {/* Удаление приложения (на Android — системными настройками) */}

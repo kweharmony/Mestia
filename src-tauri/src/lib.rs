@@ -135,6 +135,7 @@ pub fn run() {
             storage::existing_paths,
             storage::get_storage_root,
             storage::set_storage_root,
+            storage::pick_storage_dir,
             storage::get_setting,
             storage::set_setting,
             storage::updater_supported,

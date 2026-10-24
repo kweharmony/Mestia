@@ -282,6 +282,34 @@ export async function renameFolderRows(
   ]);
 }
 
+/**
+ * Пути библиотеки после переноса корня хранилища: сначала файлы, получившие
+ * новое имя при совпадении, затем общий префикс old → new.
+ */
+export async function rebaseRoot(
+  oldRoot: string,
+  newRoot: string,
+  renamed: [string, string][]
+): Promise<void> {
+  const d = await db();
+  for (const [from, to] of renamed) {
+    await d.execute("UPDATE videos SET file_path = $1 WHERE file_path = $2", [to, from]);
+  }
+  const sep = oldRoot.includes("\\") ? "\\" : "/";
+  const prefix = oldRoot.replace(/[\\/]+$/, "") + sep;
+  const target = newRoot.replace(/[\\/]+$/, "") + sep;
+  // substr() в SQLite считает символы, а .length в JS — UTF-16-единицы (эмодзи = 2).
+  const n = [...prefix].length;
+  await d.execute(
+    "UPDATE videos SET file_path = $1 || substr(file_path, $2) WHERE substr(file_path, 1, $3) = $4",
+    [target, n + 1, n, prefix]
+  );
+  await d.execute(
+    "UPDATE folders SET path = $1 || substr(path, $2) WHERE substr(path, 1, $3) = $4",
+    [target, n + 1, n, prefix]
+  );
+}
+
 // ── История ─────────────────────────────────────────────────────────────────
 
 export async function listHistory(): Promise<HistoryRow[]> {

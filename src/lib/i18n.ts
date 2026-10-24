@@ -278,10 +278,18 @@ const DICT: Record<string, Entry> = {
   "set.downloadFolder": { ru: "Папка загрузок", en: "Download folder", zh: "下载文件夹" },
   "set.folderBusy": { ru: "Смена папки недоступна, пока идут загрузки.", en: "Can't change the folder while downloads are running.", zh: "下载进行时无法更改文件夹。" },
   "set.folderAndroid": {
-    ru: "Файлы видны в приложении «Файлы» (Загрузки → Mestia), видео и музыка — в галерее и плеерах.",
-    en: "Files are visible in the Files app (Downloads → Mestia); videos and music appear in the gallery and players.",
-    zh: "文件可在“文件”应用中查看（下载 → Mestia），视频和音乐会出现在相册和播放器中。",
+    ru: "Уже скачанные файлы переносятся в новую папку. Видео и музыка видны в «Файлах», галерее и плеерах.",
+    en: "Already downloaded files are moved to the new folder. Videos and music are visible in Files, the gallery and players.",
+    zh: "已下载的文件会移动到新文件夹。视频和音乐可在“文件”、相册和播放器中查看。",
   },
+  "set.folderMoving": { ru: "Перенос…", en: "Moving…", zh: "正在移动…" },
+  "set.folderMoved": { ru: "Папка изменена, перенесено файлов: {n}", en: "Folder changed, files moved: {n}", zh: "文件夹已更改，已移动 {n} 个文件" },
+  "set.folderMovedPartial": {
+    ru: "Папка изменена, но {n} файл(ов) перенести не удалось — они остались в прежней папке.",
+    en: "Folder changed, but {n} file(s) couldn't be moved — they stayed in the old folder.",
+    zh: "文件夹已更改，但有 {n} 个文件无法移动，仍留在原文件夹中。",
+  },
+  "set.advanced": { ru: "Расширенные настройки", en: "Advanced settings", zh: "高级设置" },
   "set.folderApplies": {
     ru: "Применяется к новым загрузкам. Уже скачанные файлы не переносятся.",
     en: "Applies to new downloads. Already downloaded files are not moved.",

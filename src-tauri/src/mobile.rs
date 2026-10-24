@@ -56,6 +56,16 @@ pub fn default_storage_root(app: &AppHandle) -> Result<std::path::PathBuf, Strin
     call::<PathResult>(app, "storageRoot", ()).map(|r| r.path.into())
 }
 
+/// Выбор папки загрузок (SAF → путь на диске). None — выбор отменён.
+pub fn pick_folder(app: &AppHandle) -> Result<Option<String>, String> {
+    #[derive(Deserialize)]
+    struct Picked {
+        #[serde(default)]
+        path: Option<String>,
+    }
+    call::<Picked>(app, "pickFolder", ()).map(|p| p.path)
+}
+
 /// Кадр из видео в jpg `out` (MediaMetadataRetriever вместо ffmpeg).
 pub fn thumbnail(app: &AppHandle, video: &str, out: &str) -> Result<(), String> {
     #[derive(Serialize)]

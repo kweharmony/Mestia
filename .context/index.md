@@ -97,7 +97,10 @@ Build-time Node helpers.
   finished file is registered in MediaStore; links arrive via «Share → Mestia». Records land in SQLite via `db.ts`.
   `downloader.rs` reads opt-in settings (`storage::setting`) for browser cookies,
   subtitles and SponsorBlock, and always embeds metadata/thumbnail.
-- **Library**: files live in the user's downloads folder (Android: `Download/Mestia`);
+- **Library**: files live in the user's downloads folder (Android: `Download/Mestia` by
+  default; changeable via `MestiaPlugin.pickFolder` — SAF tree → filesystem path, asks for
+  "All files access" outside `Download/`; `set_storage_root(migrate)` moves the old folder's
+  contents and the frontend rebases DB paths with `db.rebaseRoot`);
   `storage.rs` watches the folder (desktop) and emits change events so the `Locker` grid
   stays in sync; on Android the grid rescans on focus. Thumbnails are
   generated on demand and cached in the app data dir.

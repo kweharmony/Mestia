@@ -188,13 +188,177 @@ pub(crate) fn storage_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(root)
 }
 
-/// Задаёт папку загрузок (сохраняется в настройках). Возвращает применённый путь.
+/// Итог смены папки загрузок.
+#[derive(Serialize)]
+pub struct RootChange {
+    /// Применённый путь новой папки.
+    path: String,
+    /// Прежняя папка (для пересчёта путей в библиотеке).
+    old: String,
+    /// Сколько файлов перенесено.
+    moved: u32,
+    /// Сколько файлов перенести не удалось (остались в прежней папке).
+    failed: u32,
+    /// Файлы, переименованные из-за совпадения имён: [старый путь, новый путь].
+    renamed: Vec<[String; 2]>,
+}
+
+/// Задаёт папку загрузок (сохраняется в настройках). При migrate — переносит
+/// содержимое прежней папки в новую (Android: файлы не должны «теряться»).
 #[tauri::command(async)]
-pub fn set_storage_root(app: tauri::AppHandle, path: String) -> Result<String, String> {
+pub fn set_storage_root(
+    app: tauri::AppHandle,
+    path: String,
+    migrate: Option<bool>,
+) -> Result<RootChange, String> {
     let p = PathBuf::from(&path);
+    let old = storage_root(&app)?;
+    let mut res = RootChange {
+        path: p.to_string_lossy().to_string(),
+        old: old.to_string_lossy().to_string(),
+        moved: 0,
+        failed: 0,
+        renamed: Vec::new(),
+    };
     std::fs::create_dir_all(&p).map_err(|e| e.to_string())?;
+    if migrate.unwrap_or(false) {
+        let (a, b) = (canon(&old), canon(&p));
+        if a != b {
+            if b.starts_with(&a) || a.starts_with(&b) {
+                return Err("Новая папка не может быть внутри текущей (и наоборот)".into());
+            }
+            #[cfg(mobile)]
+            let before = walk_files(&old);
+            migrate_dir(&old, &p, &mut res);
+            // MediaStore: старые пути (уже без файлов) выпадут, новые — появятся в галерее.
+            #[cfg(mobile)]
+            {
+                let app = app.clone();
+                let dir = p.clone();
+                std::thread::spawn(move || {
+                    for f in before.iter().chain(walk_files(&dir).iter()) {
+                        crate::mobile::scan_file(&app, &f.to_string_lossy());
+                    }
+                });
+            }
+        }
+    }
     write_setting(&app, "downloadDir", json!(path))?;
-    Ok(p.to_string_lossy().to_string())
+    Ok(res)
+}
+
+fn canon(p: &std::path::Path) -> PathBuf {
+    std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
+}
+
+/// Переносит всё содержимое src в dst (папки сливаются, совпавшие имена файлов
+/// получают суффикс « (n)»). Опустевшие папки источника удаляются; сам src остаётся.
+fn migrate_dir(src: &std::path::Path, dst: &std::path::Path, res: &mut RootChange) {
+    let Ok(entries) = std::fs::read_dir(src) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        if from.is_dir() {
+            if to.exists() && to.is_dir() {
+                migrate_dir(&from, &to, res);
+                let _ = std::fs::remove_dir(&from); // только если опустела
+                continue;
+            }
+            let to = unique_path(to);
+            match move_path(&from, &to) {
+                Ok(n) => res.moved += n,
+                Err(_) => {
+                    // Не вышло целиком — переносим по частям.
+                    let _ = std::fs::create_dir_all(&to);
+                    migrate_dir(&from, &to, res);
+                    let _ = std::fs::remove_dir(&from);
+                }
+            }
+        } else {
+            let target = unique_path(to.clone());
+            match move_path(&from, &target) {
+                Ok(n) => {
+                    res.moved += n;
+                    if target != to {
+                        res.renamed.push([
+                            from.to_string_lossy().to_string(),
+                            target.to_string_lossy().to_string(),
+                        ]);
+                    }
+                }
+                Err(_) => res.failed += 1,
+            }
+        }
+    }
+}
+
+/// Перенос файла/папки: rename, а между томами (память ↔ SD-карта) — копия + удаление.
+/// Возвращает число перенесённых файлов.
+fn move_path(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<u32> {
+    if std::fs::rename(from, to).is_ok() {
+        return Ok(count_files(to));
+    }
+    // to заведомо новый путь — недокопированный остаток можно смело убрать.
+    let n = copy_tree(from, to).inspect_err(|_| {
+        let _ = std::fs::remove_dir_all(to).or_else(|_| std::fs::remove_file(to));
+    })?;
+    if from.is_dir() {
+        std::fs::remove_dir_all(from)?;
+    } else {
+        std::fs::remove_file(from)?;
+    }
+    Ok(n)
+}
+
+fn copy_tree(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<u32> {
+    if !from.is_dir() {
+        std::fs::copy(from, to)?;
+        return Ok(1);
+    }
+    std::fs::create_dir_all(to)?;
+    let mut n = 0;
+    for e in std::fs::read_dir(from)? {
+        let e = e?;
+        n += copy_tree(&e.path(), &to.join(e.file_name()))?;
+    }
+    Ok(n)
+}
+
+#[cfg(mobile)]
+fn walk_files(p: &std::path::Path) -> Vec<PathBuf> {
+    let Ok(it) = std::fs::read_dir(p) else {
+        return Vec::new();
+    };
+    it.flatten()
+        .flat_map(|e| {
+            let q = e.path();
+            if q.is_dir() { walk_files(&q) } else { vec![q] }
+        })
+        .collect()
+}
+
+fn count_files(p: &std::path::Path) -> u32 {
+    if !p.is_dir() {
+        return 1;
+    }
+    std::fs::read_dir(p)
+        .map(|it| it.flatten().map(|e| count_files(&e.path())).sum())
+        .unwrap_or(0)
+}
+
+/// Android: системный выбор папки загрузок (с запросом доступа к файлам, если нужен).
+/// None — пользователь отменил. На компьютере используется диалог plugin-dialog.
+#[tauri::command(async)]
+pub fn pick_storage_dir(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    #[cfg(mobile)]
+    return crate::mobile::pick_folder(&app);
+    #[cfg(desktop)]
+    {
+        let _ = app;
+        Err("Недоступно на компьютере".into())
+    }
 }
 
 /// Медиафайл, найденный сканированием папки.
@@ -1003,5 +1167,32 @@ mod tests {
         // Удаление несуществующего — не ошибка.
         delete_file(t.join("missing").to_string_lossy().to_string()).unwrap();
         delete_folder(t.join("missing").to_string_lossy().to_string()).unwrap();
+    }
+
+    #[test]
+    fn migrate_dir_merges_and_renames_conflicts() {
+        let t = TempDir::new();
+        let (src, dst) = (t.join("old"), t.join("new"));
+        std::fs::create_dir_all(src.join("Плейлист")).unwrap();
+        std::fs::create_dir_all(dst.join("Плейлист")).unwrap();
+        touch(&src.join("a.mp4"));
+        touch(&src.join("Плейлист").join("b.mp3"));
+        touch(&src.join("Плейлист").join("c.mp3"));
+        touch(&dst.join("Плейлист").join("c.mp3")); // совпадение имён
+        let mut res = RootChange {
+            path: String::new(),
+            old: String::new(),
+            moved: 0,
+            failed: 0,
+            renamed: Vec::new(),
+        };
+        migrate_dir(&src, &dst, &mut res);
+        assert_eq!((res.moved, res.failed), (3, 0));
+        assert!(dst.join("a.mp4").exists());
+        assert!(dst.join("Плейлист").join("b.mp3").exists());
+        assert!(dst.join("Плейлист").join("c (2).mp3").exists());
+        assert_eq!(res.renamed.len(), 1);
+        // Источник опустел, но сам остаётся.
+        assert!(src.exists() && std::fs::read_dir(&src).unwrap().next().is_none());
     }
 }

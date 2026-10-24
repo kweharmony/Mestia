@@ -6,14 +6,19 @@ import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.media.MediaScannerConnection
+import android.net.Uri
 import android.os.Environment
+import android.provider.DocumentsContract
+import android.provider.Settings
 import android.view.WindowManager
 import android.webkit.MimeTypeMap
 import android.webkit.WebView
+import androidx.activity.result.ActivityResult
 import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import app.tauri.annotation.ActivityCallback
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
@@ -71,6 +76,9 @@ class MestiaPlugin(private val activity: Activity) : Plugin(activity) {
 
     @Volatile
     private var ready = false
+
+    // Папка, выбранная в pickFolder, пока пользователь выдаёт «Доступ ко всем файлам».
+    private var pendingFolder: String? = null
 
     // Ссылка из «Поделиться», которую фронтенд ещё не забрал.
     @Volatile
@@ -164,6 +172,67 @@ class MestiaPlugin(private val activity: Activity) : Plugin(activity) {
         val dir = if (writable(public)) public
         else File(activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "Mestia").apply { mkdirs() }
         invoke.resolve(JSObject().put("path", dir.absolutePath))
+    }
+
+    /**
+     * Выбор папки загрузок. yt-dlp пишет по обычным путям, а не через content://, поэтому
+     * дерево SAF переводим в путь на диске. Вне Download/ без «Доступа ко всем файлам»
+     * писать нельзя — тогда отправляем в системные настройки за этим разрешением.
+     * Итог: {path} или {} при отмене.
+     */
+    @Command
+    fun pickFolder(invoke: Invoke) {
+        startActivityForResult(invoke, Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), "onFolderPicked")
+    }
+
+    @ActivityCallback
+    private fun onFolderPicked(invoke: Invoke, result: ActivityResult) {
+        val uri = result.data?.data
+        if (result.resultCode != Activity.RESULT_OK || uri == null) {
+            invoke.resolve(JSObject())
+            return
+        }
+        val path = treeToPath(uri)
+        if (path == null) {
+            invoke.reject("Эту папку нельзя выбрать — выберите папку во внутренней памяти или на SD-карте")
+            return
+        }
+        when {
+            writable(File(path)) -> invoke.resolve(JSObject().put("path", path))
+            !Environment.isExternalStorageManager() -> {
+                pendingFolder = path
+                val intent = Intent(
+                    Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    Uri.parse("package:${activity.packageName}"),
+                )
+                startActivityForResult(invoke, intent, "onAllFilesAccess")
+            }
+            else -> invoke.reject("Permission denied: $path")
+        }
+    }
+
+    @ActivityCallback
+    private fun onAllFilesAccess(invoke: Invoke, result: ActivityResult) {
+        // Код возврата у экрана настроек не говорит о разрешении — проверяем запись заново.
+        val path = pendingFolder
+        pendingFolder = null
+        if (path != null && writable(File(path))) invoke.resolve(JSObject().put("path", path))
+        else invoke.reject("Permission denied: нет «Доступа ко всем файлам»")
+    }
+
+    /** content://…/tree/primary:Movies/X → /storage/emulated/0/Movies/X (и SD-карты). */
+    private fun treeToPath(uri: Uri): String? {
+        val id = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull() ?: return null
+        if (id.startsWith("raw:")) return id.removePrefix("raw:")
+        val vol = id.substringBefore(':')
+        val rel = id.substringAfter(':', "")
+        val base = when (vol) {
+            "primary" -> Environment.getExternalStorageDirectory().absolutePath
+            "home" -> File(Environment.getExternalStorageDirectory(), Environment.DIRECTORY_DOCUMENTS).absolutePath
+            "", "downloads" -> return null
+            else -> "/storage/$vol"
+        }
+        return if (rel.isEmpty()) base else "$base/$rel"
     }
 
     private fun writable(dir: File): Boolean = runCatching {

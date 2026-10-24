@@ -79,9 +79,24 @@ export function getStorageRoot(): Promise<string> {
   return invoke<string>("get_storage_root");
 }
 
-/** Задать папку загрузок. Возвращает применённый путь. */
-export function setStorageRoot(path: string): Promise<string> {
-  return invoke<string>("set_storage_root", { path });
+/** Итог смены папки загрузок (поля заполнены при переносе файлов). */
+export interface RootChange {
+  path: string;
+  old: string;
+  moved: number;
+  failed: number;
+  /** Переименованные из-за совпадения имён: [старый путь, новый путь]. */
+  renamed: [string, string][];
+}
+
+/** Задать папку загрузок; migrate — перенести в неё содержимое прежней. */
+export function setStorageRoot(path: string, migrate = false): Promise<RootChange> {
+  return invoke<RootChange>("set_storage_root", { path, migrate });
+}
+
+/** Android: системный выбор папки (null — отменено). */
+export function pickStorageDir(): Promise<string | null> {
+  return invoke<string | null>("pick_storage_dir");
 }
 
 /** Отменить активную загрузку (процесс убивается, .part остаётся для resume). */
