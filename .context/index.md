@@ -60,6 +60,7 @@ Build-time Node helpers.
   - `i18n.ts` — trilingual dictionary (`ru`/`en`/`zh`) + `t()`; module-level `t()` for
     non-React code (e.g. `humanizeError`, desktop notifications).
   - `platform.ts` — `IS_ANDROID` (hides tray, explorer, mini-window, cookies, uninstall)
+  - `appIcon.ts` — logo marks (`LOGO_MARK`) + `applyThemeIcon()`: favicon/window/tray icon in the theme accent (called from ThemeContext); concept sources in `design/logo/`
     and URL extraction from shared text.
   - `roomSync.ts` — watch-together drift correction (seek on big drift, ±6% rate on small).
 - `views/` — top-level screens:

@@ -8,6 +8,7 @@ import {
 } from "react";
 import type { ThemeName } from "../types";
 import { getSetting, setSetting } from "../lib/ipc";
+import { applyThemeIcon } from "../lib/appIcon";
 
 interface ThemeContextValue {
   theme: ThemeName;
@@ -58,6 +59,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem(STORAGE_KEY, theme);
+    // иконка (favicon, окно, трей) — в цвет акцента темы
+    applyThemeIcon();
     // Пишем в файл настроек только после первичной загрузки с диска,
     // чтобы не перезаписать сохранённое значение значением по умолчанию.
     if (loadedFromDisk.current) {

@@ -7,6 +7,6 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
-    <!-- Плашка иконки приложения (как в app-icon.png) -->
-    <color name="ic_launcher_background">#FF141414</color>
+    <!-- Плашка иконки приложения (лавандовая тема, как design/logo/app-icon.svg) -->
+    <color name="ic_launcher_background">#FFDE8255</color>
 </resources>

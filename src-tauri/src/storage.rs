@@ -895,6 +895,27 @@ pub fn set_fullscreen(app: tauri::AppHandle, on: bool, landscape: bool) {
     crate::mobile::set_fullscreen(&app, on, landscape);
 }
 
+/// Иконка окна и трея в цвет текущей темы (RGBA, отрисована во фронтенде).
+/// На Android иконку лаунчера на лету не сменить — команда ничего не делает.
+#[tauri::command(async)]
+#[cfg_attr(mobile, allow(unused_variables))]
+pub fn set_app_icon(app: tauri::AppHandle, rgba: Vec<u8>, width: u32, height: u32) {
+    #[cfg(desktop)]
+    {
+        use tauri::Manager;
+        if rgba.len() != (width * height * 4) as usize {
+            return;
+        }
+        let img = tauri::image::Image::new_owned(rgba, width, height);
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.set_icon(img.clone());
+        }
+        if let Some(tray) = app.tray_by_id("main-tray") {
+            let _ = tray.set_icon(Some(img));
+        }
+    }
+}
+
 /// Ссылка, присланная в приложение через «Поделиться» (Android); на компьютере — нет.
 #[tauri::command(async)]
 pub fn take_shared_text(app: tauri::AppHandle) -> Option<String> {

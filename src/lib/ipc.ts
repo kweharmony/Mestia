@@ -154,6 +154,11 @@ export function setFullscreen(on: boolean, landscape: boolean): Promise<void> {
   return invoke("set_fullscreen", { on, landscape });
 }
 
+/** Иконка окна и трея (RGBA) — перекрашивается под тему; на Android не действует. */
+export function setAppIcon(rgba: number[], width: number, height: number): Promise<void> {
+  return invoke("set_app_icon", { rgba, width, height });
+}
+
 /** Поддерживает ли сборка самообновление (Win/macOS — да, Linux — только AppImage, Android — нет). */
 export function updaterSupported(): Promise<boolean> {
   return invoke<boolean>("updater_supported");

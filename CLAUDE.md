@@ -55,6 +55,7 @@ Notes:
 flatpak/            Flatpak packaging for Steam Deck/SteamOS: manifest (com.mestia.app.yml),
                     .desktop and metainfo.xml. Wraps the built .deb in the GNOME runtime
                     (bundles WebKitGTK). Built in CI (release.yml) on the Linux leg.
+design/logo/        Logo concept SVGs + concepts.png (5 directions); not part of the build.
 docs/               GitHub Pages landing site (self-contained index.html: all 8 app
                     themes + theme switcher, app blurb, download links). Static, not
                     part of the app build.
@@ -65,7 +66,8 @@ src/                Frontend (React + TS)
   components/       UI: Sidebar, Settings, DownloadsPanel, Splash, Toast, Typewriter, ThemeSwitcher, Logo,
                     LibraryPicker (pick library/disk files for LAN send & room queue)
   lib/              ipc.ts (bridge to Rust commands), db.ts (SQLite access), i18n.ts (ru/en/zh dictionary + t()),
-                    platform.ts (IS_ANDROID, share-text URL extraction), roomSync.ts (watch-together drift correction)
+                    platform.ts (IS_ANDROID, share-text URL extraction),
+                    appIcon.ts (logo marks + theme-coloured favicon/window/tray icon), roomSync.ts (watch-together drift correction)
   views/            Downloader, Locker (library), History, Player, MiniPlayer, Nearby (LAN devices/transfers),
                     Room (watch-together player + queue)
   types.ts          Shared TS types

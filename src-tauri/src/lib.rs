@@ -155,6 +155,7 @@ pub fn run() {
             storage::take_shared_text,
             storage::move_app_to_back,
             storage::set_fullscreen,
+            storage::set_app_icon,
             lan::lan_info,
             lan::lan_start,
             lan::lan_stop,
