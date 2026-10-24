@@ -19,7 +19,8 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         ConnectInfo, DefaultBodyLimit, Query, Request, State,
     },
-    http::StatusCode,
+    http::{header, StatusCode},
+    middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post, put},
     Json, Router,
@@ -430,7 +431,32 @@ fn routes(app: AppHandle) -> Router {
         .route("/api/room/media", get(media_h))
         .route("/api/room/ws", get(ws_h))
         .route("/api/share/media", get(share_h))
+        .layer(middleware::from_fn(only_native_peers))
         .with_state(app)
+}
+
+/// Пускаем только Mestia с других устройств, а не веб-страницы из браузера на этом же
+/// устройстве. Браузер ставит Origin на WebSocket и на запросы через CORS — у Mestia
+/// (reqwest/tungstenite) его нет, а <video> гостя при обычной загрузке медиа его не шлёт.
+/// Host — только IP: имя вместо адреса означает DNS-rebinding.
+async fn only_native_peers(req: Request, next: Next) -> Response {
+    let host_ok = req
+        .headers()
+        .get(header::HOST)
+        .and_then(|h| h.to_str().ok())
+        .is_some_and(host_is_ip);
+    if req.headers().contains_key(header::ORIGIN) || !host_ok {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    next.run(req).await
+}
+
+/// «192.168.1.5», «192.168.1.5:53318», «[::1]:53318» — да; «evil.example:53318» — нет.
+fn host_is_ip(host: &str) -> bool {
+    if let Some(rest) = host.strip_prefix('[') {
+        return rest.split(']').next().is_some_and(|ip| ip.parse::<std::net::Ipv6Addr>().is_ok());
+    }
+    host.split(':').next().is_some_and(|ip| ip.parse::<Ipv4Addr>().is_ok())
 }
 
 async fn info_h(State(app): State<AppHandle>) -> Json<Value> {
@@ -1263,6 +1289,36 @@ mod tests {
         let q = absolutize_queue(q, "192.168.1.5:53318");
         assert_eq!(q["items"][0]["url"], "http://192.168.1.5:53318/api/room/media?item=1");
         assert_eq!(q["items"][1]["url"], "http://10.0.0.7:53318/api/share/media?t=x");
+    }
+
+    #[test]
+    fn host_must_be_ip_literal() {
+        assert!(host_is_ip("192.168.1.5"));
+        assert!(host_is_ip("192.168.1.5:53318"));
+        assert!(host_is_ip("[::1]:53318"));
+        assert!(!host_is_ip("evil.example:53318"));
+        assert!(!host_is_ip("localhost:53318"));
+        assert!(!host_is_ip("1.2.3.4.evil.example"));
+        assert!(!host_is_ip(""));
+    }
+
+    #[tokio::test]
+    async fn browser_and_rebinding_requests_are_rejected() {
+        let app = Router::new()
+            .route("/api/info", get(|| async { "ok" }))
+            .layer(middleware::from_fn(only_native_peers));
+        let call = |host: &str, origin: Option<&str>| {
+            let mut r = axum::http::Request::builder().uri("/api/info").header(header::HOST, host);
+            if let Some(o) = origin {
+                r = r.header(header::ORIGIN, o);
+            }
+            app.clone().oneshot(r.body(Body::empty()).unwrap())
+        };
+        // Mestia с другого устройства — пускаем.
+        assert_eq!(call("192.168.1.5:53318", None).await.unwrap().status(), StatusCode::OK);
+        // Веб-страница из браузера (Origin) и DNS-rebinding (имя вместо IP) — нет.
+        assert_eq!(call("192.168.1.5:53318", Some("https://evil.example")).await.unwrap().status(), StatusCode::FORBIDDEN);
+        assert_eq!(call("evil.example:53318", None).await.unwrap().status(), StatusCode::FORBIDDEN);
     }
 
     #[test]
