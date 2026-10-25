@@ -58,7 +58,7 @@ img, video { max-width: 100%; }
 .btn svg { width: 18px; height: 18px; }
 
 /* ── Секции ────────────────────────────────────────────────────────────────── */
-section { padding: 72px 0; scroll-margin-top: 48px; } /* якоря не прячут заголовок под шапкой */
+section { padding: 72px 0; scroll-margin-top: 96px; } /* якоря не прячут заголовок под шапкой */
 @media (min-width: 720px) { section { padding: 104px 0; } }
 h1, h2, h3 { margin: 0; letter-spacing: -.035em; line-height: 1.08; }
 h2 { font-size: clamp(28px, 4.2vw, 42px); font-weight: 700; margin-top: 14px; }
