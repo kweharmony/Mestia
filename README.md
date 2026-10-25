@@ -1,309 +1,180 @@
-# Mestia ▼
+<div align="center">
 
-Кроссплатформенное десктоп-приложение для скачивания видео/аудио и организации
-медиатеки. Красивая оболочка вокруг `yt-dlp` с собственным проигрывателем,
-файловым менеджером и темами оформления.
+<img src="app-icon.png" width="96" alt="Mestia" />
 
-**Стек:** Tauri v2 (Rust) · React + TypeScript · Tailwind CSS v4 · SQLite ·
-yt-dlp + ffmpeg (как sidecar).
+# Mestia
 
-> ⚠️ **Статус платформ.** Приложение полноценно протестировано **только на Windows**.
-> Сборки для **macOS и Linux — экспериментальные**: собираются, но работоспособность
-> не гарантируется и толком не проверялась. Возможны сбои. Пользуйтесь на свой страх и
-> риск, баг-репорты приветствуются.
+**Скачивай. Храни. Смотри.**<br/>
+Видео и музыка с 1800+ площадок — в медиатеке со своим плеером. Для компьютера и телефона.
+
+[![Релиз](https://img.shields.io/github/v/release/kweharmony/Mestia?label=%D1%80%D0%B5%D0%BB%D0%B8%D0%B7&color=1a1a1a)](https://github.com/kweharmony/Mestia/releases/latest)
+[![Лицензия: MIT](https://img.shields.io/badge/%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F-MIT-1a1a1a)](LICENSE)
+![Платформы](https://img.shields.io/badge/Windows%20%C2%B7%20Linux%20%C2%B7%20Android-1a1a1a)
+
+**Русский** · [English](README.en.md) · [Сайт](https://kweharmony.github.io/Mestia/)
+
+<a href="docs/media/promo.mp4"><img src="docs/media/promo.webp" width="860" alt="Mestia: вставить ссылку, скачать, смотреть" /></a>
+
+</div>
 
 ---
 
 ## Возможности
 
-**Загрузчик**
-- Ссылки с **1800+ площадок** (YouTube, Rutube, VK, TikTok, Vimeo…), автоопределение.
-- Видео (1080p…360p) или аудио (MP3 320/128, WAV, FLAC).
-- **Плейлисты**: весь список / диапазон (`1-5, 8`), складываются в отдельную папку.
-- **Параллельные фоновые загрузки** с очередью (лимит настраивается), отмена,
-  прогресс в реальном времени, печатающиеся подсказки.
+**Загрузка**
+- Ссылки с **1800+ площадок** — всё, что умеет [yt-dlp](https://github.com/yt-dlp/yt-dlp): YouTube, VK, Rutube, TikTok, SoundCloud…
+- Видео до 4K или звук (MP3, M4A, OPUS, FLAC, WAV); **плейлисты** целиком или выборочно (`1-5, 8`).
+- Фоновая очередь, **один процент для готового файла** (видео и аудио считаются вместе),
+  промежуточные файлы не видны в медиатеке, прерванные загрузки продолжаются.
+- Spotify и Apple Music — трек находится и скачивается с YouTube по названию.
 
-**Медиатека**
-- Папки и видео в единой сетке, бесконечная вложенность, навигация по «крошкам».
-- **Drag-and-drop** в папки и на «крошки», **множественный выбор** (чекбоксы +
-  рамкой как в проводнике), переименование, удаление, смена обложки.
-- **Слежение в реальном времени**: добавление/удаление/переименование файлов на
-  диске отражается автоматически (file-watcher). Вручную добавленные медиафайлы
-  и папки подхватываются рекурсивно.
-- Авто-генерация превью-кадров для видео (ffmpeg, кэшируется).
-- Встроенный **видео- и аудио-плеер**: перемотка ±15 с, громкость, полный экран,
-  следующий/предыдущий трек, горячие клавиши.
-- **Возобновление с места остановки**: позиция воспроизведения запоминается по
-  каждому файлу и восстанавливается при следующем открытии (общая между главным
-  окном и плавающим мини-плеером); досмотренные ролики начинаются заново.
+**Медиатека и плеер**
+- Папки, превью, перетаскивание, множественный выбор, поиск; изменения на диске подхватываются сами.
+- Плеер с управлением поверх кадра, аудио — карточкой с обложкой; помнит позицию каждого файла.
+- **Ctrl+K** — палитра команд: вставить ссылку, найти файл, сменить тему, перейти в раздел.
 
-**Рядом** (локальная сеть, без интернета)
-- Устройства с Mestia в одной Wi-Fi-сети или на точке доступа телефона находят друг
-  друга сами (UDP-анонсы); можно добавить и по адресу.
-- **Обмен файлами** компьютер ↔ телефон ↔ телефон: получатель подтверждает приём.
-- **Смотреть вместе**: синхронное воспроизведение видео и музыки (пауза и перемотка
-  у всех), очередь с автопереходом, гости предлагают свои файлы; поток с устройства
-  ведущего — скачивать не нужно.
+**Android**
+- **Медиапанель в шторке** с обложкой и кнопками, воспроизведение с выключенным экраном.
+- Процент загрузки в уведомлении; «**Поделиться → Скачать в Mestia**» из YouTube и браузера.
 
-**История**
-- Статусы (успех / идёт / прервано / ошибка), удаление записей.
-- **Продолжение прерванных загрузок** (resume из `.part`) или «заново».
+**Рядом** — без интернета
+- Обмен файлами компьютер ↔ телефон по Wi-Fi или точке доступа, с подтверждением приёма.
+- **Смотреть вместе**: синхронное воспроизведение с очередью, поток с устройства ведущего.
 
-**Прочее**
-- **Интерфейс на 3 языках**: русский, английский, китайский. При первом запуске
-  язык определяется по локали ОС (иначе — русский), затем меняется в Настройках и
-  сохраняется между запусками.
-- 8 тем (5 цветных + светлая/тёмная нейтральные), сохраняются между запусками.
-- **Системный трей**: сворачивание в фон, умное закрытие (диалог / трей).
-- Уведомления на рабочий стол о завершении загрузок (опция).
-- Настраиваемая папка загрузок, обновление движка yt-dlp одной кнопкой.
-- **Авто-обновление приложения**: при запуске проверяется наличие новой версии
-  (GitHub Releases); если есть — показывается окно с вопросом, по согласию апдейт
-  скачивается, устанавливается и приложение перезапускается. См. «Релизы».
+**Оформление**
+- 8 тем; иконка приложения меняется под тему (на Android — и значок на рабочем столе).
+- Интерфейс на русском, английском и китайском.
 
----
+## Скачать
 
-## Требования
+| Платформа | Файл | Статус |
+|---|---|---|
+| **Windows 10/11** | `Mestia_*_x64-setup.exe` | ✅ протестировано, обновляется само |
+| **Linux** | `.AppImage`, `.deb`, `Mestia.flatpak` | ⚠️ экспериментально |
+| **Android 11+** | `*_android_arm64.apk` (почти все телефоны), `*_android_armv7.apk` | ⚠️ экспериментально |
+| **macOS** | `.dmg` (universal) | ⚠️ экспериментально, не нотаризовано |
 
-| Инструмент | Зачем |
-|-----------|-------|
-| **Node.js 18+** | фронтенд и скрипты |
-| **Rust (stable)** | бэкенд Tauri — https://rustup.rs |
-| **Системные зависимости Tauri** | см. ниже по ОС |
+👉 **[Последний релиз](https://github.com/kweharmony/Mestia/releases/latest)**. В Google Play приложения нет: загрузчики YouTube там запрещены.
 
-### Windows
-- **Microsoft C++ Build Tools** (рабочая нагрузка «Разработка классических
-  приложений на C++») — `winget install Microsoft.VisualStudio.2022.BuildTools`.
-- **WebView2** — обычно уже установлен в Windows 10/11.
+<details>
+<summary><b>Linux: версии, кодеки, трей</b></summary>
 
-### macOS
-- `xcode-select --install`.
+- `.deb`/AppImage собираются на Ubuntu 22.04 и требуют **glibc ≥ 2.35** и **webkit2gtk-4.1**.
+  На старых дистрибутивах — берите **Flatpak**: он несёт свой рантайм.
+- Видео в плеере не играет («Не удалось воспроизвести файл») — поставьте кодеки GStreamer
+  (в `.deb` они подтягиваются сами, в AppImage — нет):
+  ```bash
+  sudo apt install gstreamer1.0-libav gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly
+  ```
+- Значок в трее требует AppIndicator; без него («ванильный» GNOME) трея может не быть — на работу это не влияет.
+</details>
 
-> **Первый запуск (важно).** Готовые сборки подписаны **ad-hoc** и **не нотаризованы**
-> Apple, поэтому Gatekeeper на чужом Mac скажет «"Mestia" is damaged / повреждён и не
-> может быть открыт». Это не поломка — снимите карантин один раз:
-> ```bash
-> xattr -cr /Applications/Mestia.app
-> ```
-> (ПКМ → «Открыть» на macOS 15+ уже не помогает для не-нотаризованных приложений —
-> нужен именно `xattr`.) Сборка universal — работает и на Intel, и на Apple Silicon.
->
-> **Как выпускать нотаризованные сборки (для мейнтейнера).** Нужен платный Apple
-> Developer ID. Добавьте в секреты репозитория `APPLE_CERTIFICATE` (base64 `.p12`),
-> `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY` («Developer ID Application: …»),
-> `APPLE_ID`, `APPLE_PASSWORD` (app-specific) и `APPLE_TEAM_ID`. CI сам подменит
-> `signingIdentity` и включит подпись + нотаризацию (`.github/workflows/release.yml`);
-> тогда `xattr` пользователям не понадобится, и апдейтер перестанет ловить карантин.
+<details>
+<summary><b>Steam Deck (SteamOS)</b></summary>
 
-### Linux (Debian/Ubuntu)
-```bash
-sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file \
-  libssl-dev libayatana-appindicator3-dev librsvg2-dev
-```
-(для других дистрибутивов — аналоги; см. https://tauri.app/start/prerequisites/)
-
-> **Поддерживаемые версии (важно).** Официальные `.deb`/AppImage собираются на
-> **Ubuntu 22.04**, поэтому требуют **glibc ≥ 2.35** и **webkit2gtk-4.1**. Это значит:
-> на Ubuntu 20.04 и старше (или дистрибутивах без webkit2gtk-4.1) они **не запустятся**
-> (`GLIBC_2.xx not found` / не найдена библиотека). Собрать «вниз» под старую glibc из
-> новой сборочной системы нельзя — это ограничение Tauri/Linux. Если нужен запуск на
-> произвольном дистрибутиве — используйте **Flatpak** (тот же пакет, что и для Steam
-> Deck): он несёт свой рантайм GNOME с WebKitGTK и не зависит от системной glibc.
-
-> **Воспроизведение видео на Linux.** Встроенный плеер использует webkit2gtk
-> (GStreamer). На «чистой» Ubuntu обычно нет кодеков H.264/AAC, из-за чего MP4 не
-> проигрывается («Не удалось воспроизвести файл»). Поставьте кодеки:
-> ```bash
-> sudo apt install gstreamer1.0-libav gstreamer1.0-plugins-good \
->   gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly
-> ```
-> Приложение само подскажет эту команду, если файл существует, но не декодируется.
-> **В AppImage** зависимости не ставятся автоматически (в отличие от `.deb`, где кодеки
-> прописаны в зависимостях пакета) — поставьте пакеты GStreamer вручную по команде выше.
-
-> **Значок в трее на Linux.** Трей рисуется через `libayatana-appindicator3`. В
-> окружениях без поддержки AppIndicator (например «ванильный» GNOME) иконки в трее может
-> не быть — на функциональность это не влияет, окно доступно как обычно; «свернуть в
-> трей» просто прячет окно.
-
-### Steam Deck (SteamOS)
-
-> ⚠️ **Экспериментально.** Как и остальные не-Windows сборки, вариант для Steam Deck /
-> SteamOS толком не протестирован — работоспособность не гарантируется.
-
-SteamOS основан на Arch (`pacman`), корневая ФС read-only, и **системного
-webkit2gtk там нет** — поэтому `.deb`/`.rpm` не устанавливаются, а AppImage даёт
-пустое окно (не находит WebKitGTK). Рекомендуемый способ — **Flatpak**: он несёт
-свой рантайм GNOME с WebKitGTK внутри, ставится в user-space и переживает
-обновления SteamOS.
+Системного WebKitGTK там нет, поэтому `.deb` не ставится, а AppImage даёт пустое окно. Используйте Flatpak:
 
 ```bash
-# В режиме рабочего стола (Desktop Mode):
 flatpak install --user ./Mestia.flatpak
 flatpak run com.mestia.app
 ```
 
-Чтобы запускать из игрового режима, добавьте Mestia в Steam как стороннюю игру
-(Desktop Mode → Steam → «Добавить стороннюю игру»), команда запуска —
-`flatpak run com.mestia.app`.
+Для игрового режима добавьте Mestia в Steam как стороннюю игру с командой `flatpak run com.mestia.app`.
+Во Flatpak встроенный апдейтер не применяется — обновления через `flatpak update`.
+</details>
 
-> **Пустое белое окно (для AppImage / своей сборки).** На AMD-видеокарте Деки
-> WebKitGTK с DMABUF-рендерером отдаёт пустое окно. Приложение само выставляет
-> `WEBKIT_DISABLE_DMABUF_RENDERER=1` при старте на Linux; в варианте Flatpak это
-> уже учтено. Для AppImage при необходимости — вручную:
-> ```bash
-> WEBKIT_DISABLE_DMABUF_RENDERER=1 ./Mestia_*.AppImage
-> ```
+<details>
+<summary><b>macOS: «приложение повреждено»</b></summary>
 
-> **Авто-обновление.** Во Flatpak встроенный апдейтер не применяется (обновления
-> идут через `flatpak update`); окно обновления можно игнорировать.
-
-### Android
-
-> ⚠️ **Экспериментально.** Android 11+ (minSdk 30). APK ставится вручную из релизов
-> GitHub — в Google Play приложения для скачивания с YouTube не допускаются.
-
-- yt-dlp, Python и ffmpeg встроены через [youtubedl-android](https://github.com/JunkFood02/youtubedl-android)
-  (**GPL-3.0**: Android-сборка как целое распространяется на условиях GPL-3.0; исходники
-  открыты в этом репозитории). Первый запуск чуть дольше — распаковывается Python.
-- Файлы сохраняются в **Загрузки → Mestia**; видео и музыка появляются в галерее и плеерах.
-- Ссылку можно отправить из YouTube/браузера: **Поделиться → Скачать в Mestia**.
-- Загрузки продолжаются в фоне (уведомление «Идёт загрузка…»).
-- Нет на Android: куки из браузера, выбор папки, трей, мини-окно плеера, самообновление
-  приложения (новые версии — APK из релизов). Движок yt-dlp обновляется из настроек.
-
-Сборка (нужны Android SDK + NDK, JDK 17+):
+Сборки подписаны ad-hoc и не нотаризованы, поэтому Gatekeeper ругается. Снимите карантин один раз:
 
 ```bash
-npm run tauri android build -- --apk
+xattr -cr /Applications/Mestia.app
 ```
+</details>
 
-Переменные `ANDROID_HOME` и `NDK_HOME` должны указывать на SDK и NDK. Для разработки
-на эмуляторе/телефоне — `npm run tauri android dev`.
+<details>
+<summary><b>Android: что стоит знать</b></summary>
 
-Релизный APK подписывается ключом из `src-tauri/gen/android/keystore.properties`
-(в `.gitignore`; поля `storeFile`, `storePassword`, `keyAlias`, `keyPassword`). В CI
-(`release.yml`, нога `android`) этот файл собирается из секретов репозитория:
+- yt-dlp, Python и ffmpeg встроены через [youtubedl-android](https://github.com/JunkFood02/youtubedl-android) (GPL-3.0).
+  Первый запуск чуть дольше — распаковывается Python.
+- Файлы — в **Загрузки → Mestia** (папку можно сменить), видео и музыка появляются в галерее.
+- Нет: куки браузера, трея, мини-окна и самообновления (новые версии — APK из релизов).
+  Движок yt-dlp обновляется из настроек.
+</details>
 
-| Секрет | Значение |
-|---|---|
-| `ANDROID_KEYSTORE_BASE64` | `.jks`-файл ключа в base64 |
-| `ANDROID_KEYSTORE_PASSWORD` | пароль хранилища и ключа |
-| `ANDROID_KEY_ALIAS` | алиас ключа |
+## Какие сайты поддерживаются
 
-> **Ключ нельзя терять и менять.** Android ставит обновление только поверх APK,
-> подписанного тем же ключом; новый ключ = пользователям придётся удалить приложение
-> вместе с данными.
+Всё из [списка yt-dlp](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md) — видеохостинги, соцсети,
+аудиоплощадки, прямые ссылки на mp4/m3u8. Spotify и Apple Music — через поиск на YouTube;
+Звук и VK Музыка — по названию, введённому вручную. Сервисы с DRM (Netflix, Кинопоиск, Okko, ivi,
+Яндекс Музыка, Disney+, Prime Video…) не скачиваются — приложение сразу об этом скажет.
+Приватные и возрастные видео — с куками браузера (настройки, только компьютер); геоблок — через прокси.
 
----
+## Конфиденциальность
 
-## Установка и запуск (dev)
+Никакой телеметрии, аналитики и аккаунтов — всё остаётся на устройстве. Подробно: [PRIVACY.md](PRIVACY.md).
+
+## Сборка из исходников
+
+Нужны **Node.js 18+**, **Rust (stable)** и [системные зависимости Tauri](https://tauri.app/start/prerequisites/).
 
 ```bash
-cd mestia
 npm install
-npm run fetch-binaries   # качает yt-dlp + ffmpeg/ffprobe под текущую ОС
-npm run tauri dev
+npm run fetch-binaries   # yt-dlp + ffmpeg/ffprobe под вашу ОС → src-tauri/binaries/
+npm run tauri dev        # запуск в режиме разработки
+npm run tauri build      # установщики → src-tauri/target/release/bundle/
 ```
 
-- `fetch-binaries` кладёт бинарники в `src-tauri/binaries/` с суффиксом target
-  triple. Windows — BtbN, macOS — evermeet.cx, Linux — johnvansickle (статичные).
-- Перед `dev` хук `predev` автоматически освобождает порт 1420.
+| Действие | Команда |
+|---|---|
+| Проверка типов + сборка фронтенда | `npm run build` |
+| Тесты фронтенда (Vitest) | `npm test` |
+| Тесты Rust | `cargo test` (в `src-tauri/`) |
+| Android: разработка / APK | `npm run tauri android dev` / `npm run tauri android build -- --apk` |
 
----
+<details>
+<summary><b>Подробнее: Windows, Linux, Android, релизы</b></summary>
 
-## Сборка установщика
-
-```bash
-npm run tauri build
-```
-
-Готовые артефакты — в `src-tauri/target/release/bundle/`:
-- **Windows** — `nsis/Mestia_x.y.z_x64-setup.exe` (установщик с выбором папки) и
-  `msi/*.msi`.
-- **macOS** — `dmg/*.dmg` и `macos/Mestia.app`.
-- **Linux** — `appimage/*.AppImage` и `deb/*.deb`; для Steam Deck/SteamOS CI
-  дополнительно собирает `Mestia.flatpak` (см. «Steam Deck» и `flatpak/`).
-
-> Бинарники yt-dlp/ffmpeg должны быть скачаны (`npm run fetch-binaries`) **до**
-> сборки — они встраиваются в установщик как sidecar.
-
----
-
-## Релизы и авто-обновление
-
-Приложение проверяет обновления при запуске через **GitHub Releases**
-(`github.com/kweharmony/Mestia`). Источник и публичный ключ подписи заданы в
-`tauri.conf.json` (`plugins.updater`), артефакты апдейтера включены
-(`bundle.createUpdaterArtifacts: true`). Сборка и подпись релиза — в
-`.github/workflows/release.yml` (action `tauri-apps/tauri-action`).
-
-**Разовая настройка (уже сделана).** Сгенерирована пара ключей подписи
-(`tauri signer generate`). Публичный ключ — в `tauri.conf.json`. Приватный ключ
-добавлен в **секреты репозитория** (Settings → Secrets and variables → Actions):
-
-| Секрет | Значение |
-|--------|----------|
-| `TAURI_SIGNING_PRIVATE_KEY` | содержимое приватного ключа |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | пароль ключа (пусто, если без пароля) |
-
-> ⚠️ Приватный ключ хранится локально и **не коммитится**. Потеря ключа = новые
-> сборки не смогут подписываться и обновления перестанут устанавливаться.
-
-**Выпуск новой версии:**
-1. Поднять версию в `package.json` и `src-tauri/tauri.conf.json` (одинаковую).
-2. Создать и запушить тег: `git tag v1.2.3 && git push origin v1.2.3`.
-3. Workflow соберёт установщики под Win/macOS/Linux, подпишет их и приложит к
-   релизу `latest.json` (манифест апдейтера).
-4. **Опубликовать черновик релиза** на GitHub — endpoint
-   `releases/latest/download/latest.json` отдаёт файлы только из опубликованного
-   (не draft, не prerelease) релиза.
-
-После этого у пользователей на старой версии при запуске появится окно обновления.
-
----
+- **Windows:** Microsoft C++ Build Tools (`winget install Microsoft.VisualStudio.2022.BuildTools`), WebView2 (обычно уже есть).
+- **Linux (Debian/Ubuntu):**
+  ```bash
+  sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libayatana-appindicator3-dev librsvg2-dev
+  ```
+- **Android:** Android SDK + NDK, JDK 17+, переменные `ANDROID_HOME` и `NDK_HOME`. Релизный APK
+  подписывается ключом из `src-tauri/gen/android/keystore.properties` (в `.gitignore`); в CI он
+  собирается из секретов `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`.
+  **Ключ нельзя терять и менять** — иначе обновление поверх старой версии не встанет.
+- **Релиз:** поднять версию в `package.json` и `src-tauri/tauri.conf.json` (одинаково), запушить тег
+  `vX.Y.Z`. Workflow `.github/workflows/release.yml` соберёт и подпишет сборки для всех ОС и приложит
+  `latest.json` для апдейтера; затем опубликовать черновик релиза. Подпись апдейтера — секреты
+  `TAURI_SIGNING_PRIVATE_KEY` и `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+- **macOS с нотаризацией:** добавить секреты `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`,
+  `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` — CI включит подпись и нотаризацию.
+</details>
 
 ## Где хранятся данные
 
-- Видео и папки — в **папке загрузок** (по умолчанию `Документы/Mestia`,
-  меняется в Настройках). Папки, созданные в приложении, создаются на диске.
-- База `mestia.db` (история, структура, метаданные) и кэш превью — в каталоге
-  данных приложения ОС; схема создаётся миграциями автоматически.
+- Файлы — в папке загрузок (по умолчанию `Документы/Mestia`, на Android — `Загрузки/Mestia`; меняется в настройках).
+  Недокачанные части лежат в скрытой `.mestia-tmp` рядом и нужны для продолжения загрузки.
+- `mestia.db` (медиатека, история), настройки и кэш превью — в папке данных приложения.
 
----
+## Как устроено
 
-## Структура проекта
+Tauri v2 (Rust) + React 18 + TypeScript + Tailwind CSS v4, SQLite, yt-dlp и ffmpeg как sidecar;
+на Android — Kotlin-плагин поверх youtubedl-android. Карта модулей и основные сценарии — в
+[`.context/index.md`](.context/index.md), правила для разработки — в [CLAUDE.md](CLAUDE.md).
 
-```
-mestia/
-├── scripts/
-│   ├── fetch-binaries.mjs   # загрузка yt-dlp + ffmpeg под ОС
-│   └── free-port.mjs        # освобождение порта 1420 (хук predev)
-├── src/                     # фронтенд (React + TS)
-│   ├── context/             # Theme, Language (i18n), Downloads (очередь/события), Drag
-│   ├── components/          # Sidebar, Settings, Player-панель, Splash, Toast…
-│   ├── lib/                 # ipc.ts (мост в Rust), db.ts (SQLite), i18n.ts (словари ru/en/zh), platform.ts
-│   └── views/               # Downloader, Locker (Медиатека), History, Player
-└── src-tauri/               # бэкенд (Rust + Tauri v2)
-    ├── tauri.conf.json      # окно, трей, sidecar, asset-протокол, NSIS
-    ├── tauri.android.conf.json  # Android: без sidecar, minSdk 30
-    ├── capabilities/        # права плагинов (desktop.json — только компьютер)
-    ├── gen/android/         # Android-проект: MestiaPlugin.kt (yt-dlp), DownloadService.kt
-    ├── migrations/          # схема SQLite
-    └── src/
-        ├── lib.rs           # плагины, трей, умное закрытие, команды
-        ├── downloader.rs    # yt-dlp: аргументы метаданных/загрузки, прогресс
-        ├── engine.rs        # запуск yt-dlp: sidecar на компьютере, Kotlin-плагин на Android
-        ├── mobile.rs        # мост к Kotlin-плагину (Android)
-        └── storage.rs       # файлы, папки, watcher, превью, настройки
-```
+Промо-ролик собирается из `design/promo/promo.html` скриптом `design/promo/render.mjs`.
 
----
+## Участие
 
-## Заметки
+Баги и идеи — в [Issues](https://github.com/kweharmony/Mestia/issues/new/choose), код — по
+[CONTRIBUTING.md](CONTRIBUTING.md). Уязвимости — закрыто, по [SECURITY.md](SECURITY.md).
+[Правила поведения](CODE_OF_CONDUCT.md).
 
-- `csp` отключён (`null`) для простоты; перед публичным релизом стоит задать
-  строгую политику.
-- Тема, громкость и позиция воспроизведения каждого файла (`mestia.pos.<id>`)
-  хранятся в настройках/`localStorage` и переживают перезапуск.
-- Возобновление загрузки опирается на `.part`-файлы yt-dlp в папке назначения.
+## Лицензия
+
+[MIT](LICENSE). Android-сборка включает [youtubedl-android](https://github.com/JunkFood02/youtubedl-android)
+и как целое распространяется на условиях **GPL-3.0**. Встроенные компоненты: [yt-dlp](https://github.com/yt-dlp/yt-dlp) (Unlicense),
+[FFmpeg](https://ffmpeg.org/legal.html) (LGPL/GPL).

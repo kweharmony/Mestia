@@ -30,8 +30,10 @@ Cross-platform (desktop + Android) video downloader & media library.
 - `src-tauri/src/` — lib.rs (plugins/tray/commands), downloader.rs (yt-dlp args/events), engine.rs (yt-dlp runner: sidecar / Android plugin), mobile.rs (Android bridge), storage.rs (files/watcher/thumbnails), lan.rs (LAN discovery/server/transfers/room), media.rs (Android loopback media server)
 - `src-tauri/gen/android/` — Android project: MestiaPlugin.kt, DownloadService.kt, PlaybackService.kt, MainActivity.kt, manifest, Gradle deps
 - `flatpak/` — Flatpak packaging for Steam Deck/SteamOS (manifest + desktop/metainfo); wraps the built .deb in the GNOME runtime, built in CI.
-- `design/logo/` — logo concept SVGs + concepts.png; not part of the build.
-- `docs/` — GitHub Pages landing site (self-contained index.html, all 8 themes + download links); static, not part of the app build.
+- `design/logo/` — logo concept SVGs + concepts.png (app-icon.svg = base black-and-white icon); not part of the build.
+- `design/promo/` — promo video source (promo.html with seek(t)) + render.mjs (Playwright + ffmpeg → docs/media/).
+- `docs/` — GitHub Pages site RU/EN: index.html, privacy.html, site.css/site.js, media/ (promo video); static, not part of the app build.
+- Root policies: PRIVACY.md, SECURITY.md, CONTRIBUTING.md, CODE_OF_CONDUCT.md (RU + EN); README.md (RU) / README.en.md; issue/PR templates in `.github/`.
 - Frontend ↔ Rust via `src/lib/ipc.ts`.
 
 ## Token-saving rules

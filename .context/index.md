@@ -30,10 +30,19 @@ root FS is read-only).
   (`src-tauri/src/lib.rs`) to avoid the AMD/WebKitGTK blank-window bug.
 
 ### `docs/`
-GitHub Pages landing site — a single self-contained `index.html` (inline CSS/JS, Google
-Fonts). Mirrors the app's 8 themes with a theme switcher, briefly describes the app, and
-links to GitHub Releases for downloads. Static; unrelated to the app build. Publish via
-repo Settings → Pages → "Deploy from a branch" → `main` / `/docs`.
+GitHub Pages site, RU/EN (minimal, app-styled): `index.html` (hero with the promo video,
+features, how-it-works animations, theme picker with app-icon tiles, download tabs with
+direct links from the GitHub releases API, FAQ) and `privacy.html` (mirror of PRIVACY.md).
+Shared `site.css` (the app's 8 themes 1:1) and `site.js` (theme + language persisted in
+localStorage, `data-i18n` dictionaries per page, IntersectionObserver reveal; all motion off
+under reduced-motion). `media/` holds the promo video. Publish via repo Settings → Pages →
+"Deploy from a branch" → `main` / `/docs`.
+
+### `design/promo/`
+Promo video source: `promo.html` is a 1280×720 scene whose every frame is set by
+`seek(t)` (no timers), `render.mjs` steps it at 30 fps in Playwright and encodes
+`docs/media/promo[.en].mp4` + `.webp` (+ `poster.png`) with the ffmpeg sidecar.
+`node design/promo/render.mjs [ru|en]` (needs `playwright-core`, not a project dependency).
 
 ### `scripts/`
 Build-time Node helpers.

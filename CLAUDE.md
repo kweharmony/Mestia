@@ -55,10 +55,15 @@ Notes:
 flatpak/            Flatpak packaging for Steam Deck/SteamOS: manifest (com.mestia.app.yml),
                     .desktop and metainfo.xml. Wraps the built .deb in the GNOME runtime
                     (bundles WebKitGTK). Built in CI (release.yml) on the Linux leg.
-design/logo/        Logo concept SVGs + concepts.png (5 directions); not part of the build.
-docs/               GitHub Pages landing site (self-contained index.html: all 8 app
-                    themes + theme switcher, app blurb, download links). Static, not
-                    part of the app build.
+design/logo/        Logo concept SVGs + concepts.png (5 directions); app-icon.svg = base
+                    black-and-white icon. Not part of the build.
+design/promo/       Promo video: promo.html (deterministic seek(t) scene) + render.mjs
+                    (Playwright frames → ffmpeg → docs/media/). Not part of the build.
+docs/               GitHub Pages site, RU/EN: index.html, privacy.html, shared site.css/site.js
+                    (8 app themes, i18n, reveal animations, release links via GitHub API),
+                    media/ (promo.mp4/.webp, poster.png). Static, not part of the app build.
+PRIVACY.md, SECURITY.md, CONTRIBUTING.md, CODE_OF_CONDUCT.md  Policies (RU + EN);
+                    .github/ISSUE_TEMPLATE/ + PULL_REQUEST_TEMPLATE.md. README.md (RU) / README.en.md.
 scripts/            Node scripts: fetch-binaries.mjs, free-port.mjs
 src/                Frontend (React + TS)
   context/          React contexts: ThemeContext, LanguageContext (i18n), DownloadsContext (queue/events), DragContext,
