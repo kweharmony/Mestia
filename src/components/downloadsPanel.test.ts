@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { overallPercent } from "./DownloadsPanel";
+import { overallPercent, ringPercent } from "./DownloadsPanel";
 import type { ActiveDownload } from "../context/DownloadsContext";
 
 function make(p: Partial<ActiveDownload>): ActiveDownload {
@@ -40,5 +40,16 @@ describe("overallPercent", () => {
   it("не превышает 100%", () => {
     const d = make({ isPlaylist: true, totalItems: 2, index: 2, percent: 100 });
     expect(overallPercent(d)).toBe(100);
+  });
+});
+
+describe("ringPercent", () => {
+  it("нет активных — кольца нет", () => {
+    expect(ringPercent([make({ status: "done" }), make({ status: "error" })])).toBeNull();
+  });
+
+  it("среднее по активным, очередь считается как 0 %", () => {
+    const ds = [make({ percent: 80 }), make({ status: "queued" }), make({ status: "done", percent: 100 })];
+    expect(ringPercent(ds)).toBe(40);
   });
 });

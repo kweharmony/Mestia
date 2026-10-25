@@ -43,7 +43,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={{ notify }}>
       {children}
       <div
-        className={`fixed bottom-20 right-4 z-50 flex md:bottom-6 md:right-6 items-center gap-3 rounded-ui border-2 border-ink px-5 py-3 text-sm font-semibold text-white shadow-lg ${
+        // Пока на экране кружок загрузок (html[data-dlpanel]), встаём левее него.
+        className={`fixed bottom-20 right-4 z-50 flex max-w-[calc(100vw-2rem)] md:bottom-6 md:right-6 [html[data-dlpanel]_&]:right-[4.5rem] [html[data-dlpanel]_&]:max-w-[calc(100vw-5.5rem)] md:[html[data-dlpanel]_&]:right-[5.25rem] items-center gap-3 rounded-ui border-2 border-ink px-5 py-3 text-sm font-semibold text-white shadow-lg ${
           toast.kind === "error" ? "bg-rose-600" : "bg-accent"
         } ${
           toast.visible

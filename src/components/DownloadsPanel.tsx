@@ -18,6 +18,7 @@ import { humanizeError, updateYtdlp } from "../lib/ipc";
 import { useI18n } from "../context/LanguageContext";
 import { useToast } from "./Toast";
 import { IS_ANDROID } from "../lib/platform";
+import AnimatedNumber from "./AnimatedNumber";
 
 /**
  * Прогресс для полосы и подписи. Для плейлиста — агрегат по всем роликам
@@ -29,6 +30,17 @@ export function overallPercent(d: ActiveDownload): number {
     return Math.min(100, ((completed + d.percent / 100) / d.totalItems) * 100);
   }
   return d.percent;
+}
+
+/**
+ * Процент для кольца на кружке: среднее по идущим загрузкам (очередь — как 0 %).
+ * null — активных нет (кольцо не рисуем).
+ */
+export function ringPercent(ds: ActiveDownload[]): number | null {
+  const active = ds.filter((d) => d.status === "downloading" || d.status === "queued");
+  if (active.length === 0) return null;
+  const sum = active.reduce((acc, d) => acc + (d.status === "downloading" ? overallPercent(d) : 0), 0);
+  return sum / active.length;
 }
 
 export default function DownloadsPanel({ onOpenSettings }: { onOpenSettings: () => void }) {
@@ -50,12 +62,23 @@ export default function DownloadsPanel({ onOpenSettings }: { onOpenSettings: () 
     return () => document.removeEventListener("pointerdown", onDown);
   }, [pinned]);
 
-  if (downloads.length === 0) return null;
+  // Пока кружок на экране, тосты сдвигаются левее, чтобы его не закрывать (см. Toast).
+  const shown = downloads.length > 0;
+  useEffect(() => {
+    if (!shown) return;
+    document.documentElement.dataset.dlpanel = "";
+    return () => {
+      delete document.documentElement.dataset.dlpanel;
+    };
+  }, [shown]);
+
+  if (!shown) return null;
 
   const activeCount = downloads.filter(
     (d) => d.status === "downloading" || d.status === "queued"
   ).length;
-  const spinning = activeCount > 0;
+  const ring = ringPercent(downloads);
+  const hasErrors = downloads.some((d) => d.status === "error");
 
   return (
     <div
@@ -128,7 +151,7 @@ export default function DownloadsPanel({ onOpenSettings }: { onOpenSettings: () 
         )}
       </AnimatePresence>
 
-      {/* Кружок с крутящейся иконкой — пока есть активные загрузки */}
+      {/* Кружок: кольцо — общий прогресс активных загрузок, внутри — их состояние */}
       <button
         onClick={() => setPinned((p) => !p)}
         className="relative flex h-10 w-10 items-center justify-center rounded-full border-2 border-ink bg-snow shadow-lg transition-transform hover:scale-105"
@@ -136,17 +159,53 @@ export default function DownloadsPanel({ onOpenSettings }: { onOpenSettings: () 
         aria-label={t("dp.downloads")}
         aria-expanded={open}
       >
-        <RefreshCw
-          className={`h-[18px] w-[18px] text-accent ${spinning ? "animate-spin motion-reduce:animate-none" : ""}`}
-          strokeWidth={2.5}
-        />
+        {ring !== null && <ProgressRing percent={ring} />}
+        {ring !== null ? (
+          <ArrowDownToLine className="h-[18px] w-[18px] text-accent" strokeWidth={2.5} />
+        ) : hasErrors ? (
+          <AlertCircle className="h-[18px] w-[18px] text-rose-500" strokeWidth={2.5} />
+        ) : (
+          <Check className="h-[18px] w-[18px] text-emerald-600" strokeWidth={2.75} />
+        )}
         {activeCount > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border-2 border-snow bg-accent px-1 text-[9px] font-bold text-white">
+          <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full border-2 border-snow bg-accent px-1 text-[9px] font-bold text-white">
             {activeCount}
           </span>
         )}
       </button>
     </div>
+  );
+}
+
+/**
+ * Кольцо прогресса вокруг кружка (поверх его рамки). Пока процента ещё нет
+ * (разбор ссылки, очередь) — крутится короткая дуга.
+ */
+function ProgressRing({ percent }: { percent: number }) {
+  const r = 22;
+  const c = 2 * Math.PI * r;
+  const waiting = percent < 0.5;
+  return (
+    <svg
+      viewBox="0 0 48 48"
+      className={`pointer-events-none absolute -inset-[5px] h-[calc(100%+10px)] w-[calc(100%+10px)] -rotate-90 ${
+        waiting ? "animate-spin motion-reduce:animate-none" : ""
+      }`}
+      aria-hidden="true"
+    >
+      <circle cx="24" cy="24" r={r} fill="none" strokeWidth="3" className="stroke-fog" />
+      <circle
+        cx="24"
+        cy="24"
+        r={r}
+        fill="none"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeDasharray={c}
+        strokeDashoffset={waiting ? c * 0.75 : c * (1 - Math.min(100, percent) / 100)}
+        className="stroke-accent transition-[stroke-dashoffset] duration-500 ease-out motion-reduce:transition-none"
+      />
+    </svg>
   );
 }
 
@@ -170,9 +229,8 @@ function StatusLine({ d }: { d: ActiveDownload }) {
   if (d.status === "downloading") {
     return (
       <div className="text-[11px] font-semibold text-smoke">
-        {d.isPlaylist && d.totalItems
-          ? `${t("dp.videoOf", { index: d.index ?? "?", total: d.totalItems })} · ${overallPercent(d).toFixed(0)}%`
-          : `${d.percent.toFixed(0)}%`}
+        {d.isPlaylist && d.totalItems && `${t("dp.videoOf", { index: d.index ?? "?", total: d.totalItems })} · `}
+        <AnimatedNumber value={overallPercent(d)} />
       </div>
     );
   }

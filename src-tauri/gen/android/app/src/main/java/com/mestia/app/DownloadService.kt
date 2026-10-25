@@ -59,11 +59,12 @@ class DownloadService : Service() {
         fun end(ctx: Context, id: String) {
             running.remove(id)
             percents.remove(id)
-            instance?.let { svc -> svc.handler.post { svc.renotify() } }
-            if (active.decrementAndGet() > 0) return
-            active.set(0)
+            if (active.decrementAndGet() <= 0) active.set(0)
+            // Обновление и остановка — одним шагом в главном потоке: иначе отложенный
+            // notify мог выполниться после stopForeground и оставить «вечное» уведомление.
             // stopService до startForeground уронил бы приложение — сервис гасит себя сам.
-            instance?.stopIfIdle()
+            val svc = instance ?: return
+            svc.handler.post { if (active.get() > 0) svc.renotify() else svc.stopIfIdle() }
         }
     }
 
@@ -94,6 +95,8 @@ class DownloadService : Service() {
     private fun stopIfIdle(force: Boolean = false) {
         if (!force && active.get() > 0) return
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        // На случай, если уведомление успели перевыпустить обычным notify.
+        getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
         stopSelf()
     }
 
