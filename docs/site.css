@@ -1,0 +1,83 @@
+/* Общие стили сайта Mestia (index.html, privacy.html). Темы — 1:1 из src/index.css. */
+[data-theme="lavender"] { --snow:#f4f2f9; --paper:#e5def0; --ink:#7d4c35; --accent:#de8255; --fog:#cfc2e2; --smoke:#947a82; }
+[data-theme="midnight"] { --snow:#fdf1f2; --paper:#fae0e2; --ink:#200d20; --accent:#ae445d; --fog:#f2c0c5; --smoke:#6e4664; }
+[data-theme="matcha"]   { --snow:#f6f3eb; --paper:#ebdcb9; --ink:#2b4f4f; --accent:#458282; --fog:#d2c19a; --smoke:#58706b; }
+[data-theme="ember"]    { --snow:#211712; --paper:#2c1e17; --ink:#ecd9d0; --accent:#bb6044; --fog:#433025; --smoke:#a08a7e; }
+[data-theme="indigo"]   { --snow:#191826; --paper:#232137; --ink:#dbe1f2; --accent:#5672af; --fog:#343150; --smoke:#8b91ad; }
+[data-theme="forest"]   { --snow:#141a13; --paper:#1d251b; --ink:#d8e2d4; --accent:#2a5747; --fog:#2b3621; --smoke:#8a9582; }
+[data-theme="mono"]     { --snow:#fbfbfb; --paper:#f2f2f2; --ink:#000000; --accent:#1a1a1a; --fog:#dddddd; --smoke:#6b6b6b; }
+[data-theme="graphite"] { --snow:#1a1a18; --paper:#252523; --ink:#f5f4ef; --accent:#74736b; --fog:#34332f; --smoke:#9b9a90; }
+
+* { box-sizing: border-box; }
+:root { --r: 10px; --ease: cubic-bezier(.22, 1, .36, 1); }
+html { scroll-behavior: smooth; }
+html, body { margin: 0; }
+body {
+  font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  background: var(--snow); color: var(--ink); line-height: 1.55;
+  -webkit-font-smoothing: antialiased; overflow-x: hidden;
+  transition: background-color .4s var(--ease), color .4s var(--ease);
+}
+a { color: inherit; }
+svg { display: block; }
+img, video { max-width: 100%; }
+.wrap { width: 100%; max-width: 1040px; margin: 0 auto; padding: 0 16px; }
+@media (min-width: 720px) { .wrap { padding: 0 32px; } }
+.caps { font-size: 12px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; color: var(--smoke); }
+.muted { color: var(--smoke); }
+
+/* ── Шапка ─────────────────────────────────────────────────────────────────── */
+.top { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--snow) 82%, transparent);
+  backdrop-filter: saturate(1.4) blur(12px); border-bottom: 2px solid transparent; transition: border-color .3s, background-color .4s; }
+.top.scrolled { border-bottom-color: var(--fog); }
+.top .wrap { display: flex; align-items: center; gap: 16px; height: 64px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; letter-spacing: -.02em; text-decoration: none; }
+.tile { display: inline-flex; align-items: center; justify-content: center; background: var(--accent); color: #fff; border-radius: 22%; transition: background-color .4s var(--ease); }
+.tile svg { width: 82%; height: 82%; }
+.nav { margin-left: auto; display: none; gap: 4px; }
+.nav a { text-decoration: none; font-size: 14px; font-weight: 600; color: var(--smoke); padding: 8px 12px; border-radius: var(--r); transition: color .2s, background-color .2s; }
+.nav a:hover { color: var(--ink); background: var(--paper); }
+@media (min-width: 820px) { .nav { display: flex; } }
+.seg { margin-left: auto; position: relative; display: inline-flex; padding: 3px; border: 2px solid var(--fog); border-radius: 999px; }
+@media (min-width: 820px) { .seg { margin-left: 8px; } }
+.seg button { position: relative; z-index: 1; border: 0; background: none; font: inherit; font-size: 12px; font-weight: 700; color: var(--smoke);
+  padding: 4px 10px; border-radius: 999px; cursor: pointer; transition: color .2s; }
+.seg button.on { color: var(--snow); }
+.seg .pill { position: absolute; top: 3px; bottom: 3px; border-radius: 999px; background: var(--ink); transition: left .35s var(--ease), width .35s var(--ease), background-color .4s; }
+.icon-btn { display: inline-flex; padding: 8px; border-radius: var(--r); color: var(--smoke); transition: color .2s, background-color .2s; }
+.icon-btn:hover { color: var(--ink); background: var(--paper); }
+
+/* ── Кнопки ────────────────────────────────────────────────────────────────── */
+.btn { display: inline-flex; align-items: center; gap: 8px; height: 48px; padding: 0 22px; border-radius: var(--r); font-weight: 700; font-size: 15px;
+  text-decoration: none; border: 2px solid var(--ink); background: var(--accent); color: #fff; cursor: pointer;
+  transition: transform .2s var(--ease), box-shadow .2s, background-color .4s; }
+.btn:hover { transform: translateY(-1px); box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 30%, transparent); }
+.btn:active { transform: translateY(0) scale(.98); }
+.btn.ghost { background: transparent; color: var(--ink); border-color: var(--fog); }
+.btn.ghost:hover { border-color: var(--ink); box-shadow: none; }
+.btn svg { width: 18px; height: 18px; }
+
+/* ── Секции ────────────────────────────────────────────────────────────────── */
+section { padding: 72px 0; }
+@media (min-width: 720px) { section { padding: 104px 0; } }
+h1, h2, h3 { margin: 0; letter-spacing: -.035em; line-height: 1.08; }
+h2 { font-size: clamp(28px, 4.2vw, 42px); font-weight: 700; margin-top: 14px; }
+.lead { font-size: clamp(16px, 2vw, 19px); color: var(--smoke); max-width: 620px; margin: 16px 0 0; }
+
+/* Появление при скролле: секция и её дети по очереди (--i) */
+.reveal { opacity: 0; transform: translateY(12px); transition: opacity .7s var(--ease), transform .7s var(--ease); transition-delay: calc(var(--i, 0) * 80ms); }
+.reveal.in { opacity: 1; transform: none; }
+
+/* ── Подвал ────────────────────────────────────────────────────────────────── */
+footer { border-top: 2px solid var(--fog); padding: 28px 0 40px; font-size: 14px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; justify-content: space-between; }
+footer nav { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+footer a { text-decoration: none; color: var(--smoke); font-weight: 600; }
+footer a:hover { color: var(--ink); }
+
+code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: .9em; background: var(--paper); padding: 1px 6px; border-radius: 6px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  .reveal { opacity: 1; transform: none; }
+}

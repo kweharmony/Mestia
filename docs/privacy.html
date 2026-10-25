@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ru" data-theme="mono">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mestia — политика конфиденциальности</title>
+  <meta name="description" content="Mestia не собирает и не отправляет персональные данные. Privacy policy of the Mestia app." />
+  <link rel="icon" id="favicon" href="data:," />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="site.css" />
+  <style>
+    /* Текст политики — синхронизирован с PRIVACY.md в корне репозитория */
+    .doc { max-width: 760px; padding: 56px 0 88px; }
+    .doc h1 { font-size: clamp(32px, 5vw, 48px); font-weight: 800; margin-top: 14px; }
+    .doc .date { margin-top: 10px; color: var(--smoke); font-size: 14px; }
+    .doc .tldr { margin-top: 32px; padding: 20px 22px; border-radius: 14px; background: var(--paper); font-size: 17px; font-weight: 600; }
+    .doc h2 { font-size: 22px; margin-top: 44px; }
+    .doc p, .doc li { color: color-mix(in srgb, var(--ink) 82%, var(--snow)); }
+    .doc ul { padding-left: 20px; }
+    .doc li { margin: 6px 0; }
+    .tbl { margin-top: 16px; border: 2px solid var(--fog); border-radius: 14px; overflow: hidden; }
+    .tbl div { display: grid; gap: 4px 20px; padding: 14px 18px; border-top: 2px solid var(--fog); }
+    .tbl div:first-child { border-top: 0; }
+    @media (min-width: 640px) { .tbl div { grid-template-columns: 220px 1fr; } }
+    .tbl b { font-size: 14px; }
+    .tbl span { font-size: 14px; color: var(--smoke); }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <a class="brand" href="./"><span class="tile" style="width:30px;height:30px" data-mark></span>Mestia</a>
+      <div class="seg" data-lang-switch><span class="pill"></span><button data-set="ru">RU</button><button data-set="en">EN</button></div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <article class="doc reveal" data-lang="ru">
+      <p class="caps">Mestia</p>
+      <h1>Политика конфиденциальности</h1>
+      <p class="date">Последнее обновление: 25.10.2026</p>
+      <p class="tldr">Mestia не собирает, не хранит у себя и никуда не отправляет ваши персональные данные. Нет аккаунтов, рекламы, аналитики и телеметрии. Всё, что вы скачиваете и смотрите, остаётся на вашем устройстве.</p>
+
+      <h2>Какие сетевые запросы делает приложение</h2>
+      <p>Mestia выходит в сеть только для того, что вы сами попросили сделать:</p>
+      <div class="tbl">
+        <div><b>Сайт, ссылку на который вы вставили</b><span>Получить сведения о видео и скачать его. Запросы делает встроенный движок yt-dlp напрямую с вашего устройства.</span></div>
+        <div><b>github.com</b><span>Проверка новой версии приложения при запуске (компьютер) и обновление yt-dlp по кнопке в настройках.</span></div>
+        <div><b>open.spotify.com, music.apple.com</b><span>Только если вы вставили ссылку на трек Spotify или Apple Music — чтобы узнать название и найти трек на YouTube.</span></div>
+        <div><b>Устройства в локальной сети</b><span>Только при включённой видимости в «Рядом»: UDP-анонсы и HTTP/WebSocket на порту 53318 для обмена файлами и совместного просмотра. В интернет не уходит.</span></div>
+        <div><b>Ваш прокси</b><span>Только если вы указали его в настройках.</span></div>
+      </div>
+      <p>Приложение не отправляет разработчику ни запросы, ни историю, ни какие-либо идентификаторы.</p>
+
+      <h2>Что хранится на устройстве</h2>
+      <ul>
+        <li>Скачанные файлы — в выбранной вами папке.</li>
+        <li>База <code>mestia.db</code>: медиатека, папки, история загрузок.</li>
+        <li>Настройки, кэш превью, позиции воспроизведения и громкость.</li>
+      </ul>
+      <p>Всё это удаляется вместе с приложением; скачанные файлы остаются в вашей папке, пока вы их не удалите.</p>
+      <p><b>Куки браузера.</b> Если вы сами выберете браузер в настройках (только компьютер), yt-dlp читает его куки локально, чтобы скачивать приватные или возрастные видео. Куки передаются только сайту-источнику и приложением не сохраняются.</p>
+
+      <h2>Разрешения Android</h2>
+      <ul>
+        <li><b>Уведомления</b> — прогресс загрузки и медиапанель плеера.</li>
+        <li><b>Фоновые службы</b> — чтобы загрузка и звук не прерывались в фоне и с выключенным экраном.</li>
+        <li><b>Доступ ко всем файлам</b> — только если вы выберете папку загрузок вне «Загрузок».</li>
+        <li><b>Multicast Wi-Fi</b> — поиск устройств в «Рядом».</li>
+        <li><b>Интернет</b> — загрузка.</li>
+      </ul>
+
+      <h2>Дети</h2>
+      <p>Приложение не предназначено специально для детей и не собирает данных ни о ком, в том числе о детях.</p>
+
+      <h2>Изменения и контакты</h2>
+      <p>Новая версия политики появится на этой странице и в <a href="https://github.com/kweharmony/Mestia/blob/main/PRIVACY.md">PRIVACY.md</a> с новой датой. Вопросы — через <a href="https://github.com/kweharmony/Mestia/issues">Issues на GitHub</a>, уязвимости — по <a href="https://github.com/kweharmony/Mestia/blob/main/SECURITY.md">SECURITY.md</a>.</p>
+    </article>
+
+    <article class="doc reveal" data-lang="en" hidden>
+      <p class="caps">Mestia</p>
+      <h1>Privacy Policy</h1>
+      <p class="date">Last updated: October 25, 2026</p>
+      <p class="tldr">Mestia does not collect, store on any server, or send anywhere your personal data. No accounts, ads, analytics or telemetry. Everything you download and watch stays on your device.</p>
+
+      <h2>Network requests the app makes</h2>
+      <p>Mestia only goes online to do what you asked for:</p>
+      <div class="tbl">
+        <div><b>The site whose link you pasted</b><span>To fetch video info and download it. Requests are made directly from your device by the bundled yt-dlp engine.</span></div>
+        <div><b>github.com</b><span>Checking for a new app version on launch (desktop) and updating yt-dlp when you press the button in Settings.</span></div>
+        <div><b>open.spotify.com, music.apple.com</b><span>Only when you paste a Spotify or Apple Music track link — to read the title and find the track on YouTube.</span></div>
+        <div><b>Devices on your local network</b><span>Only while visibility is on in “Nearby”: UDP announcements and HTTP/WebSocket on port 53318 for file sharing and watching together. Never leaves your network.</span></div>
+        <div><b>Your proxy</b><span>Only if you set one in Settings.</span></div>
+      </div>
+      <p>The app never sends the developer your requests, history or any identifiers.</p>
+
+      <h2>What is stored on the device</h2>
+      <ul>
+        <li>Downloaded files — in the folder you choose.</li>
+        <li><code>mestia.db</code>: library, folders, download history.</li>
+        <li>Settings, thumbnail cache, playback positions and volume.</li>
+      </ul>
+      <p>All of it is removed with the app; downloaded files stay in your folder until you delete them.</p>
+      <p><b>Browser cookies.</b> If you choose a browser in Settings (desktop only), yt-dlp reads its cookies locally to download private or age-restricted videos. Cookies are sent only to the source site and are not stored by the app.</p>
+
+      <h2>Android permissions</h2>
+      <ul>
+        <li><b>Notifications</b> — download progress and the player's media panel.</li>
+        <li><b>Foreground services</b> — so downloads and sound continue in the background and with the screen off.</li>
+        <li><b>All files access</b> — only if you pick a download folder outside “Downloads”.</li>
+        <li><b>Wi-Fi multicast</b> — discovering devices in “Nearby”.</li>
+        <li><b>Internet</b> — downloading.</li>
+      </ul>
+
+      <h2>Children</h2>
+      <p>The app is not directed at children and collects no data about anyone, children included.</p>
+
+      <h2>Changes and contact</h2>
+      <p>A new version of this policy will appear on this page and in <a href="https://github.com/kweharmony/Mestia/blob/main/PRIVACY.md">PRIVACY.md</a> with a new date. Questions — via <a href="https://github.com/kweharmony/Mestia/issues">GitHub Issues</a>, vulnerabilities — see <a href="https://github.com/kweharmony/Mestia/blob/main/SECURITY.md">SECURITY.md</a>.</p>
+    </article>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span class="muted">© 2026 Mestia · MIT</span>
+      <nav>
+        <a href="./" data-i18n="home">Главная</a>
+        <a href="https://github.com/kweharmony/Mestia">GitHub</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script>
+    window.I18N = {
+      title: { ru: "Mestia — политика конфиденциальности", en: "Mestia — Privacy Policy" },
+      home: { ru: "Главная", en: "Home" },
+    };
+  </script>
+  <script src="site.js"></script>
+</body>
+</html>
