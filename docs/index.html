@@ -111,6 +111,13 @@
     details p { margin: 0 0 20px; color: var(--smoke); max-width: 680px; }
     details[open] p { animation: rise .35s var(--ease); }
 
+    /* Всё по центру, как hero: заголовки секций и узкие блоки */
+    section .wrap > .caps, section .wrap > h2, section .wrap > .lead { text-align: center; }
+    section .wrap > .lead { margin-left: auto; margin-right: auto; }
+    .themes, .faq { margin-left: auto; margin-right: auto; }
+    #download .wrap { text-align: center; }
+    .files { justify-content: center; }
+    .hint { margin-left: auto; margin-right: auto; }
     .final { text-align: center; }
     .final .tile { width: 64px; height: 64px; margin: 0 auto; }
     .final .cta { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 28px; }
