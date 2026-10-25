@@ -7,6 +7,14 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
-    <!-- Плашка иконки приложения (лавандовая тема, как design/logo/app-icon.svg) -->
-    <color name="ic_launcher_background">#FFDE8255</color>
+    <!-- Плашка базовой иконки: чёрно-белая, как design/logo/app-icon.svg (тема Clean Mono) -->
+    <color name="ic_launcher_background">#FF1A1A1A</color>
+    <!-- Плашки иконок остальных тем (= акцент темы в src/index.css) -->
+    <color name="ic_launcher_midnight">#FFAE445D</color>
+    <color name="ic_launcher_matcha">#FF458282</color>
+    <color name="ic_launcher_lavender">#FFDE8255</color>
+    <color name="ic_launcher_ember">#FFBB6044</color>
+    <color name="ic_launcher_indigo">#FF5672AF</color>
+    <color name="ic_launcher_forest">#FF2A5747</color>
+    <color name="ic_launcher_graphite">#FF74736B</color>
 </resources>

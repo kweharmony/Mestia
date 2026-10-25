@@ -4,4 +4,9 @@
     <string name="playback_channel">播放</string>
     <string name="playback_running">正在播放</string>
     <string name="share_label">用 Mestia 下载</string>
+    <string name="media_play">播放</string>
+    <string name="media_pause">暂停</string>
+    <string name="media_next">下一个</string>
+    <string name="media_prev">上一个</string>
+    <string name="downloads_many">下载数：%1$d</string>
 </resources>

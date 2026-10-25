@@ -1,4 +1,4 @@
-import { setAppIcon } from "./ipc";
+import { setAppIcon, setLauncherIcon } from "./ipc";
 import { IS_ANDROID } from "./platform";
 
 /**
@@ -20,8 +20,8 @@ export function iconSvg(bg: string, fg = "#ffffff"): string {
 
 let seq = 0;
 
-/** Перекрашивает favicon, иконку окна и трея под акцент текущей темы. */
-export function applyThemeIcon(): void {
+/** Перекрашивает favicon, иконку окна и трея под акцент текущей темы (Android — ярлык лаунчера). */
+export function applyThemeIcon(theme: string): void {
   const accent = getComputedStyle(document.documentElement).getPropertyValue("--c-accent").trim();
   if (!accent) return;
   const svg = iconSvg(accent);
@@ -35,7 +35,11 @@ export function applyThemeIcon(): void {
   }
   link.href = url;
 
-  if (IS_ANDROID) return;
+  if (IS_ANDROID) {
+    // Готовые иконки тем — activity-alias в манифесте (gen/android).
+    setLauncherIcon(theme).catch(() => {});
+    return;
+  }
   // Растеризуем в RGBA и отдаём в Rust; устаревшие отрисовки отбрасываем.
   const id = ++seq;
   const img = new Image();

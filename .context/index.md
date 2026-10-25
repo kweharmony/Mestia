@@ -60,7 +60,7 @@ Build-time Node helpers.
   - `i18n.ts` — trilingual dictionary (`ru`/`en`/`zh`) + `t()`; module-level `t()` for
     non-React code (e.g. `humanizeError`, desktop notifications).
   - `platform.ts` — `IS_ANDROID` (hides tray, explorer, mini-window, cookies, uninstall)
-  - `appIcon.ts` — logo marks (`LOGO_MARK`) + `applyThemeIcon()`: favicon/window/tray icon in the theme accent (called from ThemeContext); concept sources in `design/logo/`
+  - `appIcon.ts` — logo marks (`LOGO_MARK`) + `applyThemeIcon()`: favicon/window/tray icon in the theme accent (called from ThemeContext); Android — launcher icon via per-theme `activity-alias` (`LauncherIcon.kt`, switched in `MainActivity.onStop`); base icon is black-and-white (`design/logo/app-icon.svg`); concept sources in `design/logo/`
     and URL extraction from shared text.
   - `roomSync.ts` — watch-together drift correction (seek on big drift, ±10% rate on small,
     self-tuning start lead).
@@ -91,7 +91,7 @@ Build-time Node helpers.
   move-to-back, yt-dlp update.
 - `gen/android/` — Android Studio project. `MestiaPlugin.kt` wraps youtubedl-android
   (Python + yt-dlp + ffmpeg); `DownloadService.kt` — foreground service while downloads
-  run; `PlaybackService.kt` — mediaPlayback foreground service + wake/Wi-Fi lock while
+  run; `PlaybackService.kt` — mediaPlayback foreground service with MediaSession notification (title, cover, seek bar, ⏮⏯⏭ → `media://action`) + wake/Wi-Fi lock while
   the player or a room plays (works with the screen off); `MainActivity.kt` — system-bar insets; manifest — `ACTION_SEND text/plain` share
   target, `extractNativeLibs`.
 - `src/storage.rs` — filesystem ops: files/folders, real-time file-watcher, thumbnail
@@ -122,7 +122,10 @@ Build-time Node helpers.
   (`lanMulticast`), cleartext HTTP allowed for LAN media. The room can be minimized to a
   pill (playback continues); Library selection → «Отправить» (`SendToDevice`) / «В очередь».
 
-- **Download**: `Downloader` view → `ipc.ts` → `downloader.rs` (builds args) →
+- **Download**: intermediate streams/`.part` go to hidden `<dir>/.mestia-tmp` (`-P temp:`), only the
+  final file lands in the library; `Combined` in `downloader.rs` turns per-stream progress (video,
+  then audio) into one percent of the final file (also shown in the Android download notification).
+  `Downloader` view → `ipc.ts` → `downloader.rs` (builds args) →
   `engine.rs` (sidecar on desktop / `MestiaPlugin.execute` on Android) → progress events →
   `DownloadsContext` → UI. On Android a foreground service keeps the process alive and each
   finished file is registered in MediaStore; links arrive via «Share → Mestia». Records land in SQLite via `db.ts`.

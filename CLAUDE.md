@@ -67,7 +67,7 @@ src/                Frontend (React + TS)
                     LibraryPicker (pick library/disk files for LAN send & room queue), SendToDevice (peer chooser)
   lib/              ipc.ts (bridge to Rust commands), db.ts (SQLite access), i18n.ts (ru/en/zh dictionary + t()),
                     platform.ts (IS_ANDROID, share-text URL extraction),
-                    appIcon.ts (logo marks + theme-coloured favicon/window/tray icon), roomSync.ts (watch-together drift correction),
+                    appIcon.ts (logo marks + theme-coloured favicon/window/tray/Android launcher icon), roomSync.ts (watch-together drift correction),
                     media.ts (player src: Android via local media server; playback keep-alive)
   views/            Downloader, Locker (library), History, Player, MiniPlayer, Nearby (LAN devices/transfers),
                     Room (watch-together player + queue)
@@ -86,7 +86,7 @@ src-tauri/          Backend (Rust + Tauri v2)
   tauri.conf.json   Window, tray, sidecar, asset protocol, NSIS, updater
   tauri.android.conf.json  Android overrides (no sidecars, minSdk 30)
   gen/android/      Android Studio project: MestiaPlugin.kt, DownloadService.kt (foreground
-                    service), PlaybackService.kt (playback with screen off), MainActivity.kt (insets),
+                    service), PlaybackService.kt (MediaSession notification, playback with screen off), MainActivity.kt (insets),
                     manifest (share intent), Gradle deps
 ```
 

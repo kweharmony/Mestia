@@ -4,4 +4,9 @@
     <string name="playback_channel">Playback</string>
     <string name="playback_running">Playing</string>
     <string name="share_label">Download with Mestia</string>
+    <string name="media_play">Play</string>
+    <string name="media_pause">Pause</string>
+    <string name="media_next">Next</string>
+    <string name="media_prev">Previous</string>
+    <string name="downloads_many">Downloads: %1$d</string>
 </resources>

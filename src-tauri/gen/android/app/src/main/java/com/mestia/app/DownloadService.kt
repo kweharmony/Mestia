@@ -9,16 +9,20 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Foreground-сервис на время загрузок: без него Android убивает процесс yt-dlp,
  * как только приложение уходит в фон. Счётчик активных загрузок общий; сервис
- * сам останавливается, когда он обнуляется.
+ * сам останавливается, когда он обнуляется. В уведомлении — процент готового файла
+ * (одна загрузка) или средний по всем.
  */
 class DownloadService : Service() {
     companion object {
@@ -26,10 +30,17 @@ class DownloadService : Service() {
         private const val NOTIFICATION_ID = 1
         private val active = AtomicInteger(0)
 
+        /** id загрузки → (название, процент). */
+        private val percents = ConcurrentHashMap<String, Pair<String?, Int>>()
+
         @Volatile
         private var instance: DownloadService? = null
 
-        fun begin(ctx: Context) {
+        /** Идущие загрузки: поздний процент от уже закончившейся не воскресит её в уведомлении. */
+        private val running = ConcurrentHashMap.newKeySet<String>()
+
+        fun begin(ctx: Context, id: String) {
+            running.add(id)
             if (active.incrementAndGet() != 1) return
             try {
                 ContextCompat.startForegroundService(ctx, Intent(ctx, DownloadService::class.java))
@@ -39,13 +50,24 @@ class DownloadService : Service() {
             }
         }
 
-        fun end(ctx: Context) {
+        fun progress(id: String, title: String?, percent: Int) {
+            if (id !in running) return
+            percents[id] = title to percent.coerceIn(0, 100)
+            instance?.let { svc -> svc.handler.post { svc.renotify() } }
+        }
+
+        fun end(ctx: Context, id: String) {
+            running.remove(id)
+            percents.remove(id)
+            instance?.let { svc -> svc.handler.post { svc.renotify() } }
             if (active.decrementAndGet() > 0) return
             active.set(0)
             // stopService до startForeground уронил бы приложение — сервис гасит себя сам.
             instance?.stopIfIdle()
         }
     }
+
+    private val handler = Handler(Looper.getMainLooper())
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -75,6 +97,11 @@ class DownloadService : Service() {
         stopSelf()
     }
 
+    private fun renotify() {
+        if (instance !== this || active.get() == 0) return
+        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification())
+    }
+
     private fun buildNotification(): Notification {
         val nm = getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -87,13 +114,26 @@ class DownloadService : Service() {
             Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE
         )
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val b = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle(getString(R.string.app_name))
-            .setContentText(getString(R.string.downloads_running))
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setShowWhen(false)
             .setContentIntent(open)
-            .setProgress(0, 0, true)
+        val items = percents.values.toList()
+        if (items.isEmpty()) {
+            return b.setContentTitle(getString(R.string.app_name))
+                .setContentText(getString(R.string.downloads_running))
+                .setProgress(0, 0, true)
+                .build()
+        }
+        val pct = items.sumOf { it.second } / items.size
+        val title = if (items.size == 1) items[0].first ?: getString(R.string.downloads_running)
+        else getString(R.string.downloads_many, items.size)
+        return b.setContentTitle(title)
+            .setContentText("$pct%")
+            .setSubText(getString(R.string.app_name))
+            .setProgress(100, pct, false)
             .build()
     }
 }

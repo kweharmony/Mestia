@@ -159,6 +159,11 @@ export function setAppIcon(rgba: number[], width: number, height: number): Promi
   return invoke("set_app_icon", { rgba, width, height });
 }
 
+/** Android: иконка на рабочем столе под тему (сменится, когда приложение уйдёт в фон). */
+export function setLauncherIcon(theme: string): Promise<void> {
+  return invoke("set_launcher_icon", { theme });
+}
+
 /** Поддерживает ли сборка самообновление (Win/macOS — да, Linux — только AppImage, Android — нет). */
 export function updaterSupported(): Promise<boolean> {
   return invoke<boolean>("updater_supported");

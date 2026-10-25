@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Знак Mestia для строки состояния (= LOGO_MARK в src/lib/appIcon.ts) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="256"
+    android:viewportHeight="256">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M35.9 189.1 L79.0 79.9 Q90.0 52.0 103.1 79.0 L118.4 110.2 Q128.0 130.0 141.9 112.9 L155.6 96.2 Q172.0 76.0 182.1 100.0 L219.8 189.3 Q226.0 204.0 210.0 204.0 L46.0 204.0 Q30.0 204.0 35.9 189.1 Z M110.0 146.0 L110.0 178.0 Q110.0 186.0 116.9 182.0 L145.1 166.0 Q152.0 162.0 145.1 158.0 L116.9 142.0 Q110.0 138.0 110.0 146.0 Z" />
+</vector>

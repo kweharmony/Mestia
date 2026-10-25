@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Адаптивная иконка Mestia: плашка + стрелка из app-icon.png; monochrome — для
-     тематических иконок Android 13+ (лаунчер перекрашивает стрелку сам). -->
+<!-- Адаптивная иконка Mestia: чёрно-белая плашка + знак (design/logo/app-icon.svg), она же
+     иконка темы Clean Mono; monochrome — для тематических иконок Android 13+. -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@color/ic_launcher_background" />
     <foreground android:drawable="@mipmap/ic_launcher_foreground" />

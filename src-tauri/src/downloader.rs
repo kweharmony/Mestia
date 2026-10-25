@@ -13,6 +13,11 @@ use crate::engine::{self, RunEnd};
 // Маркеры в выводе yt-dlp, по которым отличаем строки прогресса и итоговых файлов.
 const MARK_PROGRESS: &str = "[[MP]]";
 const MARK_FILE: &str = "[[MF]]";
+/// Перед загрузкой ролика: format_id ("137+140") и ожидаемые размеры потоков.
+const MARK_PARTS: &str = "[[MS]]";
+/// Папка промежуточных файлов (потоки видео/аудио, .part) внутри папки загрузки.
+/// Скрытая — медиатека её не показывает; готовый файл yt-dlp переносит уровнем выше.
+const TMP_DIR: &str = ".mestia-tmp";
 
 // ── Структуры обмена с фронтендом ──────────────────────────────────────────────
 
@@ -66,6 +71,12 @@ struct ProgressPayload {
     /// номер текущего видео в плейлисте и общее количество (для "X из N")
     index: Option<f64>,
     total_items: Option<f64>,
+    /// Поток, который качается сейчас (видео или аудио одного ролика), и название ролика.
+    #[serde(skip)]
+    format_id: Option<String>,
+    #[serde(skip)]
+    #[cfg_attr(desktop, allow(dead_code))] // нужно только уведомлению на Android
+    title: Option<String>,
 }
 
 /// Одно завершённое (и перемещённое) видео — фронтенд добавляет его в БД.
@@ -370,7 +381,10 @@ pub async fn start_download(app: AppHandle, args: DownloadArgs) -> Result<(), St
     } else {
         "%(title)s [%(id)s].%(ext)s"
     };
-    let out_tmpl = base_dir.join(name_tmpl).to_string_lossy().to_string();
+    // Промежуточные потоки и .part — в скрытую TMP_DIR (тот же диск: перенос мгновенный),
+    // в папку попадает только готовый файл. Шаблон -o относительный: с абсолютным
+    // yt-dlp игнорирует -P. Путь к TMP_DIR детерминирован — «дозакачка» найдёт .part.
+    let tmp_dir = base_dir.join(TMP_DIR);
 
     let mut yt_args: Vec<String> = vec![
         "--newline".into(),
@@ -403,13 +417,22 @@ pub async fn start_download(app: AppHandle, args: DownloadArgs) -> Result<(), St
         "--embed-metadata".into(),
         "--progress-template".into(),
         format!(
-            "{MARK_PROGRESS}%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s|%(info.playlist_index)s|%(info.n_entries)s"
+            "{MARK_PROGRESS}%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s|%(info.playlist_index)s|%(info.n_entries)s|%(info.format_id)s|%(info.title)s"
+        ),
+        "--print".into(),
+        // Из каких потоков соберётся файл — для единого процента (см. Combined).
+        format!(
+            "before_dl:{MARK_PARTS}%(format_id)s|%(requested_formats.:.filesize)j|%(requested_formats.:.filesize_approx)j"
         ),
         "--print".into(),
         // JSON-объект по каждому перемещённому файлу (не-ASCII → \uXXXX).
         format!("after_move:{MARK_FILE}%(.{{title,filepath,webpage_url,duration,thumbnail,extractor_key,filesize,filesize_approx}})j"),
+        "-P".into(),
+        format!("home:{}", base_dir.to_string_lossy()),
+        "-P".into(),
+        format!("temp:{}", tmp_dir.to_string_lossy()),
         "-o".into(),
-        out_tmpl,
+        name_tmpl.into(),
         "--merge-output-format".into(),
         "mp4".into(),
         "-f".into(),
@@ -514,10 +537,15 @@ pub async fn start_download(app: AppHandle, args: DownloadArgs) -> Result<(), St
     let id = args.id.clone();
     let mut count: u32 = 0;
     let mut last_err = String::new();
+    let mut combined = Combined::default();
     let end = engine::run(&app, &id, yt_args, true, |_, line| {
-        handle_line(line, &id, &app, &mut count, &mut last_err)
+        handle_line(line, &id, &app, &mut count, &mut last_err, &mut combined)
     })
-    .await?;
+    .await;
+    // Пустую TMP_DIR убираем (remove_dir не тронет непустую: там .part для дозакачки
+    // или файлы параллельной загрузки).
+    let _ = std::fs::remove_dir(&tmp_dir);
+    let end = end?;
 
     let code = match end {
         RunEnd::Exited(code) => code,
@@ -617,11 +645,29 @@ pub fn update_ytdlp(app: AppHandle) -> Result<String, String> {
 // ── Вспомогательные функции ─────────────────────────────────────────────────────
 
 /// Обрабатывает одну строку: прогресс / готовый файл (JSON) / ошибка.
-fn handle_line(line: &str, id: &str, app: &AppHandle, count: &mut u32, last_err: &mut String) {
+fn handle_line(
+    line: &str,
+    id: &str,
+    app: &AppHandle,
+    count: &mut u32,
+    last_err: &mut String,
+    combined: &mut Combined,
+) {
     if let Some(rest) = line.strip_prefix(MARK_PROGRESS) {
-        if let Some(p) = parse_progress(id, rest) {
+        if let Some(mut p) = parse_progress(id, rest) {
+            combined.apply(&mut p);
+            // Android: процент в уведомлении загрузки — не чаще раза в секунду.
+            #[cfg(mobile)]
+            if combined.should_notify(p.percent) {
+                let (app, id, title, pct) = (app.clone(), id.to_string(), p.title.clone(), p.percent);
+                tauri::async_runtime::spawn_blocking(move || {
+                    crate::mobile::download_progress(&app, &id, title.as_deref(), pct)
+                });
+            }
             let _ = app.emit("download://progress", p);
         }
+    } else if let Some(rest) = line.strip_prefix(MARK_PARTS) {
+        *combined = Combined::from_parts(rest);
     } else if let Some(rest) = line.strip_prefix(MARK_FILE) {
         if let Some(mut item) = parse_item(id, rest) {
             // Реальный размер итогового файла (после merge/конвертации) — точнее,
@@ -684,6 +730,15 @@ fn parse_progress(id: &str, rest: &str) -> Option<ProgressPayload> {
     let eta = num(parts[4]);
     let index = parts.get(5).and_then(|s| num(s));
     let total_items = parts.get(6).and_then(|s| num(s));
+    let format_id = parts
+        .get(7)
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty() && *s != "NA")
+        .map(String::from);
+    // Название — последним: в нём самом может встретиться «|».
+    let title = (parts.len() > 8)
+        .then(|| parts[8..].join("|"))
+        .filter(|s| !s.is_empty() && s != "NA");
     let percent = match (downloaded, total) {
         (Some(d), Some(t)) if t > 0.0 => (d / t * 100.0).min(100.0),
         _ => 0.0,
@@ -698,7 +753,95 @@ fn parse_progress(id: &str, rest: &str) -> Option<ProgressPayload> {
         percent,
         index,
         total_items,
+        format_id,
+        title,
     })
+}
+
+/// Единый прогресс ролика, который собирается из нескольких потоков (видео + аудио):
+/// yt-dlp качает их по очереди, и у каждого свой 0–100 %. Здесь — процент готового
+/// файла: доля скачанных байт всех потоков (если размеры известны), иначе равные доли.
+#[derive(Default)]
+struct Combined {
+    /// format_id потоков в порядке загрузки ("137+140" → ["137", "140"]).
+    parts: Vec<String>,
+    /// Размеры потоков: из метаданных, уточняются по total при загрузке.
+    sizes: Vec<Option<f64>>,
+    /// Последний отданный процент — не даём полосе откатываться назад.
+    last: f64,
+    #[cfg(mobile)]
+    notified: Option<(u32, std::time::Instant)>,
+}
+
+impl Combined {
+    /// Из строки MARK_PARTS: "137+140|[sz1, sz2]|[approx1, approx2]".
+    fn from_parts(rest: &str) -> Self {
+        let mut it = rest.splitn(3, '|');
+        let parts: Vec<String> = it
+            .next()
+            .unwrap_or("")
+            .split('+')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let list = |s: Option<&str>| -> Vec<Option<f64>> {
+            serde_json::from_str::<Vec<Value>>(s.unwrap_or("").trim())
+                .map(|v| v.iter().map(|x| x.as_f64().filter(|n| *n > 0.0)).collect())
+                .unwrap_or_default()
+        };
+        let exact = list(it.next());
+        let approx = list(it.next());
+        let sizes = (0..parts.len())
+            .map(|i| exact.get(i).copied().flatten().or_else(|| approx.get(i).copied().flatten()))
+            .collect();
+        Combined { parts, sizes, ..Default::default() }
+    }
+
+    /// Пересчитывает процент (и байты) потока в процент итогового файла.
+    fn apply(&mut self, p: &mut ProgressPayload) {
+        let n = self.parts.len();
+        let k = p
+            .format_id
+            .as_deref()
+            .and_then(|f| self.parts.iter().position(|x| x == f));
+        if let (true, Some(k)) = (n > 1, k) {
+            if let Some(t) = p.total {
+                self.sizes[k] = Some(t);
+            }
+            if self.sizes.iter().all(Option::is_some) {
+                let sizes: Vec<f64> = self.sizes.iter().map(|s| s.unwrap_or(0.0)).collect();
+                let total: f64 = sizes.iter().sum();
+                let done = sizes[..k].iter().sum::<f64>() + p.downloaded.unwrap_or(0.0);
+                if total > 0.0 {
+                    p.percent = (done / total * 100.0).min(100.0);
+                    p.downloaded = Some(done);
+                    p.total = Some(total);
+                    if let Some(sp) = p.speed.filter(|s| *s > 0.0) {
+                        p.eta = Some(((total - done) / sp).max(0.0));
+                    }
+                }
+            } else {
+                p.percent = ((k as f64 + p.percent / 100.0) / n as f64 * 100.0).min(100.0);
+            }
+        }
+        p.percent = p.percent.max(self.last);
+        self.last = p.percent;
+    }
+
+    /// Пора ли обновить уведомление: процент сменился и прошла секунда.
+    #[cfg(mobile)]
+    fn should_notify(&mut self, percent: f64) -> bool {
+        let pct = percent as u32;
+        let now = std::time::Instant::now();
+        let due = match self.notified {
+            Some((last, at)) => last != pct && now.duration_since(at).as_millis() >= 1000,
+            None => true,
+        };
+        if due {
+            self.notified = Some((pct, now));
+        }
+        due
+    }
 }
 
 /// Абсолютный путь к бинарнику (yt-dlp/ffmpeg), который CLI кладёт рядом с exe.
@@ -1036,6 +1179,46 @@ mod tests {
         assert_eq!(p.downloaded, None);
         assert_eq!(p.total, None);
         assert_eq!(p.percent, 0.0); // без total процент не считаем
+    }
+
+    #[test]
+    fn progress_reads_format_and_title_with_pipes() {
+        let p = parse_progress("t1", "1|2|NA|0|0|NA|NA|137|A | B").unwrap();
+        assert_eq!(p.format_id.as_deref(), Some("137"));
+        assert_eq!(p.title.as_deref(), Some("A | B"));
+    }
+
+    #[test]
+    fn combined_merges_video_and_audio_by_bytes() {
+        let mut c = Combined::from_parts("137+140|[900, null]|[null, 100]");
+        assert_eq!(c.sizes, vec![Some(900.0), Some(100.0)]);
+        let mut v = parse_progress("t1", "450|900|NA|0|0|NA|NA|137|x").unwrap();
+        c.apply(&mut v);
+        assert_eq!(v.percent, 45.0);
+        assert_eq!(v.total, Some(1000.0));
+        let mut a = parse_progress("t1", "50|100|NA|0|0|NA|NA|140|x").unwrap();
+        c.apply(&mut a);
+        assert_eq!(a.percent, 95.0);
+    }
+
+    #[test]
+    fn combined_equal_shares_without_sizes_and_never_goes_back() {
+        let mut c = Combined::from_parts("137+140|NA|NA");
+        let mut v = parse_progress("t1", "100|100|NA|0|0|NA|NA|137|x").unwrap();
+        c.apply(&mut v);
+        assert_eq!(v.percent, 50.0);
+        // Аудио только началось — 50 %, а не 0 %.
+        let mut a = parse_progress("t1", "0|NA|NA|0|0|NA|NA|140|x").unwrap();
+        c.apply(&mut a);
+        assert_eq!(a.percent, 50.0);
+    }
+
+    #[test]
+    fn combined_single_stream_is_passthrough() {
+        let mut c = Combined::from_parts("251|NA|NA");
+        let mut p = parse_progress("t1", "30|100|NA|0|0|NA|NA|251|x").unwrap();
+        c.apply(&mut p);
+        assert_eq!(p.percent, 30.0);
     }
 
     #[test]

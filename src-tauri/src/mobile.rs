@@ -8,7 +8,8 @@
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 use tauri::plugin::{Builder, PluginHandle, TauriPlugin};
-use tauri::{AppHandle, Manager, Runtime, Wry};
+use tauri::ipc::{Channel, InvokeResponseBody};
+use tauri::{AppHandle, Emitter, Manager, Runtime, Wry};
 
 pub struct Mobile<R: Runtime>(PluginHandle<R>);
 
@@ -17,10 +18,29 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("mestia")
         .setup(|app, api| {
             let handle = api.register_android_plugin("com.mestia.app", "MestiaPlugin")?;
+            listen_media_actions(app.clone(), handle.clone());
             app.manage(Mobile(handle));
             Ok(())
         })
         .build()
+}
+
+/// Кнопки медиапанели (уведомление, гарнитура) → событие `media://action` во фронтенд.
+/// Kotlin держит вызов `mediaListen` открытым и шлёт нажатия в канал.
+fn listen_media_actions<R: Runtime>(app: AppHandle<R>, handle: PluginHandle<R>) {
+    #[derive(Serialize)]
+    struct Args {
+        channel: Channel,
+    }
+    let channel = Channel::<InvokeResponseBody>::new(move |body| {
+        if let Ok(v) = body.deserialize::<Value>() {
+            let _ = app.emit("media://action", v);
+        }
+        Ok(())
+    });
+    tauri::async_runtime::spawn(async move {
+        let _ = handle.run_mobile_plugin_async::<Value>("mediaListen", Args { channel }).await;
+    });
 }
 
 pub fn plugin(app: &AppHandle) -> &PluginHandle<Wry> {
@@ -128,6 +148,31 @@ pub fn set_playback_active(app: &AppHandle, on: bool) {
         on: bool,
     }
     let _ = call::<Value>(app, "playbackKeepAlive", Args { on });
+}
+
+/// Процент загрузки `id` в уведомлении DownloadService.
+pub fn download_progress(app: &AppHandle, id: &str, title: Option<&str>, percent: f64) {
+    #[derive(Serialize)]
+    struct Args<'a> {
+        id: &'a str,
+        title: Option<&'a str>,
+        percent: f64,
+    }
+    let _ = call::<Value>(app, "downloadProgress", Args { id, title, percent });
+}
+
+/// Медиапанель в уведомлениях: состояние плеера (`{active:false}` — закрыт).
+pub fn media_session(app: &AppHandle, state: Value) {
+    let _ = call::<Value>(app, "mediaSession", state);
+}
+
+/// Иконка лаунчера под тему (activity-alias; применяется, когда приложение уходит в фон).
+pub fn set_launcher_icon(app: &AppHandle, theme: &str) {
+    #[derive(Serialize)]
+    struct Args<'a> {
+        theme: &'a str,
+    }
+    let _ = call::<Value>(app, "setLauncherIcon", Args { theme });
 }
 
 /// Ссылка, присланная через «Поделиться» (забирается один раз).

@@ -39,7 +39,10 @@ pub fn watch_library(app: tauri::AppHandle, path: String) -> Result<(), String> 
             // (запись .part при скачивании) игнорируем, чтобы не спамить.
             let relevant = matches!(ev.kind, EventKind::Create(_) | EventKind::Remove(_))
                 || matches!(ev.kind, EventKind::Modify(ModifyKind::Name(_)));
-            if relevant {
+            // Промежуточные файлы загрузки (.mestia-tmp, см. downloader.rs) медиатеку не касаются.
+            let in_tmp = !ev.paths.is_empty()
+                && ev.paths.iter().all(|p| p.components().any(|c| c.as_os_str() == ".mestia-tmp"));
+            if relevant && !in_tmp {
                 let _ = app2.emit("library://changed", ());
             }
         }
@@ -896,7 +899,7 @@ pub fn set_fullscreen(app: tauri::AppHandle, on: bool, landscape: bool) {
 }
 
 /// Иконка окна и трея в цвет текущей темы (RGBA, отрисована во фронтенде).
-/// На Android иконку лаунчера на лету не сменить — команда ничего не делает.
+/// На Android ничего не делает — там иконку лаунчера меняет `set_launcher_icon`.
 #[tauri::command(async)]
 #[cfg_attr(mobile, allow(unused_variables))]
 pub fn set_app_icon(app: tauri::AppHandle, rgba: Vec<u8>, width: u32, height: u32) {
@@ -914,6 +917,24 @@ pub fn set_app_icon(app: tauri::AppHandle, rgba: Vec<u8>, width: u32, height: u3
             let _ = tray.set_icon(Some(img));
         }
     }
+}
+
+/// Android: медиапанель в уведомлениях (название, обложка, ⏮ ⏯ ⏭). `state` — объект
+/// из `media.ts` или null, когда плеер закрыт. На компьютере — navigator.mediaSession.
+#[tauri::command(async)]
+#[cfg_attr(desktop, allow(unused_variables))]
+pub fn media_session(app: tauri::AppHandle, state: Option<serde_json::Value>) {
+    #[cfg(mobile)]
+    crate::mobile::media_session(&app, state.unwrap_or_else(|| serde_json::json!({ "active": false })));
+}
+
+/// Android: иконка на рабочем столе под тему. На компьютере иконку окна/трея
+/// меняет `set_app_icon`, а ярлык exe/.desktop на лету не перекрасить.
+#[tauri::command(async)]
+#[cfg_attr(desktop, allow(unused_variables))]
+pub fn set_launcher_icon(app: tauri::AppHandle, theme: String) {
+    #[cfg(mobile)]
+    crate::mobile::set_launcher_icon(&app, &theme);
 }
 
 /// Android: идёт воспроизведение — не давать телефону засыпать (служба + wake/Wi-Fi lock).

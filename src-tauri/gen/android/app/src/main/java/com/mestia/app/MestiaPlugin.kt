@@ -1,9 +1,11 @@
 package com.mestia.app
 
+import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.media.MediaScannerConnection
@@ -67,6 +69,38 @@ class OnArgs {
 }
 
 @InvokeArg
+class MediaArgs {
+    var active: Boolean = false
+    var title: String = ""
+    var artist: String? = null
+    var artwork: String? = null
+    var path: String? = null
+    var duration: Double = 0.0
+    var position: Double = 0.0
+    var playing: Boolean = false
+    var rate: Double = 1.0
+    var hasPrev: Boolean = false
+    var hasNext: Boolean = false
+}
+
+@InvokeArg
+class ChannelArgs {
+    lateinit var channel: Channel
+}
+
+@InvokeArg
+class ProgressArgs {
+    lateinit var id: String
+    var title: String? = null
+    var percent: Double = 0.0
+}
+
+@InvokeArg
+class ThemeArgs {
+    lateinit var theme: String
+}
+
+@InvokeArg
 class ThumbArgs {
     lateinit var videoPath: String
     lateinit var outPath: String
@@ -126,7 +160,10 @@ class MestiaPlugin(private val activity: Activity) : Plugin(activity) {
     fun execute(invoke: Invoke) {
         val a = invoke.parseArgs(ExecArgs::class.java)
         pool.execute {
-            if (a.keepAlive) DownloadService.begin(activity)
+            if (a.keepAlive) {
+                askNotifications()
+                DownloadService.begin(activity, a.id)
+            }
             try {
                 ensureInit()
                 val request = YoutubeDLRequest(emptyList<String>()).addCommands(a.args.toList())
@@ -145,9 +182,32 @@ class MestiaPlugin(private val activity: Activity) : Plugin(activity) {
                 // движка должен дойти до UI ошибкой, а не уронить приложение.
                 invoke.reject(e.message ?: e.toString())
             } finally {
-                if (a.keepAlive) DownloadService.end(activity)
+                if (a.keepAlive) DownloadService.end(activity, a.id)
             }
         }
+    }
+
+    /**
+     * Android 13+: без разрешения уведомление загрузки не видно в шторке. Спрашиваем
+     * один раз — при первой загрузке, когда понятно, зачем оно.
+     */
+    private fun askNotifications() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+        val prefs = activity.getSharedPreferences("mestia", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("notifAsked", false)) return
+        prefs.edit().putBoolean("notifAsked", true).apply()
+        activity.runOnUiThread {
+            activity.requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 7301)
+        }
+    }
+
+    /** Процент загрузки в уведомлении (Rust шлёт не чаще раза в секунду). */
+    @Command
+    fun downloadProgress(invoke: Invoke) {
+        val a = invoke.parseArgs(ProgressArgs::class.java)
+        DownloadService.progress(a.id, a.title?.takeIf { it.isNotBlank() }, a.percent.toInt())
+        invoke.resolve()
     }
 
     @Command
@@ -371,6 +431,14 @@ class MestiaPlugin(private val activity: Activity) : Plugin(activity) {
     fun playbackKeepAlive(invoke: Invoke) {
         val a = invoke.parseArgs(OnArgs::class.java)
         PlaybackService.set(activity.applicationContext, a.on)
+        invoke.resolve()
+    }
+
+    /** Иконка лаунчера под тему (переключится в MainActivity.onStop, см. LauncherIcon). */
+    @Command
+    fun setLauncherIcon(invoke: Invoke) {
+        val a = invoke.parseArgs(ThemeArgs::class.java)
+        LauncherIcon.save(activity, a.theme)
         invoke.resolve()
     }
 

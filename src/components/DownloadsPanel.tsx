@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertCircle,
@@ -38,6 +38,18 @@ export default function DownloadsPanel({ onOpenSettings }: { onOpenSettings: () 
   const [hovering, setHovering] = useState(false);
   const [pinned, setPinned] = useState(false);
   const open = hovering || pinned;
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // Закреплённый список закрывается и тапом мимо него.
+  useEffect(() => {
+    if (!pinned) return;
+    const onDown = (e: PointerEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setPinned(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [pinned]);
+
   if (downloads.length === 0) return null;
 
   const activeCount = downloads.filter(
@@ -48,8 +60,12 @@ export default function DownloadsPanel({ onOpenSettings }: { onOpenSettings: () 
   return (
     <div
       className="fixed bottom-20 right-4 z-30 flex md:bottom-6 md:right-6 flex-col items-end gap-2 no-select"
-      onMouseEnter={() => setHovering(true)}
-      onMouseLeave={() => setHovering(false)}
+      ref={rootRef}
+      // Только настоящая мышь: на тач-экране тап эмулирует mouseenter, а mouseleave не
+      // приходит — список «залипал» открытым, и закрыть его кружком с первого раза
+      // не получалось.
+      onPointerEnter={(e) => e.pointerType === "mouse" && setHovering(true)}
+      onPointerLeave={(e) => e.pointerType === "mouse" && setHovering(false)}
     >
       {/* Список загрузок — по наведению (мышь) или по клику/тапу (Steam Deck) */}
       <AnimatePresence>

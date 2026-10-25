@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { IS_ANDROID } from "./platform";
 
 /**
@@ -31,4 +32,81 @@ export function useMediaSrc(path: string | null | undefined): string | undefined
 /** Android: что-то играет — служба держит процессор и Wi-Fi, экран можно выключить. */
 export function setPlaybackActive(on: boolean): void {
   if (IS_ANDROID) invoke("set_playback_active", { on }).catch(() => {});
+}
+
+/** Что играет — для системной медиапанели (Android: уведомление, ПК: медиа-оверлей ОС). */
+export interface NowPlaying {
+  title: string;
+  artist?: string | null;
+  /** Обложка: путь к файлу или http(s); нет — Android возьмёт кадр/обложку из файла. */
+  artwork?: string | null;
+  path: string;
+  duration: number; // секунды
+  position: number; // секунды
+  playing: boolean;
+  rate: number;
+  hasPrev: boolean;
+  hasNext: boolean;
+}
+
+export type MediaAction = { action: "play" | "pause" | "next" | "prev" | "seek"; position?: number };
+
+/**
+ * Показать/обновить медиапанель (null — плеер закрыт). На Android это ещё и служба
+ * воспроизведения: пока играет, телефон не усыпляет процессор и Wi-Fi.
+ */
+export function setNowPlaying(np: NowPlaying | null): void {
+  if (IS_ANDROID) {
+    invoke("media_session", { state: np ? { ...np, active: true } : null }).catch(() => {});
+    return;
+  }
+  const ms = navigator.mediaSession;
+  if (!ms) return;
+  if (!np) {
+    ms.metadata = null;
+    ms.playbackState = "none";
+    return;
+  }
+  const art = np.artwork ? (/^https?:/i.test(np.artwork) ? np.artwork : convertFileSrc(np.artwork)) : null;
+  ms.metadata = new MediaMetadata({
+    title: np.title,
+    artist: np.artist ?? "Mestia",
+    artwork: art ? [{ src: art }] : [],
+  });
+  ms.playbackState = np.playing ? "playing" : "paused";
+}
+
+/** Кнопки медиапанели/гарнитуры/медиа-клавиш. Возвращает отписку. */
+export function onMediaAction(cb: (a: MediaAction) => void): () => void {
+  if (IS_ANDROID) {
+    const un = listen<MediaAction>("media://action", (e) => cb(e.payload));
+    return () => {
+      un.then((f) => f()).catch(() => {});
+    };
+  }
+  const ms = navigator.mediaSession;
+  if (!ms) return () => {};
+  const handlers: [MediaSessionAction, MediaSessionActionHandler][] = [
+    ["play", () => cb({ action: "play" })],
+    ["pause", () => cb({ action: "pause" })],
+    ["nexttrack", () => cb({ action: "next" })],
+    ["previoustrack", () => cb({ action: "prev" })],
+    ["seekto", (d) => cb({ action: "seek", position: d.seekTime })],
+  ];
+  for (const [a, h] of handlers) {
+    try {
+      ms.setActionHandler(a, h);
+    } catch {
+      // действие не поддерживается движком
+    }
+  }
+  return () => {
+    for (const [a] of handlers) {
+      try {
+        ms.setActionHandler(a, null);
+      } catch {
+        // см. выше
+      }
+    }
+  };
 }

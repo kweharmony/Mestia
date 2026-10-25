@@ -551,6 +551,16 @@ const DICT: Record<string, Entry> = {
   },
   "set.theme": { ru: "Тема оформления", en: "Theme", zh: "主题" },
   "set.themeHint": { ru: "Верхний ряд — светлые, нижний — тёмные.", en: "Top row is light, bottom is dark.", zh: "上排为浅色，下排为深色。" },
+  "set.iconHint": {
+    ru: "Иконка окна, панели задач и трея меняется вместе с темой.",
+    en: "The window, taskbar and tray icon follow the theme.",
+    zh: "窗口、任务栏和托盘图标随主题变化。",
+  },
+  "set.iconHintAndroid": {
+    ru: "Иконка на рабочем столе сменится, когда вы выйдете из приложения.",
+    en: "The home screen icon updates once you leave the app.",
+    zh: "退出应用后，桌面图标会随之更新。",
+  },
   "set.language": { ru: "Язык", en: "Language", zh: "语言" },
   "set.languageHint": { ru: "Язык интерфейса приложения.", en: "Application interface language.", zh: "应用界面语言。" },
   "set.uninstall": { ru: "Удалить приложение", en: "Uninstall app", zh: "卸载应用" },

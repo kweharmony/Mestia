@@ -23,7 +23,7 @@ import type { VideoRow } from "../types";
 import { existingPaths, formatDuration, getSetting, isAudioPath, openPath, setFullscreen, subtitleTrack } from "../lib/ipc";
 import { useI18n } from "../context/LanguageContext";
 import { IS_ANDROID } from "../lib/platform";
-import { setPlaybackActive, useMediaSrc } from "../lib/media";
+import { onMediaAction, setNowPlaying, useMediaSrc } from "../lib/media";
 
 // Linux (webkit2gtk) без Android — на нём чаще всего не хватает GStreamer-кодеков.
 const IS_LINUX = /Linux/i.test(navigator.userAgent) && !/Android/i.test(navigator.userAgent);
@@ -143,8 +143,73 @@ export default function Player({
     if (!el) return;
     // Состояние playing обновляют события onPlay/onPause элемента.
     if (el.paused) el.play().catch(() => {});
-    else el.pause();
+    else pauseByUser();
   }
+
+  // Пауза от пользователя (кнопка, клавиша, медиапанель) — в отличие от системной,
+  // которую WebView ставит, когда гаснет экран (её отменяем в onPause).
+  const userPause = useRef(false);
+  const autoResumes = useRef(0);
+  function pauseByUser() {
+    userPause.current = true;
+    ref.current?.pause();
+  }
+
+  // Системная медиапанель: Android — уведомление с обложкой и ⏮ ⏯ ⏭,
+  // компьютер — медиа-оверлей ОС (navigator.mediaSession).
+  function pushNowPlaying() {
+    const el = ref.current;
+    if (!el) return;
+    setNowPlaying({
+      title: video.title,
+      artist: video.platform,
+      artwork: video.thumbnail_path,
+      path: video.file_path,
+      duration: Number.isFinite(el.duration) ? el.duration : 0,
+      position: el.currentTime,
+      playing: !el.paused,
+      rate: el.playbackRate,
+      hasPrev: !!prevVideo,
+      hasNext: !!nextVideo,
+    });
+  }
+  const actionRef = useRef<(a: { action: string; position?: number }) => void>(() => {});
+  actionRef.current = (a) => {
+    const el = ref.current;
+    if (!el) return;
+    switch (a.action) {
+      case "play":
+        el.play().catch(() => {});
+        break;
+      case "pause":
+        pauseByUser();
+        break;
+      case "next":
+        if (nextVideo) onChange(nextVideo);
+        break;
+      case "prev":
+        if (prevVideo) onChange(prevVideo);
+        else el.currentTime = 0;
+        break;
+      case "seek":
+        if (a.position != null) el.currentTime = a.position;
+        break;
+    }
+  };
+  useEffect(() => onMediaAction((a) => actionRef.current(a)), []);
+  // Сменились соседи в очереди — обновить доступность ⏮/⏭.
+  useEffect(() => {
+    pushNowPlaying();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prevVideo?.id, nextVideo?.id]);
+  // Экран снова включён — разрешаем новые попытки автовозобновления.
+  useEffect(() => {
+    const onVis = () => {
+      if (!document.hidden) autoResumes.current = 0;
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
 
   function skip(delta: number) {
     const el = ref.current;
@@ -256,12 +321,23 @@ export default function Player({
     // системных медиа-клавиш или нативного полноэкранного режима.
     onPlay: () => {
       setPlaying(true);
-      setPlaybackActive(true);
+      pushNowPlaying();
     },
-    onPause: () => {
+    onPause: (e: React.SyntheticEvent<HTMLMediaElement>) => {
+      const el = e.currentTarget;
+      // Android: с погасшим экраном WebView ставит видео на паузу сам — продолжаем.
+      // Пару попыток, чтобы не спорить с системой бесконечно.
+      if (IS_ANDROID && document.hidden && !userPause.current && !el.ended && autoResumes.current < 2) {
+        autoResumes.current += 1;
+        el.play().catch(() => {});
+        return;
+      }
+      userPause.current = false;
       setPlaying(false);
-      setPlaybackActive(false);
+      pushNowPlaying();
     },
+    onSeeked: () => pushNowPlaying(),
+    onRateChange: () => pushNowPlaying(),
     onTimeUpdate: (e: React.SyntheticEvent<HTMLMediaElement>) => {
       const t = e.currentTarget.currentTime;
       setTime(t);
@@ -270,6 +346,7 @@ export default function Player({
     onLoadedMetadata: (e: React.SyntheticEvent<HTMLMediaElement>) => {
       const el = e.currentTarget;
       setDuration(el.duration);
+      pushNowPlaying();
       el.volume = volume;
       // Возобновляем с последней сохранённой позиции (если она валидна).
       const saved = loadPosition(video.id);
@@ -293,8 +370,8 @@ export default function Player({
     },
   };
 
-  // Закрыли плеер — телефону снова можно засыпать.
-  useEffect(() => () => setPlaybackActive(false), []);
+  // Закрыли плеер — убрать медиапанель (и телефону снова можно засыпать).
+  useEffect(() => () => setNowPlaying(null), []);
 
   // При смене видео сбрасываем прежнюю ошибку.
   useEffect(() => {

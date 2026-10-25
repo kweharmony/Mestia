@@ -7,4 +7,9 @@
     <string name="playback_channel">Воспроизведение</string>
     <string name="playback_running">Идёт воспроизведение</string>
     <string name="share_label">Скачать в Mestia</string>
+    <string name="media_play">Играть</string>
+    <string name="media_pause">Пауза</string>
+    <string name="media_next">Следующий</string>
+    <string name="media_prev">Предыдущий</string>
+    <string name="downloads_many">Загрузок: %1$d</string>
 </resources>
