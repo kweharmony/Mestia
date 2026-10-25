@@ -928,6 +928,17 @@ pub fn media_session(app: tauri::AppHandle, state: Option<serde_json::Value>) {
     crate::mobile::media_session(&app, state.unwrap_or_else(|| serde_json::json!({ "active": false })));
 }
 
+/// Android: разрешение читать чужие медиафайлы в папке загрузок (без него медиатека
+/// видит только скачанное самим приложением). На компьютере — всегда true.
+#[tauri::command(async)]
+#[cfg_attr(desktop, allow(unused_variables))]
+pub fn ensure_media_access(app: tauri::AppHandle) -> bool {
+    #[cfg(mobile)]
+    return crate::mobile::ensure_media_access(&app);
+    #[cfg(desktop)]
+    true
+}
+
 /// Android: иконка на рабочем столе под тему. На компьютере иконку окна/трея
 /// меняет `set_app_icon`, а ярлык exe/.desktop на лету не перекрасить.
 #[tauri::command(async)]

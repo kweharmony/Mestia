@@ -159,6 +159,11 @@ export function setAppIcon(rgba: number[], width: number, height: number): Promi
   return invoke("set_app_icon", { rgba, width, height });
 }
 
+/** Android: доступ к чужим видео/музыке в папке загрузок (спросит разрешение); на ПК — true. */
+export function ensureMediaAccess(): Promise<boolean> {
+  return invoke<boolean>("ensure_media_access");
+}
+
 /** Android: иконка на рабочем столе под тему (сменится, когда приложение уйдёт в фон). */
 export function setLauncherIcon(theme: string): Promise<void> {
   return invoke("set_launcher_icon", { theme });

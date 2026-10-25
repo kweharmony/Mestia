@@ -8,10 +8,12 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
@@ -19,8 +21,9 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Foreground-сервис на время загрузок: без него Android убивает процесс yt-dlp,
- * как только приложение уходит в фон. Счётчик активных загрузок общий; сервис
+ * Foreground-сервис на время загрузок и передач «Рядом»: без него Android убивает
+ * процесс yt-dlp, как только приложение уходит в фон, а с погасшим экраном усыпляет
+ * процессор и Wi-Fi — поэтому держим ещё partial wake lock и Wi-Fi lock. Счётчик активных загрузок общий; сервис
  * сам останавливается, когда он обнуляется. В уведомлении — процент готового файла
  * (одна загрузка) или средний по всем.
  */
@@ -69,6 +72,8 @@ class DownloadService : Service() {
     }
 
     private val handler = Handler(Looper.getMainLooper())
+    private var wake: PowerManager.WakeLock? = null
+    private var wifi: WifiManager.WifiLock? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -78,11 +83,23 @@ class DownloadService : Service() {
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
             ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else 0
         ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(), type)
+        if (wake == null) {
+            wake = getSystemService(PowerManager::class.java)
+                .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "mestia:download")
+                .apply { setReferenceCounted(false); acquire() }
+        }
+        if (wifi == null) {
+            @Suppress("DEPRECATION")
+            wifi = (applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager)
+                .createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "mestia:download")
+                .apply { setReferenceCounted(false); acquire() }
+        }
         stopIfIdle() // загрузки могли закончиться, пока сервис запускался
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
+        releaseLocks()
         instance = null
         super.onDestroy()
     }
@@ -94,10 +111,18 @@ class DownloadService : Service() {
 
     private fun stopIfIdle(force: Boolean = false) {
         if (!force && active.get() > 0) return
+        releaseLocks()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         // На случай, если уведомление успели перевыпустить обычным notify.
         getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
         stopSelf()
+    }
+
+    private fun releaseLocks() {
+        runCatching { wake?.release() }
+        runCatching { wifi?.release() }
+        wake = null
+        wifi = null
     }
 
     private fun renotify() {

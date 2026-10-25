@@ -11,6 +11,13 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Локальная сеть: приём multicast-анонсов устройств с Mestia (lan.rs) -->
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <!-- Чужие видео и музыка в папке загрузок (скопированные, скачанные другими
+         приложениями): без этих разрешений Android показывает приложению только его
+         собственные файлы. Запрашиваются в медиатеке (MestiaPlugin.ensureMediaAccess). -->
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
     <!-- Своя папка загрузок вне Download/: yt-dlp пишет по путям, SAF ему не подходит.
          Запрашивается только при выборе такой папки (MestiaPlugin.pickFolder). -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"

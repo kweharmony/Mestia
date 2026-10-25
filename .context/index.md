@@ -121,7 +121,10 @@ Build-time Node helpers.
 ## Key flows
 - **LAN share**: sender `lan_send` → POST `/api/offer` → receiver shows modal (90 s) →
   `lan_answer_offer` → session → PUT `/api/upload` per file into the storage root
-  (`.name.mestia-part` → rename) → `lan://received`.
+  (`.name.mestia-part` → rename) → `lan://received`. A transfer holds `lan::Awake` from the
+  «Send»/«Accept» tap until the session ends (or `SESSION_IDLE` without data): Android —
+  `DownloadService` (foreground + wake/Wi-Fi lock, % in its notification); desktop — a
+  system sleep block (`keepawake`, held on a dedicated thread).
 - **Watch together**: host `lan_room_start` (room title in announces) and pushes player
   state via `lan_room_state`; guest `lan_room_join` streams `/api/room/media`, gets
   `lan://room-state` (time already in local clock) and corrects drift (`roomSync.ts`);
@@ -146,7 +149,9 @@ Build-time Node helpers.
   "All files access" outside `Download/`; `set_storage_root(migrate)` moves the old folder's
   contents and the frontend rebases DB paths with `db.rebaseRoot`);
   `storage.rs` watches the folder (desktop) and emits change events so the `Locker` grid
-  stays in sync; on Android the grid rescans on focus. Thumbnails are
+  stays in sync; on Android the grid rescans on focus. Android's scoped storage hides
+  media the app didn't create, so the Locker asks for READ_MEDIA_VIDEO/AUDIO
+  (`ensure_media_access`, once per launch) and rescans as soon as it is granted. Thumbnails are
   generated on demand and cached in the app data dir.
 - **Auto-update**: on launch the updater plugin checks GitHub Releases; if newer, a
   modal offers to download, install, and relaunch. Not on Android (APK from Releases);

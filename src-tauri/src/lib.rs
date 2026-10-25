@@ -160,6 +160,7 @@ pub fn run() {
             storage::set_app_icon,
             storage::set_launcher_icon,
             storage::media_session,
+            storage::ensure_media_access,
             storage::set_playback_active,
             media::local_media_url,
             lan::lan_info,

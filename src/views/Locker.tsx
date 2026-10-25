@@ -56,6 +56,7 @@ import {
   onLibraryChanged,
   openFolder,
   renameFolderOnDisk,
+  ensureMediaAccess,
   scanDirs,
   scanMedia,
   watchLibrary,
@@ -388,6 +389,27 @@ export default function Locker({
 
   useEffect(() => {
     getStorageRoot().then(setStorageRoot).catch(() => {});
+  }, []);
+
+  // Android: без разрешения на медиа чужие файлы в папке не видны вовсе (scoped
+  // storage). Спрашиваем; пока пользователь отвечает в системном окне, проверяем
+  // раз в 1,5 с и, как только доступ дали, пересканируем (через обработчик focus).
+  useEffect(() => {
+    if (!IS_ANDROID) return;
+    let timer: number | undefined;
+    ensureMediaAccess()
+      .then((ok) => {
+        if (ok) return;
+        let tries = 0;
+        timer = window.setInterval(async () => {
+          tries += 1;
+          const granted = await ensureMediaAccess().catch(() => false);
+          if (granted || tries > 40) window.clearInterval(timer);
+          if (granted) window.dispatchEvent(new Event("focus"));
+        }, 1500);
+      })
+      .catch(() => {});
+    return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {

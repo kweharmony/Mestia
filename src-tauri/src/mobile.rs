@@ -150,6 +150,27 @@ pub fn set_playback_active(app: &AppHandle, on: bool) {
     let _ = call::<Value>(app, "playbackKeepAlive", Args { on });
 }
 
+/// Доступ к чужим видео/музыке в папке (спросит разрешение один раз за запуск).
+pub fn ensure_media_access(app: &AppHandle) -> bool {
+    #[derive(Deserialize)]
+    struct Granted {
+        #[serde(default)]
+        granted: bool,
+    }
+    call::<Granted>(app, "ensureMediaAccess", ()).map(|g| g.granted).unwrap_or(true)
+}
+
+/// Не засыпать, пока идёт передача `id` по локальной сети: служба загрузок
+/// (foreground + wake lock + Wi-Fi lock). on=false — передача закончилась.
+pub fn keep_awake(app: &AppHandle, id: &str, on: bool) {
+    #[derive(Serialize)]
+    struct Args<'a> {
+        id: &'a str,
+        on: bool,
+    }
+    let _ = call::<Value>(app, "keepAwake", Args { id, on });
+}
+
 /// Процент загрузки `id` в уведомлении DownloadService.
 pub fn download_progress(app: &AppHandle, id: &str, title: Option<&str>, percent: f64) {
     #[derive(Serialize)]

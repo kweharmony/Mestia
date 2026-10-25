@@ -38,6 +38,8 @@ const GROUP: Ipv4Addr = Ipv4Addr::new(239, 255, 77, 18);
 const PEER_TTL: Duration = Duration::from_secs(8);
 const ANNOUNCE_EVERY: Duration = Duration::from_secs(2);
 const OFFER_TIMEOUT: Duration = Duration::from_secs(90);
+/// Принятая сессия без новых данных дольше этого — отправитель пропал, отпускаем «не спать».
+const SESSION_IDLE: Duration = Duration::from_secs(120);
 
 /// Устройство в сети.
 #[derive(Clone, Serialize, PartialEq)]
@@ -60,6 +62,103 @@ struct Session {
     dir: PathBuf,
     from: String,
     files: HashMap<String, (String, u64)>,
+    /// Пока сессия жива, устройство не засыпает (снимается вместе с ней).
+    awake: Option<Awake>,
+    /// Последние полученные данные — для SESSION_IDLE.
+    touched: Instant,
+}
+
+// ── Не засыпать во время передачи ───────────────────────────────────────────
+
+/// Пока жив — передача не прерывается сном. Android: служба загрузок (foreground)
+/// с wake lock и Wi-Fi lock, процент — в её уведомлении; компьютер — запрет сна
+/// системы. Создаётся, когда пользователь жмёт «Отправить»/«Принять»: приложение на
+/// экране, и Android разрешает запустить службу (из фона — уже нет).
+pub(crate) struct Awake {
+    #[cfg_attr(desktop, allow(dead_code))]
+    app: AppHandle,
+    id: String,
+    #[cfg_attr(desktop, allow(dead_code))]
+    notified: Mutex<Option<Instant>>,
+}
+
+impl Awake {
+    pub(crate) fn new(app: &AppHandle, id: String) -> Self {
+        #[cfg(mobile)]
+        {
+            let (app, id) = (app.clone(), id.clone());
+            tauri::async_runtime::spawn_blocking(move || crate::mobile::keep_awake(&app, &id, true));
+        }
+        #[cfg(desktop)]
+        desktop_awake(true);
+        Awake { app: app.clone(), id, notified: Mutex::new(None) }
+    }
+
+    /// Процент передачи в уведомлении Android — не чаще раза в секунду.
+    #[cfg_attr(desktop, allow(unused_variables))]
+    fn progress(&self, name: &str, done: u64, total: u64) {
+        #[cfg(mobile)]
+        {
+            let mut last = self.notified.lock().unwrap_or_else(|e| e.into_inner());
+            if last.is_some_and(|t| t.elapsed() < Duration::from_secs(1)) {
+                return;
+            }
+            *last = Some(Instant::now());
+            let pct = if total > 0 { done as f64 * 100.0 / total as f64 } else { 0.0 };
+            let (app, id, name) = (self.app.clone(), self.id.clone(), name.to_string());
+            tauri::async_runtime::spawn_blocking(move || {
+                crate::mobile::download_progress(&app, &id, Some(&name), pct)
+            });
+        }
+    }
+}
+
+impl Drop for Awake {
+    fn drop(&mut self) {
+        #[cfg(mobile)]
+        {
+            let (app, id) = (self.app.clone(), self.id.clone());
+            tauri::async_runtime::spawn_blocking(move || crate::mobile::keep_awake(&app, &id, false));
+        }
+        #[cfg(desktop)]
+        desktop_awake(false);
+        let _ = &self.id;
+    }
+}
+
+/// Компьютер: счётчик активных передач; запрет сна держит отдельный поток — на
+/// Windows он привязан к потоку (SetThreadExecutionState), а задачи tokio кочуют.
+#[cfg(desktop)]
+fn desktop_awake(on: bool) {
+    use std::sync::mpsc as smpsc;
+    use std::sync::OnceLock;
+    static CTL: OnceLock<Mutex<(usize, smpsc::Sender<bool>)>> = OnceLock::new();
+    let ctl = CTL.get_or_init(|| {
+        let (tx, rx) = smpsc::channel::<bool>();
+        std::thread::spawn(move || {
+            let mut guard = None;
+            for want in rx {
+                if want && guard.is_none() {
+                    guard = keepawake::Builder::default()
+                        .idle(true)
+                        .reason("Mestia: передача файлов")
+                        .app_name("Mestia")
+                        .app_reverse_domain("com.mestia.app")
+                        .create()
+                        .ok();
+                } else if !want {
+                    guard = None;
+                }
+            }
+        });
+        Mutex::new((0, tx))
+    });
+    let mut g = ctl.lock().unwrap_or_else(|e| e.into_inner());
+    let was = g.0;
+    g.0 = if on { was + 1 } else { was.saturating_sub(1) };
+    if (was == 0) != (g.0 == 0) {
+        let _ = g.1.send(g.0 > 0);
+    }
 }
 
 struct Guest {
@@ -90,6 +189,8 @@ struct Inner {
     running: Option<Running>,
     peers: HashMap<String, Peer>,
     offers: HashMap<String, oneshot::Sender<bool>>,
+    /// Приём одобрен, сессия ещё не создана: «не спать» уже включено (id предложения).
+    accepted: HashMap<String, Awake>,
     sessions: HashMap<String, Session>,
     room: Option<HostRoom>,
     /// Канал команд к ведущему комнаты, к которой мы подключены (drop → выход).
@@ -414,6 +515,7 @@ fn handle_packet(app: &AppHandle, me: &str, data: &[u8], src: SocketAddr) {
 }
 
 fn expire(app: &AppHandle) {
+    lan(app).sessions.retain(|_, s| s.touched.elapsed() < SESSION_IDLE);
     let removed = {
         let mut g = lan(app);
         let before = g.peers.len();
@@ -499,6 +601,7 @@ async fn offer_h(State(app): State<AppHandle>, Json(o): Json<Offer>) -> Response
     );
     let ok = matches!(tokio::time::timeout(OFFER_TIMEOUT, rx).await, Ok(Ok(true)));
     lan(&app).offers.remove(&id);
+    let awake = lan(&app).accepted.remove(&id);
     let _ = app.emit("lan://offer-closed", &id);
     if !ok {
         return StatusCode::FORBIDDEN.into_response();
@@ -515,6 +618,8 @@ async fn offer_h(State(app): State<AppHandle>, Json(o): Json<Offer>) -> Response
             dir,
             from: o.from_name,
             files: o.files.into_iter().map(|f| (f.id, (f.name, f.size))).collect(),
+            awake,
+            touched: Instant::now(),
         },
     );
     Json(json!({ "session": session })).into_response()
@@ -523,7 +628,12 @@ async fn offer_h(State(app): State<AppHandle>, Json(o): Json<Offer>) -> Response
 /// Ответ пользователя на входящее предложение.
 #[tauri::command(async)]
 pub fn lan_answer_offer(app: AppHandle, id: String, accept: bool) {
-    if let Some(tx) = lan(&app).offers.remove(&id) {
+    let mut g = lan(&app);
+    if let Some(tx) = g.offers.remove(&id) {
+        // «Принять» нажали на экране — сейчас можно запустить службу «не спать».
+        if accept {
+            g.accepted.insert(id.clone(), Awake::new(&app, format!("lan-in:{id}")));
+        }
         let _ = tx.send(accept);
     }
 }
@@ -581,6 +691,12 @@ async fn upload_h(State(app): State<AppHandle>, Query(q): Query<UploadQ>, body: 
             if tick.elapsed() > Duration::from_millis(250) {
                 let _ = app.emit("lan://progress", progress(got));
                 tick = Instant::now();
+                if let Some(s) = lan(&app).sessions.get_mut(&q.session) {
+                    s.touched = tick;
+                    if let Some(a) = &s.awake {
+                        a.progress(&name, got, size);
+                    }
+                }
             }
         }
         f.flush().await.map_err(|_| StatusCode::INSUFFICIENT_STORAGE)?;
@@ -637,6 +753,8 @@ pub async fn lan_send(app: AppHandle, addr: String, peer: String, paths: Vec<Str
     if files.is_empty() {
         return Err("Файлы не найдены".into());
     }
+    // «Отправить» нажали на экране: держим устройство бодрым до конца (drop в конце функции).
+    let awake = Arc::new(Awake::new(&app, format!("lan-out:{}", rand_id())));
     let client = lan_client()
         .connect_timeout(Duration::from_secs(5))
         .build()
@@ -663,6 +781,7 @@ pub async fn lan_send(app: AppHandle, addr: String, peer: String, paths: Vec<Str
         let id = format!("{session}:{}", f.id);
         let file = tokio::fs::File::open(&path).await.map_err(es)?;
         let (app2, id2, name2, peer2, total) = (app.clone(), id.clone(), f.name.clone(), peer.clone(), f.size);
+        let awake2 = awake.clone();
         let (mut done, mut tick) = (0u64, Instant::now());
         let stream = tokio_util::io::ReaderStream::with_capacity(file, 256 * 1024).map(move |r| {
             if let Ok(b) = &r {
@@ -672,6 +791,7 @@ pub async fn lan_send(app: AppHandle, addr: String, peer: String, paths: Vec<Str
                         "lan://progress",
                         json!({ "id": id2, "name": name2, "done": done, "total": total, "dir": "out", "peer": peer2 }),
                     );
+                    awake2.progress(&name2, done, total);
                     tick = Instant::now();
                 }
             }

@@ -89,6 +89,12 @@ class ChannelArgs {
 }
 
 @InvokeArg
+class AwakeArgs {
+    lateinit var id: String
+    var on: Boolean = false
+}
+
+@InvokeArg
 class ProgressArgs {
     lateinit var id: String
     var title: String? = null
@@ -124,6 +130,9 @@ class MestiaPlugin(private val activity: Activity) : Plugin(activity) {
 
     // Держится, пока включена видимость в локальной сети (lan.rs).
     private var multicastLock: WifiManager.MulticastLock? = null
+
+    // Разрешение на чтение медиа уже спрашивали в этом запуске (не надоедаем).
+    private var mediaAsked = false
 
     // Ссылка из «Поделиться», которую фронтенд ещё не забрал.
     @Volatile
@@ -200,6 +209,42 @@ class MestiaPlugin(private val activity: Activity) : Plugin(activity) {
         activity.runOnUiThread {
             activity.requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 7301)
         }
+    }
+
+    /**
+     * Передача файлов «Рядом»: держим службу загрузок (процессор и Wi-Fi не засыпают
+     * с погасшим экраном). Rust зовёт on=true при «Отправить»/«Принять», off — в конце.
+     */
+    @Command
+    fun keepAwake(invoke: Invoke) {
+        val a = invoke.parseArgs(AwakeArgs::class.java)
+        if (a.on) {
+            askNotifications()
+            DownloadService.begin(activity, a.id)
+        } else {
+            DownloadService.end(activity, a.id)
+        }
+        invoke.resolve()
+    }
+
+    /**
+     * Доступ к чужим медиафайлам в папке загрузок. Без него Android (scoped storage)
+     * прячет из листинга папки всё, что создано не Mestia, — медиатека выглядит пустой.
+     * Спрашиваем раз за запуск; ответ пользователя приходит после возврата в приложение,
+     * и медиатека пересканирует папку по focus. Итог: {granted}.
+     */
+    @Command
+    fun ensureMediaAccess(invoke: Invoke) {
+        val perms = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+            arrayOf(Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_AUDIO)
+        else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+        val granted = Environment.isExternalStorageManager() ||
+            perms.all { activity.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
+        if (!granted && !mediaAsked) {
+            mediaAsked = true
+            activity.runOnUiThread { activity.requestPermissions(perms, 7302) }
+        }
+        invoke.resolve(JSObject().put("granted", granted))
     }
 
     /** Процент загрузки в уведомлении (Rust шлёт не чаще раза в секунду). */
