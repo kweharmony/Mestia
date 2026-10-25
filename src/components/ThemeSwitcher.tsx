@@ -11,7 +11,7 @@ interface ThemeDef {
   color: string; // акцент темы = плашка иконки приложения (--c-accent в index.css)
 }
 
-const THEMES: ThemeDef[] = [
+export const THEMES: ThemeDef[] = [
   // Светлые
   { name: "lavender", label: "Sunset Lavender", kindKey: "theme.light", color: "#de8255" },
   { name: "midnight", label: "Velvet Midnight", kindKey: "theme.light", color: "#ae445d" },

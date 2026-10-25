@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Download,
   Folders,
@@ -7,6 +8,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Radar,
+  Search,
   Settings,
 } from "lucide-react";
 import type { TabId } from "../types";
@@ -19,6 +21,7 @@ interface SidebarProps {
   active: TabId;
   onChange: (tab: TabId) => void;
   onOpenSettings: () => void;
+  onOpenSearch: () => void;
   onHideToTray: () => void;
 }
 
@@ -42,6 +45,7 @@ export default function Sidebar({
   active,
   onChange,
   onOpenSettings,
+  onOpenSearch,
   onHideToTray,
 }: SidebarProps) {
   const { t } = useI18n();
@@ -70,32 +74,58 @@ export default function Sidebar({
   ).length;
   return (
     <>
-    {/* Узкий экран (телефон): нижняя панель вкладок вместо боковой. */}
-    <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t-2 border-fog bg-paper no-select md:hidden">
-      {NAV.map(({ id, labelKey, icon: Icon }) => (
-        <button
-          key={id}
-          onClick={() => onChange(id)}
-          className={`relative flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-semibold ${
-            active === id ? "text-accent" : "text-smoke"
-          }`}
-        >
-          <Icon className="h-5 w-5" strokeWidth={2.25} />
-          {t(labelKey)}
-          {id === "downloader" && activeCount > 0 && (
-            <span className="absolute right-[calc(50%-22px)] top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-bold text-white">
-              {activeCount}
-            </span>
-          )}
-        </button>
-      ))}
-      <button
-        onClick={onOpenSettings}
-        className="flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-semibold text-smoke"
-      >
-        <Settings className="h-5 w-5" strokeWidth={2.25} />
-        {t("sidebar.settings")}
-      </button>
+    {/* Узкий экран (телефон): нижняя панель вкладок вместо боковой. Как Expandable
+        Tabs: у активной вкладки — плашка с подписью, остальные только иконками. */}
+    <nav className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-around gap-1 border-t-2 border-fog bg-paper px-2 py-2 no-select md:hidden">
+      {[...NAV.map((n) => ({ ...n, onClick: () => onChange(n.id) })), {
+        id: "settings" as const,
+        labelKey: "sidebar.settings",
+        icon: Settings,
+        anim: "",
+        onClick: onOpenSettings,
+      }].map(({ id, labelKey, icon: Icon, onClick }) => {
+        const on = active === id;
+        return (
+          <motion.button
+            key={id}
+            layout
+            onClick={onClick}
+            aria-label={t(labelKey)}
+            aria-current={on ? "page" : undefined}
+            transition={{ type: "spring", stiffness: 500, damping: 38 }}
+            className={`mestia-anim relative flex h-10 items-center justify-center rounded-full px-3 text-[13px] font-semibold ${
+              on ? "text-accent" : "text-smoke"
+            }`}
+          >
+            {on && (
+              <motion.span
+                layoutId="mobile-nav-pill"
+                transition={{ type: "spring", stiffness: 500, damping: 38 }}
+                className="mestia-anim absolute inset-0 rounded-full bg-accent/12"
+              />
+            )}
+            <Icon className="relative h-5 w-5 shrink-0" strokeWidth={2.25} />
+            <AnimatePresence initial={false}>
+              {on && (
+                <motion.span
+                  initial={{ width: 0, opacity: 0 }}
+                  animate={{ width: "auto", opacity: 1 }}
+                  exit={{ width: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="mestia-anim relative overflow-hidden whitespace-nowrap"
+                >
+                  <span className="pl-1.5">{t(labelKey)}</span>
+                </motion.span>
+              )}
+            </AnimatePresence>
+            {id === "downloader" && activeCount > 0 && (
+              <span className="absolute right-0.5 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-bold text-white">
+                {activeCount}
+              </span>
+            )}
+          </motion.button>
+        );
+      })}
     </nav>
 
     <aside
@@ -120,6 +150,24 @@ export default function Sidebar({
             )}
           </button>
         </div>
+
+        {/* Палитра команд (Ctrl+K); на Android её нет */}
+        {!IS_ANDROID && <button
+          onClick={onOpenSearch}
+          title={collapsed ? `${t("sidebar.search")} (Ctrl+K)` : undefined}
+          aria-label={t("sidebar.search")}
+          className={`flex w-full items-center gap-3 rounded-ui border-2 border-fog py-2 text-sm text-smoke transition-colors hover:border-ink/30 hover:text-ink ${
+            collapsed ? "justify-center px-0" : "px-3"
+          }`}
+        >
+          <Search className="h-4 w-4 shrink-0" strokeWidth={2.25} />
+          {!collapsed && (
+            <>
+              <span className="flex-1 truncate text-left font-semibold">{t("sidebar.search")}</span>
+              <kbd className="shrink-0 rounded border-2 border-fog px-1 text-[10px] font-bold">Ctrl K</kbd>
+            </>
+          )}
+        </button>}
 
         {/* Навигация */}
         <nav className="space-y-1">

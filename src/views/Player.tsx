@@ -282,7 +282,7 @@ export default function Player({
     return () => mq.removeEventListener("change", onChange);
   }, [audio]);
 
-  // Полноэкранный режим: контролы прячутся через 5 с без касаний (на паузе — видны).
+  // Видео: контролы поверх кадра прячутся через 5 с без касаний/движения мыши (на паузе — видны).
   // poke — «пользователь что-то трогал»: показать и перезапустить отсчёт.
   const [controlsShown, setControlsShown] = useState(true);
   const [pokeTick, setPokeTick] = useState(0);
@@ -291,13 +291,13 @@ export default function Player({
     setPokeTick((n) => n + 1);
   };
   useEffect(() => {
-    if (!immersive || !playing) {
+    if (!playing) {
       setControlsShown(true);
       return;
     }
     const t = window.setTimeout(() => setControlsShown(false), 5000);
     return () => window.clearTimeout(t);
-  }, [immersive, playing, pokeTick]);
+  }, [playing, pokeTick]);
 
   // Системная «Назад» (см. App): сперва выходим из полноэкранного режима.
   useEffect(() => {
@@ -581,9 +581,9 @@ export default function Player({
     );
   }
 
-  // ── Аудиоплеер: квадратный, обложка — главный элемент ──────────────────────
+  // ── Аудиоплеер: карточка музыкального плеера, обложка — главный элемент ─────
   if (audio) {
-    const abtn = "shrink-0 rounded-ui p-1.5 text-smoke transition-colors hover:bg-fog hover:text-ink disabled:opacity-30";
+    const abtn = "shrink-0 rounded-full p-2 text-smoke transition-colors hover:bg-fog hover:text-ink disabled:opacity-30";
     return (
       <div
         className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm md:p-8"
@@ -638,12 +638,14 @@ export default function Player({
             )}
           </div>
 
-          {/* Инфо + управление */}
-          <div className="flex flex-col gap-2 px-4 pb-3 pt-2.5">
-            {/* Название */}
+          {/* Инфо + управление — как карточка музыкального плеера: подпись источника,
+              название, тонкая полоса со временем, крупный транспорт по центру. */}
+          <div className="flex flex-col gap-3 px-5 pb-3 pt-4">
             <div className="min-w-0 text-center">
-              <h3 className="truncate text-sm font-semibold tracking-tight">{video.title}</h3>
-              <p className="truncate text-[11px] font-semibold text-smoke">{video.platform ?? t("dl.audio")}</p>
+              <p className="truncate text-[10px] font-bold uppercase tracking-[0.2em] text-smoke">
+                {video.platform ?? t("dl.audio")}
+              </p>
+              <h3 className="mt-1 truncate text-base font-semibold tracking-tight">{video.title}</h3>
             </div>
 
             {/* Полоса перемотки */}
@@ -656,89 +658,89 @@ export default function Player({
                 value={time}
                 onChange={seek}
                 aria-label={t("player.seek")}
-                className="h-1.5 w-full cursor-pointer appearance-none rounded-full"
+                className="h-1 w-full cursor-pointer appearance-none rounded-full"
                 style={{
                   background: `linear-gradient(to right, var(--c-accent) ${
                     duration ? (time / duration) * 100 : 0
                   }%, var(--c-fog) 0%)`,
                 }}
               />
-              <div className="mt-0.5 flex justify-between text-[10px] font-semibold tabular-nums text-smoke">
+              <div className="mt-1 flex justify-between text-[10px] font-semibold tabular-nums text-smoke">
                 <span>{formatDuration(time)}</span>
                 <span>{formatDuration(duration)}</span>
               </div>
             </div>
 
-            {/* Единый ряд: громкость · транспорт · действия */}
-            <div className="flex items-center justify-between gap-2">
-              {/* Громкость */}
-              <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            {/* Транспорт */}
+            <div className="flex items-center justify-center gap-1">
+              {queue.length > 1 && (
+                <button
+                  onClick={() => prevVideo && onChange(prevVideo)}
+                  disabled={!prevVideo}
+                  title={`${t("player.prev")} (P)`}
+                  aria-label={t("player.prev")}
+                  className={abtn}
+                >
+                  <SkipBack className="h-5 w-5 fill-current" strokeWidth={2.25} />
+                </button>
+              )}
+              <button onClick={() => skip(-skipSec)} title={`${t("player.back", { n: skipSec })} (←)`} aria-label={t("player.backAria")} className={abtn}>
+                <Rewind className="h-5 w-5" strokeWidth={2.25} />
+              </button>
+              <button
+                onClick={togglePlay}
+                aria-label={playing ? t("player.pause") : t("player.play")}
+                className="mx-2 flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-accent text-white shadow-md transition-all hover:opacity-90 active:scale-95"
+              >
+                {playing ? (
+                  <Pause className="h-6 w-6 fill-current" strokeWidth={2.25} />
+                ) : (
+                  <Play className="h-6 w-6 translate-x-[2px] fill-current" strokeWidth={2.25} />
+                )}
+              </button>
+              <button onClick={() => skip(skipSec)} title={`${t("player.forward", { n: skipSec })} (→)`} aria-label={t("player.forwardAria")} className={abtn}>
+                <FastForward className="h-5 w-5" strokeWidth={2.25} />
+              </button>
+              {queue.length > 1 && (
+                <button
+                  onClick={() => nextVideo && onChange(nextVideo)}
+                  disabled={!nextVideo}
+                  title={`${t("player.next")} (N)`}
+                  aria-label={t("player.next")}
+                  className={abtn}
+                >
+                  <SkipForward className="h-5 w-5 fill-current" strokeWidth={2.25} />
+                </button>
+              )}
+            </div>
+
+            {/* Второстепенное: громкость и действия */}
+            <div className="flex items-center justify-between gap-2 border-t-2 border-fog pt-2">
+              <div className="flex min-w-0 items-center gap-1.5">
                 <button onClick={toggleMute} title={`${t("player.sound")} (M)`} aria-label={t("player.sound")} className={abtn}>
                   <VolIcon className="h-4 w-4" strokeWidth={2.25} />
                 </button>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={muted ? 0 : volume}
-                  onChange={(e) => applyVolume(Number(e.target.value))}
-                  title={`${t("player.volume")} (↑/↓)`}
-                  aria-label={t("player.volume")}
-                  className="h-1.5 w-14 cursor-pointer appearance-none rounded-full"
-                  style={{
-                    background: `linear-gradient(to right, var(--c-accent) ${
-                      (muted ? 0 : volume) * 100
-                    }%, var(--c-fog) 0%)`,
-                  }}
-                />
-              </div>
-
-              {/* Транспорт по центру */}
-              <div className="flex shrink-0 items-center gap-0.5">
-                {queue.length > 1 && (
-                  <button
-                    onClick={() => prevVideo && onChange(prevVideo)}
-                    disabled={!prevVideo}
-                    title={`${t("player.prev")} (P)`}
-                    aria-label={t("player.prev")}
-                    className={abtn}
-                  >
-                    <SkipBack className="h-4 w-4 fill-current" strokeWidth={2.25} />
-                  </button>
-                )}
-                <button onClick={() => skip(-skipSec)} title={`${t("player.back", { n: skipSec })} (←)`} aria-label={t("player.backAria")} className={abtn}>
-                  <Rewind className="h-4 w-4" strokeWidth={2.25} />
-                </button>
-                <button
-                  onClick={togglePlay}
-                  aria-label={playing ? t("player.pause") : t("player.play")}
-                  className="mx-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent text-white shadow-md transition-all hover:opacity-90 active:scale-95"
-                >
-                  {playing ? (
-                    <Pause className="h-5 w-5 fill-current" strokeWidth={2.25} />
-                  ) : (
-                    <Play className="h-5 w-5 translate-x-[1px] fill-current" strokeWidth={2.25} />
-                  )}
-                </button>
-                <button onClick={() => skip(skipSec)} title={`${t("player.forward", { n: skipSec })} (→)`} aria-label={t("player.forwardAria")} className={abtn}>
-                  <FastForward className="h-4 w-4" strokeWidth={2.25} />
-                </button>
-                {queue.length > 1 && (
-                  <button
-                    onClick={() => nextVideo && onChange(nextVideo)}
-                    disabled={!nextVideo}
-                    title={`${t("player.next")} (N)`}
-                    aria-label={t("player.next")}
-                    className={abtn}
-                  >
-                    <SkipForward className="h-4 w-4 fill-current" strokeWidth={2.25} />
-                  </button>
+                {/* На телефоне громкость — кнопками устройства. */}
+                {!IS_ANDROID && (
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={muted ? 0 : volume}
+                    onChange={(e) => applyVolume(Number(e.target.value))}
+                    title={`${t("player.volume")} (↑/↓)`}
+                    aria-label={t("player.volume")}
+                    className="h-1 w-20 cursor-pointer appearance-none rounded-full"
+                    style={{
+                      background: `linear-gradient(to right, var(--c-accent) ${
+                        (muted ? 0 : volume) * 100
+                      }%, var(--c-fog) 0%)`,
+                    }}
+                  />
                 )}
               </div>
-
-              {/* Действия */}
-              <div className="flex min-w-0 flex-1 items-center justify-end gap-0.5">
+              <div className="flex items-center gap-0.5">
                 <button
                   onClick={() => openPath(video.file_path).catch(() => {})}
                   title={t("player.external")}
@@ -770,13 +772,12 @@ export default function Player({
   }
 
   // ── Видеоплеер в главном окне (мини-окно и аудио обработаны выше) ──────────
+  // Раскладка как у limeplay: управление поверх кадра. Сверху — название, снизу —
+  // один ряд: крупная круглая «играть», время с перемоткой, остальные кнопки.
+  // Пока играет, слой управления прячется через 5 с без движения (на паузе — виден).
   const ic = "h-5 w-5";
-  const btn = immersive
-    ? "shrink-0 rounded-md p-1.5 text-white/90 transition-colors active:bg-white/20"
-    : "shrink-0 rounded-ui p-2 text-smoke hover:bg-fog hover:text-ink";
-  const timeCls = immersive ? "text-white/80" : "text-smoke";
-  // Незаполненная часть ползунка: на видео — полупрозрачный белый.
-  const trackRest = immersive ? "rgba(255,255,255,0.3)" : "var(--c-fog)";
+  const btn = "shrink-0 rounded-full p-2 text-white/90 transition-colors hover:bg-white/15 active:bg-white/25 disabled:opacity-30";
+  const layer = `transition-opacity duration-300 ${controlsShown ? "opacity-100" : "pointer-events-none opacity-0"}`;
   return (
     <div
       className={
@@ -789,176 +790,148 @@ export default function Player({
       <div
         className={
           immersive
-            ? "relative flex h-full w-full flex-col bg-black"
-            : "flex max-h-full w-full max-w-[1100px] md:w-[70vw] md:min-w-[360px] flex-col overflow-hidden rounded-ui border-2 border-ink bg-snow"
+            ? "relative flex h-full w-full bg-black"
+            : "relative flex max-h-full w-full max-w-[1100px] overflow-hidden rounded-ui border-2 border-ink bg-black shadow-2xl md:w-[70vw] md:min-w-[360px]"
         }
         onClick={(e) => e.stopPropagation()}
+        onPointerMove={(e) => e.pointerType === "mouse" && poke()}
+        onPointerDown={poke}
+        onMouseLeave={() => playing && setControlsShown(false)}
       >
-        {/* Заголовок (в полноэкранном режиме — только видео и контролы) */}
-        {!immersive && <div className="flex items-center justify-between border-b-2 border-fog px-4 py-3">
-          <h3 className="flex min-w-0 items-center gap-2 truncate pr-4 text-sm font-semibold tracking-tight">
-            <span className="truncate">{video.title}</span>
-          </h3>
-          <button
-            onClick={onClose}
-            className="rounded-ui p-1.5 text-smoke hover:bg-fog hover:text-ink"
-          >
-            <X className="h-5 w-5" strokeWidth={2.25} />
-          </button>
-        </div>}
-
-        {/* Медиа */}
+        {/* Кадр */}
         {failed ? (
           <ErrorView compact={false} />
         ) : (
           <video
             {...mediaProps}
             className={
-              // min-h-0: в горизонтальном телефоне видео ужимается, чтобы контролы не обрезались.
               immersive
-                ? "min-h-0 w-full flex-1 bg-black object-contain"
-                : "max-h-[70vh] min-h-0 w-full flex-1 bg-black md:min-h-[280px]"
+                ? "h-full w-full bg-black object-contain"
+                : "max-h-[calc(100vh-1rem)] min-h-[220px] w-full bg-black object-contain md:max-h-[80vh] md:min-h-[300px]"
             }
             onClick={() => {
-              if (immersive && !controlsShown) {
-                poke(); // первый тап по скрытым контролам — только показать их
-                return;
-              }
+              if (!controlsShown) return; // первый тап по скрытым контролам — только показать их
               togglePlay();
-              if (immersive) poke();
             }}
           >
             {subTrack}
           </video>
         )}
 
-        {/* Контролы */}
+        {/* Верх: название и закрыть */}
         <div
-          onPointerDown={immersive ? poke : undefined}
-          className={
-            immersive
-              ? `absolute inset-x-0 bottom-0 flex items-center gap-1 bg-gradient-to-t from-black/60 to-transparent px-3 pb-2 pt-10 transition-opacity duration-300 ${
-                  controlsShown ? "opacity-100" : "pointer-events-none opacity-0"
-                }`
-              : "flex items-center gap-1 px-2 py-2 md:gap-2 md:px-4 md:py-3"
-          }
+          className={`pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-3 bg-gradient-to-b from-black/70 to-transparent px-3 pb-10 pt-2.5 text-white md:px-4 ${layer}`}
         >
-          {queue.length > 1 && (
-            <button
-              onClick={() => prevVideo && onChange(prevVideo)}
-              disabled={!prevVideo}
-              title={`${t("player.prev")} (P)`}
-              className={`${btn} disabled:opacity-30`}
-            >
-              <SkipBack className={`${ic} fill-current`} strokeWidth={2.25} />
+          <div className="min-w-0 pt-1">
+            <h3 className="truncate text-sm font-semibold tracking-tight">{video.title}</h3>
+            {video.platform && <p className="truncate text-[11px] font-semibold text-white/60">{video.platform}</p>}
+          </div>
+          {!immersive && (
+            <button onClick={onClose} title={t("player.close")} aria-label={t("player.close")} className={`pointer-events-auto ${btn}`}>
+              <X className={ic} strokeWidth={2.25} />
             </button>
           )}
+        </div>
 
-          <button onClick={() => skip(-skipSec)} title={`${t("player.back", { n: skipSec })} (←)`} className={btn}>
-            <Rewind className={ic} strokeWidth={2.25} />
-          </button>
-
-          <button
-            onClick={togglePlay}
-            className={`flex shrink-0 items-center justify-center rounded-ui bg-accent text-white transition-all hover:opacity-90 active:scale-95 ${
-              immersive ? "h-9 w-9" : "h-10 w-10"
-            }`}
-          >
-            {playing ? (
-              <Pause className={`${ic} fill-current`} strokeWidth={2.25} />
-            ) : (
-              <Play className={`${ic} fill-current`} strokeWidth={2.25} />
+        {/* Низ: один ряд — транспорт, время с перемоткой, остальные кнопки */}
+        <div
+          className={`absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-2 pb-1.5 pt-12 text-white md:px-3 md:pb-2 ${layer}`}
+        >
+          <div className="flex items-center gap-0.5">
+            {queue.length > 1 && (
+              <button onClick={() => prevVideo && onChange(prevVideo)} disabled={!prevVideo} title={`${t("player.prev")} (P)`} aria-label={t("player.prev")} className={btn}>
+                <SkipBack className={`${ic} fill-current`} strokeWidth={2.25} />
+              </button>
             )}
-          </button>
-
-          <button onClick={() => skip(skipSec)} title={`${t("player.forward", { n: skipSec })} (→)`} className={btn}>
-            <FastForward className={ic} strokeWidth={2.25} />
-          </button>
-
-          {queue.length > 1 && (
-            <button
-              onClick={() => nextVideo && onChange(nextVideo)}
-              disabled={!nextVideo}
-              title={`${t("player.next")} (N)`}
-              className={`${btn} disabled:opacity-30`}
-            >
-              <SkipForward className={`${ic} fill-current`} strokeWidth={2.25} />
+            <button onClick={() => skip(-skipSec)} title={`${t("player.back", { n: skipSec })} (←)`} aria-label={t("player.backAria")} className={btn}>
+              <Rewind className={ic} strokeWidth={2.25} />
             </button>
-          )}
-
-          <span className={`shrink-0 text-xs font-semibold tabular-nums ${timeCls}`}>
-            {formatDuration(time)}
-          </span>
-
-          <input
-            type="range"
-            min={0}
-            max={duration || 0}
-            step={0.1}
-            value={time}
-            onChange={seek}
-            // min-w-0: у range своя минимальная ширина — без этого на телефоне
-            // последние кнопки (полный экран) уезжали за край.
-            className="h-1.5 min-w-0 flex-1 cursor-pointer appearance-none rounded-full"
-            style={{
-              background: `linear-gradient(to right, var(--c-accent) ${
-                duration ? (time / duration) * 100 : 0
-              }%, ${trackRest} 0%)`,
-            }}
-          />
-
-          <span className={`hidden w-12 shrink-0 text-right text-xs font-semibold tabular-nums md:inline ${timeCls}`}>
-            {formatDuration(duration)}
-          </span>
-
-          {/* Громкость и внешний плеер — не в полноэкранном режиме: там только
-              основное (громкость — кнопками телефона). */}
-          {!immersive && <>
-          <button onClick={toggleMute} title={`${t("player.sound")} (M)`} className={btn}>
-            <VolIcon className={ic} strokeWidth={2.25} />
-          </button>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={muted ? 0 : volume}
-            onChange={(e) => applyVolume(Number(e.target.value))}
-            title={`${t("player.volume")} (↑/↓)`}
-            className="hidden h-1.5 w-20 shrink-0 cursor-pointer appearance-none rounded-full md:block"
-            style={{
-              background: `linear-gradient(to right, var(--c-accent) ${
-                (muted ? 0 : volume) * 100
-              }%, var(--c-fog) 0%)`,
-            }}
-          />
-
-          <button
-            onClick={() => openPath(video.file_path).catch(() => {})}
-            title={t("player.external")}
-            className={btn}
-          >
-            <ExternalLink className={ic} strokeWidth={2.25} />
-          </button>
-          </>}
-
-          {/* Отдельных окон на Android нет. */}
-          {!IS_ANDROID && (
             <button
-              onClick={() => {
-                openMiniWindow(video);
-                onClose();
-              }}
-              title={t("player.miniWindow")}
-              className={btn}
+              onClick={togglePlay}
+              aria-label={playing ? t("player.pause") : t("player.play")}
+              className="mx-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-black shadow-md transition-transform hover:scale-105 active:scale-95"
             >
-              <PictureInPicture2 className={ic} strokeWidth={2.25} />
+              {playing ? (
+                <Pause className={`${ic} fill-current`} strokeWidth={2.25} />
+              ) : (
+                <Play className={`${ic} translate-x-[1px] fill-current`} strokeWidth={2.25} />
+              )}
             </button>
-          )}
+            <button onClick={() => skip(skipSec)} title={`${t("player.forward", { n: skipSec })} (→)`} aria-label={t("player.forwardAria")} className={btn}>
+              <FastForward className={ic} strokeWidth={2.25} />
+            </button>
+            {queue.length > 1 && (
+              <button onClick={() => nextVideo && onChange(nextVideo)} disabled={!nextVideo} title={`${t("player.next")} (N)`} aria-label={t("player.next")} className={btn}>
+                <SkipForward className={`${ic} fill-current`} strokeWidth={2.25} />
+              </button>
+            )}
 
-          <button onClick={toggleFullscreen} title={`${t("player.fullscreen")} (F)`} className={btn}>
-            {immersive ? <Minimize className={ic} strokeWidth={2.25} /> : <Maximize className={ic} strokeWidth={2.25} />}
-          </button>
+            {/* Громкость — на телефоне её меняют кнопки, поэтому только на компьютере. */}
+            {!IS_ANDROID && (
+              <div className="group/vol flex items-center">
+                <button onClick={toggleMute} title={`${t("player.sound")} (M)`} aria-label={t("player.sound")} className={btn}>
+                  <VolIcon className={ic} strokeWidth={2.25} />
+                </button>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={muted ? 0 : volume}
+                  onChange={(e) => applyVolume(Number(e.target.value))}
+                  title={`${t("player.volume")} (↑/↓)`}
+                  aria-label={t("player.volume")}
+                  className="hidden h-1 w-0 cursor-pointer appearance-none rounded-full opacity-0 transition-all duration-200 group-hover/vol:w-20 group-hover/vol:opacity-100 focus:w-20 focus:opacity-100 md:block"
+                  style={{
+                    background: `linear-gradient(to right, #fff ${(muted ? 0 : volume) * 100}%, rgba(255,255,255,0.28) 0%)`,
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Время и перемотка — между транспортом и правыми кнопками */}
+            <div className="flex min-w-0 flex-1 items-center gap-2 px-1.5 md:gap-3">
+              <span className="shrink-0 text-[11px] font-semibold tabular-nums text-white/80">{formatDuration(time)}</span>
+              <input
+                type="range"
+                min={0}
+                max={duration || 0}
+                step={0.1}
+                value={time}
+                onChange={seek}
+                aria-label={t("player.seek")}
+                // min-w-0: у range своя минимальная ширина — без этого на телефоне ряд уезжал за край.
+                className="h-1 min-w-0 flex-1 cursor-pointer appearance-none rounded-full"
+                style={{
+                  background: `linear-gradient(to right, #fff ${duration ? (time / duration) * 100 : 0}%, rgba(255,255,255,0.28) 0%)`,
+                }}
+              />
+              <span className="shrink-0 text-[11px] font-semibold tabular-nums text-white/80">{formatDuration(duration)}</span>
+            </div>
+
+            {!immersive && (
+              <button onClick={() => openPath(video.file_path).catch(() => {})} title={t("player.external")} aria-label={t("player.externalAria")} className={btn}>
+                <ExternalLink className={ic} strokeWidth={2.25} />
+              </button>
+            )}
+            {/* Отдельных окон на Android нет. */}
+            {!IS_ANDROID && (
+              <button
+                onClick={() => {
+                  openMiniWindow(video);
+                  onClose();
+                }}
+                title={t("player.miniWindow")}
+                aria-label={t("player.miniWindow")}
+                className={btn}
+              >
+                <PictureInPicture2 className={ic} strokeWidth={2.25} />
+              </button>
+            )}
+            <button onClick={toggleFullscreen} title={`${t("player.fullscreen")} (F)`} aria-label={t("player.fullscreen")} className={btn}>
+              {immersive ? <Minimize className={ic} strokeWidth={2.25} /> : <Maximize className={ic} strokeWidth={2.25} />}
+            </button>
+          </div>
         </div>
       </div>
     </div>

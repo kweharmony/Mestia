@@ -24,7 +24,7 @@ Cross-platform (desktop + Android) video downloader & media library.
 
 ## Architecture
 - `src/context/` — ThemeContext, LanguageContext (i18n), DownloadsContext (queue/events), DragContext, LanContext (LAN peers/transfers/room)
-- `src/components/` — Sidebar, Settings, DownloadsPanel, Splash, Toast, LibraryPicker, SendToDevice, etc.
+- `src/components/` — Sidebar, Settings, DownloadsPanel, Splash, Toast, LibraryPicker, SendToDevice, CommandPalette (Ctrl+K), AnimatedNumber, etc.
 - `src/lib/` — ipc.ts (bridge to Rust), db.ts (SQLite), i18n.ts (ru/en/zh dictionary + t()), platform.ts (IS_ANDROID), appIcon.ts (logo marks + theme-coloured favicon/window/tray/Android launcher icon), roomSync.ts (watch-together drift), media.ts (player src / media session / playback keep-alive)
 - `src/views/` — Downloader, Locker (library), History, Player, MiniPlayer, Nearby (LAN), Room (watch together + queue)
 - `src-tauri/src/` — lib.rs (plugins/tray/commands), downloader.rs (yt-dlp args/events), engine.rs (yt-dlp runner: sidecar / Android plugin), mobile.rs (Android bridge), storage.rs (files/watcher/thumbnails), lan.rs (LAN discovery/server/transfers/room), media.rs (Android loopback media server)

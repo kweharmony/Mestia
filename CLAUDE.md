@@ -64,7 +64,8 @@ src/                Frontend (React + TS)
   context/          React contexts: ThemeContext, LanguageContext (i18n), DownloadsContext (queue/events), DragContext,
                     LanContext (LAN visibility/peers/transfers/incoming offers/room)
   components/       UI: Sidebar, Settings, DownloadsPanel, Splash, Toast, Typewriter, ThemeSwitcher, Logo,
-                    LibraryPicker (pick library/disk files for LAN send & room queue), SendToDevice (peer chooser)
+                    LibraryPicker (pick library/disk files for LAN send & room queue), SendToDevice (peer chooser),
+                    CommandPalette (Ctrl+K: link, library search, sections, themes), AnimatedNumber (spring-animated %)
   lib/              ipc.ts (bridge to Rust commands), db.ts (SQLite access), i18n.ts (ru/en/zh dictionary + t()),
                     platform.ts (IS_ANDROID, share-text URL extraction),
                     appIcon.ts (logo marks + theme-coloured favicon/window/tray/Android launcher icon), roomSync.ts (watch-together drift correction),

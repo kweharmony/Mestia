@@ -53,7 +53,8 @@ Build-time Node helpers.
     incoming-offer modal, current watch-together room.
 - `components/` — reusable UI: `Sidebar`, `Settings`, `DownloadsPanel`, `Splash`,
   `Toast`, `Typewriter`, `ThemeSwitcher`, `Logo`, `LibraryPicker` (library + storage-root
-  files for LAN send and the room queue).
+  files for LAN send and the room queue), `CommandPalette` (desktop Ctrl+K: paste/download a
+  link, jump to a section, search the library, switch theme), `AnimatedNumber` (spring %).
 - `lib/`:
   - `ipc.ts` — typed wrappers over Tauri `invoke` (the single bridge to Rust).
   - `db.ts` — SQLite access (history, library structure, metadata).

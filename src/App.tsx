@@ -9,6 +9,7 @@ import Modal from "./components/Modal";
 import Splash from "./components/Splash";
 import UpdateModal from "./components/UpdateModal";
 import DownloadsPanel from "./components/DownloadsPanel";
+import CommandPalette from "./components/CommandPalette";
 import Downloader from "./views/Downloader";
 import Locker from "./views/Locker";
 import History from "./views/History";
@@ -32,6 +33,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [storageVersion, setStorageVersion] = useState(0);
   const [closePrompt, setClosePrompt] = useState(false);
+  const [cmdOpen, setCmdOpen] = useState(false);
   // Ссылка из «Поделиться → Mestia» (Android); n — чтобы повторная та же ссылка тоже сработала.
   const [shared, setShared] = useState<{ text: string; n: number } | null>(null);
 
@@ -107,6 +109,27 @@ export default function App() {
     };
   }, []);
 
+  // Палитра команд: Ctrl+K / ⌘K (на телефоне клавиатурных сочетаний нет).
+  useEffect(() => {
+    if (IS_ANDROID) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K" || e.key === "л" || e.key === "Л")) {
+        e.preventDefault();
+        setCmdOpen((o) => !o);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  /** Ссылка из палитры — в Загрузчик, как из «Поделиться». */
+  function openLink(text: string) {
+    setPlaying(null);
+    setSettingsOpen(false);
+    setTab("downloader");
+    setShared((s) => ({ text, n: (s?.n ?? 0) + 1 }));
+  }
+
   function hideToTray() {
     getCurrentWindow().hide().catch(() => {});
   }
@@ -122,6 +145,7 @@ export default function App() {
         active={tab}
         onChange={setTab}
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSearch={() => setCmdOpen(true)}
         onHideToTray={hideToTray}
       />
 
@@ -147,6 +171,20 @@ export default function App() {
       )}
 
       {room && <Room room={room} />}
+
+      {!IS_ANDROID && (
+        <CommandPalette
+          open={cmdOpen}
+          onClose={() => setCmdOpen(false)}
+          onTab={(tb) => {
+            setPlaying(null);
+            setTab(tb);
+          }}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onPlay={(v) => openPlayer(v)}
+          onLink={openLink}
+        />
+      )}
 
       <Settings
         open={settingsOpen}

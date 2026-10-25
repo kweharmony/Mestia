@@ -106,18 +106,26 @@ export default function DownloadsPanel({ onOpenSettings }: { onOpenSettings: () 
             </div>
             <div className="max-h-[40vh] space-y-2 overflow-y-auto">
               {downloads.map((d) => (
-                <div key={d.id} className="rounded-ui border-2 border-fog bg-paper/40 p-2.5">
-                  <div className="flex items-start gap-2">
-                    <div className="mt-0.5 shrink-0">
-                      <StatusIcon status={d.status} />
-                    </div>
+                <div key={d.id} className={`rounded-ui border-2 p-2.5 transition-colors ${ROW[d.status]}`}>
+                  <div className="flex items-start gap-2.5">
+                    <StatusTile status={d.status} />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-xs font-semibold">{d.title}</div>
                       <StatusLine d={d} />
                       {d.status === "error" && (
-                        <ErrorCta d={d} onOpenSettings={onOpenSettings} onRetry={() => retry(d.id)} />
+                        <ErrorCta d={d} onOpenSettings={onOpenSettings} />
                       )}
                     </div>
+                    {d.status === "error" && (
+                      <button
+                        onClick={() => retry(d.id)}
+                        className="shrink-0 rounded-ui p-1 text-rose-500 hover:bg-rose-500/10"
+                        title={t("dp.cta.retry")}
+                        aria-label={t("dp.cta.retry")}
+                      >
+                        <RotateCw className="h-3.5 w-3.5" strokeWidth={2.5} />
+                      </button>
+                    )}
                     {d.status === "downloading" || d.status === "queued" ? (
                       <button
                         onClick={() => cancel(d.id)}
@@ -137,7 +145,7 @@ export default function DownloadsPanel({ onOpenSettings }: { onOpenSettings: () 
                     )}
                   </div>
                   {d.status === "downloading" && (
-                    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-fog">
+                    <div className="ml-[42px] mt-2 h-1 overflow-hidden rounded-full bg-fog">
                       <div
                         className="h-full rounded-full bg-accent transition-all"
                         style={{ width: `${overallPercent(d)}%` }}
@@ -209,28 +217,64 @@ function ProgressRing({ percent }: { percent: number }) {
   );
 }
 
-function StatusIcon({ status }: { status: ActiveDownload["status"] }) {
+/** Рамка строки по состоянию: очередь — пунктир, ошибка — красноватая, готово — зелёная. */
+const ROW: Record<ActiveDownload["status"], string> = {
+  queued: "border-dashed border-fog",
+  downloading: "border-fog bg-paper/40",
+  done: "border-emerald-500/30 bg-emerald-500/5",
+  cancelled: "border-fog opacity-80",
+  error: "border-rose-500/30 bg-rose-500/5",
+};
+
+/** Плитка-иконка состояния (как в Attachment States). */
+function StatusTile({ status }: { status: ActiveDownload["status"] }) {
+  const tile = "flex h-8 w-8 shrink-0 items-center justify-center rounded-ui";
   switch (status) {
     case "downloading":
-      return <Loader2 className="h-4 w-4 animate-spin text-accent" strokeWidth={2.5} />;
+      return (
+        <span className={`${tile} bg-accent/12 text-accent`}>
+          <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" strokeWidth={2.5} />
+        </span>
+      );
     case "queued":
-      return <Clock className="h-4 w-4 text-smoke" strokeWidth={2.5} />;
+      return (
+        <span className={`${tile} bg-fog text-smoke`}>
+          <Clock className="h-4 w-4" strokeWidth={2.5} />
+        </span>
+      );
     case "done":
-      return <Check className="h-4 w-4 text-emerald-600" strokeWidth={2.75} />;
+      return (
+        <span className={`${tile} bg-emerald-500/12 text-emerald-600`}>
+          <Check className="h-4 w-4" strokeWidth={2.75} />
+        </span>
+      );
     case "cancelled":
-      return <Ban className="h-4 w-4 text-amber-600" strokeWidth={2.5} />;
+      return (
+        <span className={`${tile} bg-amber-500/12 text-amber-600`}>
+          <Ban className="h-4 w-4" strokeWidth={2.5} />
+        </span>
+      );
     default:
-      return <AlertCircle className="h-4 w-4 text-rose-500" strokeWidth={2.5} />;
+      return (
+        <span className={`${tile} bg-rose-500/12 text-rose-500`}>
+          <AlertCircle className="h-4 w-4" strokeWidth={2.5} />
+        </span>
+      );
   }
 }
 
 function StatusLine({ d }: { d: ActiveDownload }) {
   const { t } = useI18n();
   if (d.status === "downloading") {
+    const pct = overallPercent(d);
+    // 100 % у одиночного файла — yt-dlp уже склеивает потоки / встраивает метаданные.
+    const processing = !d.isPlaylist && d.percent >= 100;
     return (
       <div className="text-[11px] font-semibold text-smoke">
-        {d.isPlaylist && d.totalItems && `${t("dp.videoOf", { index: d.index ?? "?", total: d.totalItems })} · `}
-        <AnimatedNumber value={overallPercent(d)} />
+        {d.isPlaylist && d.totalItems
+          ? `${t("dp.videoOf", { index: d.index ?? "?", total: d.totalItems })} · `
+          : `${t(processing ? "dp.processing" : "dp.downloading")}${processing ? "" : " · "}`}
+        {!processing && <AnimatedNumber value={pct} />}
       </div>
     );
   }
@@ -261,11 +305,9 @@ function StatusLine({ d }: { d: ActiveDownload }) {
 function ErrorCta({
   d,
   onOpenSettings,
-  onRetry,
 }: {
   d: ActiveDownload;
   onOpenSettings: () => void;
-  onRetry: () => void;
 }) {
   const { notify } = useToast();
   const { t } = useI18n();
@@ -312,13 +354,7 @@ function ErrorCta({
           {t("dp.cta.update")}
         </button>
       );
-    case "network":
-      return (
-        <button onClick={onRetry} className={base}>
-          <RotateCw className="h-3 w-3" strokeWidth={2.5} /> {t("dp.cta.retry")}
-        </button>
-      );
-    // drm / unavailable / unknown — действий нет.
+    // network — повтор кнопкой в самой строке; drm / unavailable / unknown — действий нет.
     default:
       return null;
   }
