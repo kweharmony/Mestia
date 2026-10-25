@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <title>Mestia promo</title>
 <!--
-  Промо-ролик Mestia (≈18 с, 1280×720). Кадр целиком задаётся функцией seek(t):
+  Промо-ролик Mestia (≈22 с, 1280×720). Кадр целиком задаётся функцией seek(t):
   никаких таймеров и requestAnimationFrame — render.mjs вызывает seek(i/30) и
   снимает скриншот, поэтому рендер детерминированный. ?lang=en — английские подписи,
   ?play — просто проиграть в браузере для предпросмотра.
@@ -29,7 +29,7 @@
   #side { position: absolute; left: 0; top: 0; bottom: 0; width: 200px; background: var(--paper); padding: 20px 14px; }
   .nav { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 12px; border-radius: 10px; font-size: 14px; font-weight: 600; color: var(--smoke); }
   .nav.on { background: var(--fog); color: var(--ink); }
-  .nav i { width: 16px; height: 16px; border-radius: 4px; border: 2px solid currentColor; display: inline-block; }
+  .nav svg { width: 17px; height: 17px; flex: none; }
   #main { position: absolute; left: 200px; right: 0; top: 0; bottom: 0; }
 
   .h { font-size: 34px; font-weight: 500; letter-spacing: -0.03em; text-align: center; }
@@ -43,7 +43,7 @@
   .bar > b { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
   .toast { position: absolute; right: 96px; bottom: 28px; height: 50px; padding: 0 20px; border: 2px solid var(--ink); border-radius: 12px; background: var(--accent); color: #fff; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
   .circle { position: absolute; right: 28px; bottom: 28px; width: 50px; height: 50px; border-radius: 50%; border: 2px solid var(--ink); background: var(--snow); display: flex; align-items: center; justify-content: center; }
-  .circle svg.ring { position: absolute; inset: -7px; width: 64px; height: 64px; transform: rotate(-90deg); }
+  .circle svg.ring { position: absolute; left: -9px; top: -9px; width: 64px; height: 64px; transform: rotate(-90deg); }
 
   .grid { position: absolute; left: 36px; right: 36px; top: 84px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
   .card { border: 2px solid var(--fog); border-radius: 12px; overflow: hidden; background: var(--snow); }
@@ -55,6 +55,25 @@
   .play { width: 46px; height: 46px; border-radius: 50%; background: #fff; display: flex; align-items: center; justify-content: center; flex: none; }
   .seek { flex: 1; height: 4px; border-radius: 2px; background: rgba(255,255,255,.3); }
   .seek b { display: block; height: 100%; border-radius: 2px; background: #fff; }
+
+  /* «Рядом» */
+  #near { position: absolute; inset: 0; }
+  .radar { position: absolute; left: 70px; top: 140px; width: 220px; height: 220px; }
+  .radar .wave { position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--accent); }
+  .radar .me { position: absolute; left: 50%; top: 50%; width: 76px; height: 76px; margin: -38px 0 0 -38px; border-radius: 18px;
+    background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; }
+  .radar .lbl { position: absolute; left: 0; right: 0; top: 240px; text-align: center; font-size: 13px; font-weight: 700; }
+  .radar .sub { position: absolute; left: 0; right: 0; top: 260px; text-align: center; font-size: 12px; font-weight: 600; color: var(--smoke); }
+  .peer { position: absolute; left: 360px; width: 380px; border: 2px solid var(--fog); border-radius: 14px; padding: 14px; display: flex; align-items: center; gap: 12px; background: var(--snow); }
+  .peer .av { width: 42px; height: 42px; border-radius: 12px; background: var(--paper); display: flex; align-items: center; justify-content: center; flex: none; }
+  .peer .nm { font-size: 14px; font-weight: 700; }
+  .peer .st { font-size: 12px; font-weight: 600; color: var(--smoke); margin-top: 2px; }
+  .peer .send { margin-left: auto; height: 32px; padding: 0 14px; border-radius: 9px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; display: flex; align-items: center; }
+  .chip { position: absolute; height: 36px; padding: 0 12px; border-radius: 10px; border: 2px solid var(--ink); background: var(--snow); display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; box-shadow: 0 10px 24px rgba(0,0,0,.12); }
+  .room { position: absolute; left: 360px; top: 330px; width: 380px; border: 2px solid var(--ink); border-radius: 14px; padding: 16px; background: var(--snow); }
+  .faces { display: flex; }
+  .faces b { width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--snow); margin-left: -8px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; }
+  .faces b:first-child { margin-left: 0; }
 
   .appicon { width: 180px; height: 180px; border-radius: 40px; display: flex; align-items: center; justify-content: center; }
 </style>
@@ -74,10 +93,10 @@
         <span style="width:28px;height:28px;border-radius:8px;background:var(--accent);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 256 256" width="22" height="22" style="color:#fff" class="m"></svg></span>
         <b style="font-size:17px;letter-spacing:-0.02em">Mestia</b>
       </div>
-      <div class="nav" id="navDl"><i></i><span data-t="nDl"></span></div>
-      <div class="nav" id="navLib"><i></i><span data-t="nLib"></span></div>
-      <div class="nav"><i></i><span data-t="nHist"></span></div>
-      <div class="nav"><i></i><span data-t="nNear"></span></div>
+      <div class="nav" id="navDl"><i data-ico="dl"></i><span data-t="nDl"></span></div>
+      <div class="nav" id="navLib"><i data-ico="lib"></i><span data-t="nLib"></span></div>
+      <div class="nav" id="navHist"><i data-ico="hist"></i><span data-t="nHist"></span></div>
+      <div class="nav" id="navNear"><i data-ico="near"></i><span data-t="nNear"></span></div>
     </div>
     <div id="main">
       <!-- Загрузчик -->
@@ -105,6 +124,42 @@
       <div id="lib">
         <div class="caps" style="position:absolute;left:38px;top:40px" data-t="nLib"></div>
         <div class="grid" id="grid"></div>
+      </div>
+
+      <!-- Рядом: устройства в сети, передача файла, «Смотреть вместе» -->
+      <div id="near">
+        <div class="caps" style="position:absolute;left:38px;top:40px" data-t="nNear"></div>
+        <div class="radar">
+          <div class="wave" id="w0"></div><div class="wave" id="w1"></div><div class="wave" id="w2"></div>
+          <div class="me"><i data-ico="laptop" style="display:flex"></i></div>
+          <div class="lbl" data-t="thisDev"></div>
+          <div class="sub" data-t="noNet"></div>
+        </div>
+        <div class="peer" id="peer0" style="top:110px">
+          <span class="av"><i data-ico="phone" style="display:flex"></i></span>
+          <div style="min-width:0;flex:1"><div class="nm">Pixel 8</div><div class="st" id="p0st"></div>
+            <div class="bar" id="p0barw" style="margin-top:6px"><b id="p0bar"></b></div></div>
+          <span class="send" id="p0send" data-t="send"></span>
+        </div>
+        <div class="peer" id="peer1" style="top:210px">
+          <span class="av"><i data-ico="tablet" style="display:flex"></i></span>
+          <div style="min-width:0;flex:1"><div class="nm">Galaxy Tab</div><div class="st" data-t="online"></div></div>
+          <span class="send" data-t="send"></span>
+        </div>
+        <div class="chip" id="chip"><i data-ico="film" style="display:flex"></i>Lo-fi beats.mp4</div>
+        <div class="room" id="room">
+          <div style="display:flex;align-items:center;gap:10px">
+            <i data-ico="tv" style="display:flex;color:var(--accent)"></i>
+            <b style="font-size:14px" data-t="together"></b>
+            <div class="faces" style="margin-left:auto">
+              <b id="f0" style="background:#e07a5f">А</b><b id="f1" style="background:#3d85c6">M</b><b id="f2" style="background:#6aa84f">К</b>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:14px;font-size:12px;font-weight:600;color:var(--smoke)">
+            <span>Lo-fi beats — live session</span><span style="margin-left:auto" data-t="synced"></span>
+          </div>
+          <div class="bar" style="margin-top:8px"><b id="roombar"></b></div>
+        </div>
       </div>
 
       <!-- Плеер -->
@@ -149,12 +204,33 @@ document.querySelectorAll(".m").forEach((e) => (e.innerHTML = MARK));
 document.getElementById("s1mark").innerHTML =
   `<path id="pk" fill="currentColor" d="${PEAKS}"/><path id="pl" fill="var(--snow)" d="${PLAY}"/>`;
 
+// Иконки lucide (как в приложении): тело <svg> без обёртки.
+const ICO = {
+  dl: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
+  lib: '<path d="M20 17a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3.9a2 2 0 0 1-1.69-.9l-.81-1.2a2 2 0 0 0-1.67-.9H8a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2Z"/><path d="M2 8v11a2 2 0 0 0 2 2h14"/>',
+  hist: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
+  near: '<path d="M19.07 4.93A10 10 0 0 0 6.99 3.34"/><path d="M4 6h.01"/><path d="M2.29 9.62A10 10 0 1 0 21.31 8.35"/><path d="M16.24 7.76A6 6 0 1 0 8.23 16.67"/><path d="M12 18h.01"/><path d="M17.99 11.66A6 6 0 0 1 15.77 16.67"/><circle cx="12" cy="12" r="2"/><path d="m13.41 10.59 5.66-5.66"/>',
+  laptop: '<path d="M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16"/>',
+  phone: '<rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/>',
+  tablet: '<rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M12 18h.01"/>',
+  film: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18M3 7.5h4M3 12h18M3 16.5h4M17 3v18M17 7.5h4M17 16.5h4"/>',
+  tv: '<rect width="20" height="15" x="2" y="7" rx="2" ry="2"/><path d="m17 2-5 5-5-5"/>',
+};
+document.querySelectorAll("[data-ico]").forEach((el) => {
+  const big = el.dataset.ico === "laptop";
+  el.innerHTML = `<svg viewBox="0 0 24 24" width="${big ? 36 : 20}" height="${big ? 36 : 20}" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">${ICO[el.dataset.ico]}</svg>`;
+});
+
 const L = new URLSearchParams(location.search).get("lang") === "en" ? "en" : "ru";
 const T = {
   ru: { tag: "Скачивай. Храни. Смотри.", nDl: "Загрузчик", nLib: "Медиатека", nHist: "История", nNear: "Рядом",
-        ask: "Что будем скачивать?", dlg: "Скачивается", proc: "Обработка…", ok: "Готово", done: "Готово: Lo-fi beats", themes: "8 тем — и иконка под каждую" },
+        ask: "Что будем скачивать?", dlg: "Скачивается",
+        thisDev: "Этот компьютер", noNet: "Wi-Fi · без интернета", send: "Отправить", online: "В сети",
+        recv: "Получает", got: "Получено", together: "Смотреть вместе", synced: "у всех одновременно", proc: "Обработка…", ok: "Готово", done: "Готово: Lo-fi beats", themes: "8 тем — и иконка под каждую" },
   en: { tag: "Download. Keep. Watch.", nDl: "Downloader", nLib: "Library", nHist: "History", nNear: "Nearby",
-        ask: "What shall we download?", dlg: "Downloading", proc: "Processing…", ok: "Done", done: "Done: Lo-fi beats", themes: "8 themes — each with its own icon" },
+        ask: "What shall we download?", dlg: "Downloading",
+        thisDev: "This computer", noNet: "Wi-Fi · no internet", send: "Send", online: "Online",
+        recv: "Receiving", got: "Received", together: "Watch together", synced: "in sync for everyone", proc: "Processing…", ok: "Done", done: "Done: Lo-fi beats", themes: "8 themes — each with its own icon" },
 }[L];
 document.documentElement.lang = L;
 document.querySelectorAll("[data-t]").forEach((e) => (e.textContent = T[e.dataset.t]));
@@ -212,11 +288,10 @@ function seek(t) {
   show($("s1tag"), ease(span(t, 1.2, 1.7)), (1 - ease(span(t, 1.2, 1.7))) * 10);
 
   // ── Окно (2.4–14.2) ──
-  const w = vis(t, 2.4, 14.2, 0.5, 0.45);
+  const w = vis(t, 2.4, 18.6, 0.5, 0.45);
   show($("win"), w, (1 - ease(span(t, 2.4, 2.9))) * 24, 0.97 + 0.03 * ease(span(t, 2.4, 2.9)));
-  const inLib = t >= 10.1;
-  $("navDl").className = "nav" + (inLib ? "" : " on");
-  $("navLib").className = "nav" + (inLib ? " on" : "");
+  const tab = t >= 14.3 ? "Near" : t >= 10.1 ? "Lib" : "Dl";
+  for (const n of ["Dl", "Lib", "Hist", "Near"]) $(`nav${n}`).className = "nav" + (n === tab ? " on" : "");
 
   // ── 2. Ссылка (2.9–6) ──
   const dl = vis(t, 2.6, 10.3, 0.3, 0.3);
@@ -255,7 +330,7 @@ function seek(t) {
     show($(`c${i}`), p, (1 - p) * 18, 0.96 + 0.04 * p);
   }
   $("c0").style.borderColor = t > 11.6 ? "var(--ink)" : "";
-  const pl = ease(span(t, 12.2, 12.75));
+  const pl = ease(span(t, 12.2, 12.75)) * (1 - span(t, 14.2, 14.45));
   $("player").style.visibility = pl > 0 ? "visible" : "hidden";
   $("player").style.opacity = pl;
   $("player").style.clipPath = `inset(${(1 - pl) * 18}% ${(1 - pl) * 52}% ${(1 - pl) * 50}% ${(1 - pl) * 4}% round 12px)`;
@@ -264,26 +339,63 @@ function seek(t) {
   $("pseek").style.width = (ptime / 222) * 100 + "%";
   $("hills").style.transform = `scale(${1.08 - 0.08 * ease(span(t, 12.2, 14.2))})`;
 
-  // ── 5. Темы (14.2–16.7) ──
-  const s5 = vis(t, 14.2, 16.7, 0.35, 0.35);
+  // ── «Рядом» (14.3–18.6): радар, устройства, файл летит на телефон, комната ──
+  const nr = span(t, 14.3, 14.6);
+  show($("near"), nr);
+  for (let i = 0; i < 3; i++) {
+    const ph = ((t - 14.3) / 1.8 + i / 3) % 1;
+    $(`w${i}`).style.transform = `scale(${0.35 + 0.75 * ph})`;
+    $(`w${i}`).style.opacity = t < 14.3 ? 0 : 0.55 * (1 - ph);
+  }
+  for (let i = 0; i < 2; i++) {
+    const p = ease(span(t, 14.75 + i * 0.3, 15.2 + i * 0.3));
+    show($(`peer${i}`), p, 0, 0.94 + 0.06 * p);
+    $(`peer${i}`).style.transform += ` translateX(${(1 - p) * 30}px)`;
+  }
+  // нажали «Отправить» → файл летит от радара к Pixel 8
+  const press2 = span(t, 15.45, 15.55) - span(t, 15.55, 15.7);
+  $("p0send").style.transform = `scale(${1 - 0.1 * press2})`;
+  const fly = inout(span(t, 15.6, 16.3));
+  const fx = 140 + (520 - 140) * fly, fy = 240 + (128 - 240) * fly - Math.sin(fly * Math.PI) * 70;
+  $("chip").style.left = fx + "px";
+  $("chip").style.top = fy + "px";
+  show($("chip"), Math.min(span(t, 15.6, 15.75), 1 - span(t, 16.2, 16.35)), 0, 1 - 0.3 * span(t, 16.15, 16.35));
+  const rp = 100 * inout(span(t, 16.3, 17.0));
+  const got = t >= 17.0;
+  $("p0st").textContent = t < 16.3 ? T.online : got ? `✓ ${T.got}` : `${T.recv} · ${Math.round(rp)}%`;
+  $("p0st").style.color = got ? "#059669" : "";
+  $("p0barw").style.opacity = t >= 16.3 && !got ? 1 : 0;
+  $("p0bar").style.width = rp + "%";
+  $("p0send").style.opacity = t >= 16.3 ? 0 : 1;
+  // «Смотреть вместе»: комната, лица по очереди, общий прогресс
+  const rm = ease(span(t, 17.0, 17.4));
+  show($("room"), rm, (1 - rm) * 16);
+  for (let i = 0; i < 3; i++) {
+    const f = back(span(t, 17.25 + i * 0.12, 17.6 + i * 0.12));
+    $(`f${i}`).style.transform = `scale(${f})`;
+  }
+  $("roombar").style.width = 22 + 30 * span(t, 17.2, 18.6) + "%";
+
+  // ── 5. Темы (18.6–21.1) ──
+  const s5 = vis(t, 18.6, 21.1, 0.35, 0.35);
   show($("s5"), s5, 0, 0.96 + 0.04 * s5);
-  const k = Math.min(THEMES.length - 1, Math.floor(span(t, 14.35, 16.5) * THEMES.length));
+  const k = Math.min(THEMES.length - 1, Math.floor(span(t, 18.75, 20.9) * THEMES.length));
   const th = THEMES[k];
-  const sceneTheme = t >= 14.2 && t < 16.7;
+  const sceneTheme = t >= 18.6 && t < 21.1;
   document.body.style.background = sceneTheme ? th[1] : "var(--snow)";
   $("s5").style.color = th[2];
   $("ticon").style.background = th[3];
   $("tname").textContent = th[0];
-  const local = span(t, 14.35, 16.5) * THEMES.length;
+  const local = span(t, 18.75, 20.9) * THEMES.length;
   const bump = 1 - span(local - Math.floor(local), 0, 0.35);
   $("ticon").style.transform = `scale(${1 + 0.04 * bump})`;
 
-  // ── 6. Финал (16.6–18) ──
-  const s6 = ease(span(t, 16.6, 17.1));
+  // ── 6. Финал (21.0–22.4) ──
+  const s6 = ease(span(t, 21.0, 21.5));
   show($("s6"), s6, (1 - s6) * 14);
 }
 window.seek = seek;
-window.DURATION = 18;
+window.DURATION = 22.4;
 seek(0);
 
 // Предпросмотр в браузере: ?play
