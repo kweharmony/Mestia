@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Download,
+  AudioLines,
   Folders,
   History as HistoryIcon,
   Minus,
@@ -37,6 +38,7 @@ const NAV: NavDef[] = [
   { id: "locker", labelKey: "nav.locker", icon: Folders, anim: "mestia-ico-folder" },
   { id: "history", labelKey: "nav.history", icon: HistoryIcon, anim: "mestia-ico-history" },
   { id: "nearby", labelKey: "nav.nearby", icon: Radar, anim: "mestia-ico-history" },
+  ...(!IS_ANDROID ? [{ id: "transcription" as const, labelKey: "nav.transcription", icon: AudioLines, anim: "mestia-ico-history" }] : []),
 ];
 
 const COLLAPSED_KEY = "mestia.sidebarCollapsed";

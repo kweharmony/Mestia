@@ -78,6 +78,7 @@ Build-time Node helpers.
     because Tauri's Android asset protocol serves Range in 1 MB chunks and audio >1 MB never
     loads) and `setPlaybackActive` (Android PlaybackService while something plays).
 - `views/` — top-level screens:
+  - `Transcription` — desktop-only local speech recognition for library files.
   - `Downloader` — paste URL, pick format/quality, start downloads.
   - `Locker` — the media library (folders + videos grid, multi-select, drag-drop).
   - `History` — past downloads with statuses; resume interrupted (`.part`) downloads.
@@ -92,6 +93,14 @@ Build-time Node helpers.
 - `src/main.rs` — thin entry, calls `mestia_lib::run()`.
 - `src/lib.rs` — registers plugins, builds the tray, smart-close behavior, and exposes
   the Tauri commands the frontend calls.
+- `src/transcription.rs` — caches verified Whisper models from Hugging Face, prepares library audio
+  with FFmpeg, and streams logs from the local whisper-cli executable.
+  Windows x64 can install verified CPU and CUDA builds from the official whisper.cpp release.
+  The saved transcription device preference controls GPU use and automatic CPU fallback.
+  Recognition options persist the spoken language, English translation (excluding Turbo/.en models),
+  and timestamped SRT output. Omitted options retain automatic language detection and plain text.
+  The desktop tab stays mounted across navigation and exports completed transcripts as TXT or Markdown.
+  The desktop library reads and writes common embedded media tags with FFprobe and lossless FFmpeg remuxing.
 - `src/downloader.rs` — builds `yt-dlp` arguments (metadata, download), parses and
   emits progress/item/done events.
 - `src/engine.rs` — runs `yt-dlp` and streams its output line by line: desktop → sidecar
@@ -138,6 +147,8 @@ Build-time Node helpers.
 - **Download**: intermediate streams/`.part` go to hidden `<dir>/.mestia-tmp` (`-P temp:`), only the
   final file lands in the library; `Combined` in `downloader.rs` turns per-stream progress (video,
   then audio) into one percent of the final file (also shown in the Android download notification).
+  Active and queued tasks are persisted in SQLite and offered for resumption after restart; known
+  single-item sizes are checked against free storage with a processing allowance before download.
   `Downloader` view → `ipc.ts` → `downloader.rs` (builds args) →
   `engine.rs` (sidecar on desktop / `MestiaPlugin.execute` on Android) → progress events →
   `DownloadsContext` → UI. On Android a foreground service keeps the process alive and each

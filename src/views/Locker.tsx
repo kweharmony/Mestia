@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   ArrowDownUp,
@@ -12,6 +12,8 @@ import {
   FolderPlus,
   Image as ImageIcon,
   ListPlus,
+  List,
+  LayoutGrid,
   Music,
   Pencil,
   Play,
@@ -35,7 +37,6 @@ import {
   pruneOutsideRoot,
   reassignVideosToFolder,
   renameFolderRows,
-  renameVideo,
   searchVideos,
   updateVideoPath,
   updateVideoThumb,
@@ -88,7 +89,7 @@ function parentDir(p: string): string {
   return i >= 0 ? p.slice(0, i) : "";
 }
 
-type Renaming = { kind: "folder" | "video"; id: number } | null;
+type Renaming = { id: number } | null;
 type Confirm = { text: string; action: () => Promise<void> } | null;
 type DropTarget = { id: number | null; path: string; name: string };
 
@@ -103,6 +104,7 @@ export default function Locker({
   const { libraryVersion } = useDownloads();
   const { notify } = useToast();
   const { t } = useI18n();
+  const [tagFile, setTagFile] = useState<VideoRow | null>(null);
 
   const [storageRoot, setStorageRoot] = useState("");
   const [trail, setTrail] = useState<FolderRow[]>([]);
@@ -121,6 +123,11 @@ export default function Locker({
 
   // Сортировка и фильтр по типу медиа (применяются к показанным видео).
   const [sortKey, setSortKey] = useState<"date" | "name" | "size">("date");
+  const [viewMode, setViewMode] = useState<"grid" | "list">(() =>
+    localStorage.getItem("mestia.libraryView") === "list" ? "list" : "grid"
+  );
+  const list = viewMode === "list";
+  const itemsClass = list ? "grid min-w-0 gap-2" : "grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3";
   const [kindFilter, setKindFilter] = useState<"all" | "video" | "audio">("all");
 
   const [renaming, setRenaming] = useState<Renaming>(null);
@@ -581,9 +588,9 @@ export default function Locker({
   // Enter и последующий blur (или Escape + blur при размонтировании) вызвали бы
   // commit дважды: папка переименовалась бы повторно по уже несуществующему пути.
   const renameDoneRef = useRef(false);
-  function startRename(kind: "folder" | "video", id: number, value: string) {
+  function startRename(id: number, value: string) {
     renameDoneRef.current = false;
-    setRenaming({ kind, id });
+    setRenaming({ id });
     setRenameValue(value);
   }
   function cancelRename() {
@@ -595,24 +602,14 @@ export default function Locker({
     if (!renaming || renameDoneRef.current) return;
     renameDoneRef.current = true;
     const val = renameValue.trim();
-    const prev =
-      renaming.kind === "folder"
-        ? folders.find((x) => x.id === renaming.id)?.name
-        : displayed.find((x) => x.id === renaming.id)?.title;
-    if (!val || val === prev) {
+    const folder = folders.find((x) => x.id === renaming.id);
+    if (!folder || !val || val === folder.name) {
       setRenaming(null);
       return;
     }
     try {
-      if (renaming.kind === "folder") {
-        const f = folders.find((x) => x.id === renaming.id);
-        if (f) {
-          const newPath = await renameFolderOnDisk(f.path, val);
-          await renameFolderRows(f.id, f.path, newPath, val);
-        }
-      } else {
-        await renameVideo(renaming.id, val);
-      }
+      const newPath = await renameFolderOnDisk(folder.path, val);
+      await renameFolderRows(folder.id, folder.path, newPath, val);
       setRenaming(null);
       await reload();
       notify(t("lib.renamed"));
@@ -756,26 +753,40 @@ export default function Locker({
         </div>
 
         {/* Поиск */}
-        <div className="relative flex items-center gap-2 rounded-ui border-2 border-fog bg-snow px-3 focus-within:border-accent">
-          <Search className="h-4 w-4 shrink-0 text-smoke" strokeWidth={2.25} />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onFocus={() => setSearchFocused(true)}
-            onBlur={() => setSearchFocused(false)}
-            placeholder=""
-            className="flex-1 bg-transparent py-2.5 text-sm font-semibold text-ink outline-none"
-          />
-          {!query && !searchFocused && (
-            <div className="pointer-events-none absolute inset-y-0 left-9 right-9 flex items-center overflow-hidden text-sm font-semibold text-smoke">
-              <Typewriter phrases={SEARCH_HINT_KEYS.map((k) => t(k))} className="whitespace-nowrap" />
-            </div>
-          )}
-          {searchActive && (
-            <button onClick={() => setQuery("")} className="text-smoke hover:text-ink">
-              <X className="h-4 w-4" strokeWidth={2.25} />
-            </button>
-          )}
+        <div className="flex items-stretch gap-2">
+          <div className="relative flex min-w-0 flex-1 items-center gap-2 rounded-ui border-2 border-fog bg-snow px-3 focus-within:border-accent">
+            <Search className="h-4 w-4 shrink-0 text-smoke" strokeWidth={2.25} />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+              placeholder=""
+              className="min-w-0 flex-1 bg-transparent py-2.5 text-sm font-semibold text-ink outline-none"
+            />
+            {!query && !searchFocused && (
+              <div className="pointer-events-none absolute inset-y-0 left-9 right-9 flex items-center overflow-hidden text-sm font-semibold text-smoke">
+                <Typewriter phrases={SEARCH_HINT_KEYS.map((k) => t(k))} className="whitespace-nowrap" />
+              </div>
+            )}
+            {searchActive && (
+              <button onClick={() => setQuery("")} className="text-smoke hover:text-ink">
+                <X className="h-4 w-4" strokeWidth={2.25} />
+              </button>
+            )}
+          </div>
+          <div role="group" aria-label={t("lib.view")} className="flex shrink-0 items-center gap-0.5 rounded-ui border-2 border-fog p-0.5">
+            {([["grid", LayoutGrid, "lib.viewGrid"], ["list", List, "lib.viewList"]] as const).map(([mode, Icon, label]) => (
+              <button key={mode} type="button" aria-label={t(label)} title={t(label)} aria-pressed={viewMode === mode}
+                onClick={() => {
+                  setViewMode(mode);
+                  localStorage.setItem("mestia.libraryView", mode);
+                }}
+                className={`grid size-8 place-items-center rounded-ui ${viewMode === mode ? "bg-fog text-ink" : "text-smoke hover:bg-fog/50"}`}>
+                <Icon className="size-4" aria-hidden="true" />
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Панель сортировки и фильтра */}
@@ -908,26 +919,22 @@ export default function Locker({
           results.length === 0 ? (
             <EmptyState icon={Search} text={t("lib.noResults", { query })} />
           ) : (
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3">
+            <div className={itemsClass}>
               <AnimatePresence mode="popLayout">
               {shownVideos.map((v) => (
                 <VideoCard
                   key={`s-${v.id}`}
                   video={v}
+                  list={list}
                   leaving={leavingIds.has(v.id)}
                   generating={generatingIds.has(v.id)}
                   selected={selected.has(v.id)}
                   selectionMode={selectionMode}
                   onToggleSelect={() => toggleSelect(v.id)}
-                  renaming={renaming?.kind === "video" && renaming.id === v.id}
-                  renameValue={renameValue}
-                  setRenameValue={setRenameValue}
-                  onCommit={commitRename}
-                  onCancel={cancelRename}
                   onPlay={() => onPlay(v)}
-                  onRename={() => startRename("video", v.id, v.title)}
                   onDelete={() => askDeleteVideo(v)}
                   onCover={() => handleSetCover(v)}
+                  onTags={IS_ANDROID ? undefined : () => setTagFile(v)}
                   draggable
                   onDragStart={() => startDrag(v)}
                   onDragEnd={endDrag}
@@ -948,20 +955,21 @@ export default function Locker({
             />
           )
         ) : (
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3">
+          <div className={itemsClass}>
             <AnimatePresence mode="popLayout">
             {folders.map((folder) => (
               <FolderCardView
                 key={`f-${folder.id}`}
                 folder={folder}
+                list={list}
                 hover={hoverFolderId === folder.id}
-                renaming={renaming?.kind === "folder" && renaming.id === folder.id}
+                renaming={renaming?.id === folder.id}
                 renameValue={renameValue}
                 setRenameValue={setRenameValue}
                 onCommit={commitRename}
                 onCancel={cancelRename}
                 onEnter={() => enterFolder(folder)}
-                onRename={() => startRename("folder", folder.id, folder.name)}
+                onRename={() => startRename(folder.id, folder.name)}
                 onDelete={() => askDeleteFolder(folder)}
                 onDragOver={(e) => {
                   e.preventDefault();
@@ -978,20 +986,16 @@ export default function Locker({
               <VideoCard
                 key={`v-${video.id}`}
                 video={video}
+                list={list}
                 leaving={leavingIds.has(video.id)}
                 generating={generatingIds.has(video.id)}
                 selected={selected.has(video.id)}
                 selectionMode={selectionMode}
                 onToggleSelect={() => toggleSelect(video.id)}
-                renaming={renaming?.kind === "video" && renaming.id === video.id}
-                renameValue={renameValue}
-                setRenameValue={setRenameValue}
-                onCommit={commitRename}
-                onCancel={cancelRename}
                 onPlay={() => onPlay(video)}
-                onRename={() => startRename("video", video.id, video.title)}
                 onDelete={() => askDeleteVideo(video)}
                 onCover={() => handleSetCover(video)}
+                onTags={IS_ANDROID ? undefined : () => setTagFile(video)}
                 draggable
                 onDragStart={(e) => {
                   e.dataTransfer.setData("text/plain", String(video.id));
@@ -1021,6 +1025,13 @@ export default function Locker({
             document.body
           )}
       </div>
+
+      {tagFile && <MediaTagsEditor key={tagFile.id} video={tagFile}
+        onClose={() => setTagFile(null)} onSaved={() => {
+          setTagFile(null);
+          notify(t("lib.tagsSaved"));
+          void reload().catch((e) => notify(humanizeError(e), "error"));
+        }} />}
 
       {/* Подтверждение удаления */}
       <Modal open={!!confirm} onClose={() => setConfirm(null)} maxWidth={380}>
@@ -1060,6 +1071,7 @@ export default function Locker({
 // ── Карточка папки ─────────────────────────────────────────────────────────────
 function FolderCardView(props: {
   folder: FolderRow;
+  list: boolean;
   hover: boolean;
   renaming: boolean;
   renameValue: string;
@@ -1073,7 +1085,7 @@ function FolderCardView(props: {
   onDragLeave: () => void;
   onDrop: (e: React.DragEvent) => void;
 }) {
-  const { folder, hover, renaming } = props;
+  const { folder, hover, renaming, list } = props;
   const { t } = useI18n();
   return (
     <motion.div
@@ -1081,14 +1093,14 @@ function FolderCardView(props: {
       initial={{ opacity: 0, scale: 0.92 }}
       animate={{ opacity: 1, scale: hover ? 1.03 : 1 }}
       exit={{ opacity: 0, scale: 0.85 }}
-      whileHover={{ y: -4 }}
+      whileHover={list ? undefined : { y: -4 }}
       transition={{ type: "spring", stiffness: 400, damping: 30 }}
       data-card
       onClick={() => !renaming && props.onEnter()}
       onDragOver={props.onDragOver}
       onDragLeave={props.onDragLeave}
       onDrop={props.onDrop}
-      className={`mestia-anim group relative cursor-pointer rounded-ui border-2 p-2.5 no-select ${
+      className={`mestia-anim group relative cursor-pointer rounded-ui border-2 p-2.5 no-select ${list ? "flex min-w-0 items-center gap-2 sm:gap-3" : ""} ${
         hover
           ? "border-accent bg-accent/5"
           : "border-transparent hover:border-fog hover:bg-paper/40"
@@ -1096,7 +1108,7 @@ function FolderCardView(props: {
     >
       {/* Действия — на тач-устройствах видны без наведения. */}
       {!renaming && (
-        <div className="absolute right-3 top-3 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+        <div className={list ? "order-last flex shrink-0 items-center gap-1" : "absolute right-3 top-3 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100"}>
           <CardAction icon={Pencil} title={t("lib.rename")} onClick={props.onRename} solid />
           <CardAction icon={Trash2} title={t("lib.delete")} onClick={props.onDelete} danger solid />
         </div>
@@ -1104,7 +1116,7 @@ function FolderCardView(props: {
 
       {/* Превью-плитка папки — тот же формат, что и у видео */}
       <div
-        className={`relative mb-3 flex aspect-video w-full items-center justify-center overflow-hidden rounded-ui border-2 transition-colors ${
+        className={`relative flex items-center justify-center overflow-hidden rounded-ui border-2 transition-colors ${list ? "h-10 w-16 shrink-0" : "mb-3 aspect-video w-full"} ${
           hover
             ? "border-accent bg-accent/10"
             : "border-fog bg-gradient-to-br from-accent/10 to-accent/5 group-hover:border-accent"
@@ -1112,32 +1124,34 @@ function FolderCardView(props: {
       >
         {hover ? (
           <FolderOpen
-            className="h-12 w-12 text-accent transition-transform group-hover:scale-110"
+            className={`${list ? "size-6" : "size-12"} text-accent transition-transform group-hover:scale-110`}
             strokeWidth={1.75}
           />
         ) : (
           <Folder
-            className="h-12 w-12 fill-accent-light/20 text-accent-light transition-transform group-hover:scale-110 group-hover:text-accent"
+            className={`${list ? "size-6" : "size-12"} fill-accent-light/20 text-accent-light transition-transform group-hover:scale-110 group-hover:text-accent`}
             strokeWidth={1.75}
           />
         )}
-        <span className="absolute left-2 top-2 rounded-[4px] bg-ink/85 px-1.5 py-0.5 text-[10px] font-bold uppercase text-snow">
+        {!list && <><span className="absolute left-2 top-2 rounded-[4px] bg-ink/85 px-1.5 py-0.5 text-[10px] font-bold uppercase text-snow">
           {t("lib.folder")}
         </span>
         <ChevronRight
           className="absolute bottom-2 right-2 h-4 w-4 text-accent opacity-0 transition-opacity group-hover:opacity-100"
           strokeWidth={2.5}
-        />
+        /></>}
       </div>
 
-      {renaming ? (
-        <RenameInput {...props} />
-      ) : (
-        <h3 className="line-clamp-2 h-10 text-sm font-semibold leading-tight tracking-tight">
-          {folder.name}
-        </h3>
-      )}
-      {!renaming && <p className="mt-1 truncate text-xs font-semibold text-smoke">{t("lib.openFolderArrow")}</p>}
+      <div className={list ? "min-w-0 flex-1" : undefined}>
+        {renaming ? (
+          <RenameInput {...props} />
+        ) : (
+          <h3 className={`${list ? "truncate" : "line-clamp-2 h-10"} text-sm font-semibold leading-tight tracking-tight`}>
+            {folder.name}
+          </h3>
+        )}
+        {!renaming && <p className="mt-1 truncate text-xs font-semibold text-smoke">{t("lib.openFolderArrow")}</p>}
+      </div>
     </motion.div>
   );
 }
@@ -1145,25 +1159,21 @@ function FolderCardView(props: {
 // ── Карточка видео ─────────────────────────────────────────────────────────────
 function VideoCard(props: {
   video: VideoRow;
+  list: boolean;
   leaving: boolean;
   generating: boolean;
   selected: boolean;
   selectionMode: boolean;
   onToggleSelect: () => void;
-  renaming: boolean;
-  renameValue: string;
-  setRenameValue: (v: string) => void;
-  onCommit: () => void;
-  onCancel: () => void;
   onPlay: () => void;
-  onRename: () => void;
   onDelete: () => void;
   onCover: () => void;
+  onTags?: () => void;
   draggable: boolean;
   onDragStart: (e: React.DragEvent) => void;
   onDragEnd: () => void;
 }) {
-  const { video, leaving, generating, renaming, selected, selectionMode } = props;
+  const { video, leaving, generating, selected, selectionMode, list } = props;
   const { t } = useI18n();
   const audio = isAudioPath(video.file_path);
 
@@ -1177,7 +1187,6 @@ function VideoCard(props: {
 
   // Клик: Ctrl/Cmd или режим выбора → переключить выделение; иначе — воспроизвести.
   const activate = (e: React.MouseEvent) => {
-    if (renaming) return;
     if (e.ctrlKey || e.metaKey || selectionMode) props.onToggleSelect();
     else props.onPlay();
   };
@@ -1188,15 +1197,15 @@ function VideoCard(props: {
       initial={{ opacity: 0, scale: 0.92 }}
       animate={leaving ? { opacity: 0, scale: 0.5 } : { opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.85 }}
-      whileHover={leaving ? undefined : { y: -4 }}
+      whileHover={leaving || list ? undefined : { y: -4 }}
       transition={{ type: "spring", stiffness: 400, damping: 30 }}
       data-card
       data-video-id={video.id}
-      draggable={props.draggable && !renaming}
+      draggable={props.draggable}
       // нативный HTML5 DnD: типы расходятся с жестами motion, поэтому cast
       onDragStart={props.onDragStart as any}
       onDragEnd={props.onDragEnd as any}
-      className={`mestia-anim group relative rounded-ui border-2 p-2.5 ${
+      className={`mestia-anim group relative rounded-ui border-2 p-2.5 ${list ? "flex min-w-0 items-center gap-2 sm:gap-3" : ""} ${
         selected
           ? "border-accent bg-accent/5"
           : "border-transparent hover:border-fog hover:bg-paper/40"
@@ -1209,12 +1218,12 @@ function VideoCard(props: {
           props.onToggleSelect();
         }}
         title={t("lib.select")}
-        className={`absolute left-3 top-3 z-10 flex h-6 w-6 items-center justify-center rounded-md border-2 transition-all ${
+        className={`${list ? "shrink-0" : "absolute left-3 top-3 z-10"} flex h-6 w-6 items-center justify-center rounded-md border-2 transition-all ${
           selected
             ? "border-accent bg-accent text-white"
             : "border-fog bg-snow/90 text-transparent"
         } ${
-          selectionMode || selected
+          list || selectionMode || selected
             ? "opacity-100"
             : "opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
         }`}
@@ -1223,17 +1232,15 @@ function VideoCard(props: {
       </button>
 
       {/* Действия — на тач-устройствах (Steam Deck) видны без наведения. */}
-      {!renaming && (
-        <div className="absolute right-3 top-3 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100">
-          <CardAction icon={ImageIcon} title={t("lib.setCover")} onClick={props.onCover} solid />
-          <CardAction icon={Pencil} title={t("lib.rename")} onClick={props.onRename} solid />
-          <CardAction icon={Trash2} title={t("lib.delete")} onClick={props.onDelete} danger solid />
-        </div>
-      )}
+      <div className={list ? "order-last flex shrink-0 items-center gap-1" : "absolute right-3 top-3 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100"}>
+        <CardAction icon={ImageIcon} title={t("lib.setCover")} onClick={props.onCover} solid />
+        {props.onTags && <CardAction icon={Pencil} title={t("lib.editTags")} onClick={props.onTags} solid />}
+        <CardAction icon={Trash2} title={t("lib.delete")} onClick={props.onDelete} danger solid />
+      </div>
 
       <div
         onClick={activate}
-        className={`relative mb-3 flex aspect-video w-full cursor-pointer items-center justify-center overflow-hidden rounded-ui border-2 border-fog group-hover:border-accent ${
+        className={`relative flex cursor-pointer items-center justify-center overflow-hidden rounded-ui border-2 border-fog group-hover:border-accent ${list ? "h-10 w-16 shrink-0" : "mb-3 aspect-video w-full"} ${
           audio ? "bg-accent/10" : "bg-fog"
         }`}
       >
@@ -1257,12 +1264,12 @@ function VideoCard(props: {
           <Play className="absolute h-8 w-8 text-accent opacity-60 group-hover:opacity-100" strokeWidth={2.25} />
         )}
         {/* Метка типа (на тач-экранах сдвинута: слева всегда виден чекбокс выбора) */}
-        <span className="absolute left-2 top-2 rounded-[4px] bg-ink/85 [@media(hover:none)]:left-9 px-1.5 py-0.5 text-[10px] font-bold uppercase text-snow">
+        {!list && <><span className="absolute left-2 top-2 rounded-[4px] bg-ink/85 [@media(hover:none)]:left-9 px-1.5 py-0.5 text-[10px] font-bold uppercase text-snow">
           {audio ? t("lib.audio") : t("lib.video")}
         </span>
         <span className="absolute bottom-2 right-2 rounded-[4px] bg-ink px-1.5 py-0.5 text-[10px] font-bold text-snow">
           {formatDuration(video.duration)}
-        </span>
+        </span></>}
         {/* Полоса «продолжить просмотр» */}
         {watched > 0.02 && (
           <div className="absolute inset-x-0 bottom-0 h-1 bg-ink/30">
@@ -1271,19 +1278,17 @@ function VideoCard(props: {
         )}
       </div>
 
-      {renaming ? (
-        <RenameInput {...props} />
-      ) : (
+      <div className={list ? "min-w-0 flex-1" : undefined}>
         <h3
           onClick={activate}
-          className="line-clamp-2 h-10 cursor-pointer text-sm font-semibold leading-tight hover:underline"
+          className={`${list ? "truncate" : "line-clamp-2 h-10"} cursor-pointer text-sm font-semibold leading-tight hover:underline`}
         >
           {video.title}
         </h3>
-      )}
-      <p className="mt-1 truncate text-xs font-semibold text-smoke">
-        {audio ? t("lib.audio") : t("lib.video")} · {formatBytes(video.size)} · {video.platform ?? "—"}
-      </p>
+        <p className="mt-1 truncate text-xs font-semibold text-smoke">
+          {list && `${formatDuration(video.duration)} · `}{audio ? t("lib.audio") : t("lib.video")} · {formatBytes(video.size)} · {video.platform ?? "—"}
+        </p>
+      </div>
     </motion.div>
   );
 }
@@ -1349,6 +1354,110 @@ function RenameInput(props: {
 }
 
 // ── Кнопка-действие на карточке ──────────────────────────────────────────────
+const AUDIO_TAG_FIELDS = ["title", "artist", "album", "album_artist", "genre", "date", "track", "disc", "composer", "comment"] as const;
+const VIDEO_TAG_FIELDS = ["title", "director", "genre", "date", "show", "season_number", "episode_sort", "description", "comment"] as const;
+type MediaTags = Partial<Record<(typeof AUDIO_TAG_FIELDS)[number] | (typeof VIDEO_TAG_FIELDS)[number], string>>;
+
+function MediaTagsEditor({ video, onClose, onSaved }: { video: VideoRow; onClose: () => void; onSaved: () => void }) {
+  const { t } = useI18n();
+  const [original, setOriginal] = useState<MediaTags>();
+  const [tags, setTags] = useState<MediaTags>({});
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [dateMode, setDateMode] = useState<"date" | "year" | "original">("date");
+  const fields = isAudioPath(video.file_path) ? AUDIO_TAG_FIELDS : VIDEO_TAG_FIELDS;
+
+  useEffect(() => {
+    invoke<MediaTags>("read_media_tags", { path: video.file_path }).then((values) => {
+      setOriginal(values);
+      setTags(values);
+      const date = values.date ?? "";
+      setDateMode(/^\d{4}$/.test(date) ? "year"
+        : !date || /^(\d{8}|\d{4}-\d{2}-\d{2})$/.test(date) ? "date" : "original");
+    }).catch((e) => setError(String(e)));
+  }, [video.file_path]);
+
+  const changed = Object.fromEntries(fields.filter((key) => (original?.[key] ?? "") !== (tags[key] ?? ""))
+    .map((key) => [key, tags[key] ?? ""]));
+  const invalidYear = dateMode === "year" && !!changed.date && !/^\d{4}$/.test(changed.date);
+
+  async function save() {
+    setSaving(true);
+    setError("");
+    try {
+      await invoke("write_media_tags", { path: video.file_path, tags: changed });
+      onSaved();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal open onClose={saving ? undefined : onClose}
+      cardClassName="mestia-anim max-h-[88vh] w-full max-w-xl space-y-4 overflow-y-auto rounded-ui border-2 border-ink bg-snow p-6">
+      <h2 className="text-lg font-bold">{t("lib.editTags")}</h2>
+      <p className="break-words text-sm font-semibold">{video.title}</p>
+      <p className="text-sm text-smoke">{t("lib.tagsHint")}</p>
+      {!original && !error && <p role="status" className="text-sm text-smoke">{t("lib.tagsLoading")}</p>}
+      {original && <fieldset disabled={saving} className="grid gap-3 sm:grid-cols-2">
+        {fields.map((key) => key === "date" ? (
+          <div key={key} className="space-y-1 text-sm font-semibold">
+            <label htmlFor="media-tag-date">{t("lib.tag.date")}</label>
+            <div className="flex flex-wrap gap-2">
+              <select aria-label={t("lib.tag.dateMode")} value={dateMode}
+                onChange={(event) => {
+                  const mode = event.target.value === "year" ? "year" : "date";
+                  setDateMode(mode);
+                  if (mode === "year" && /^\d{4}(\d{4}|-\d{2}-\d{2})$/.test(tags.date ?? "")) {
+                    setTags({ ...tags, date: tags.date?.slice(0, 4) });
+                  }
+                }}
+                className="rounded-ui border-2 border-fog bg-snow px-2 py-2 font-normal">
+                <option value="date">{t("lib.tag.fullDate")}</option>
+                <option value="year">{t("lib.tag.yearOnly")}</option>
+                {dateMode === "original" && <option value="original">{t("lib.tag.originalDate")}</option>}
+              </select>
+              <input id="media-tag-date" type={dateMode === "date" ? "date" : "text"}
+                min={dateMode === "date" ? "0001-01-01" : undefined}
+                max={dateMode === "date" ? "9999-12-31" : undefined}
+                inputMode={dateMode === "year" ? "numeric" : undefined}
+                maxLength={dateMode === "year" ? 4 : undefined}
+                placeholder={dateMode === "year" ? t("lib.tag.yearPlaceholder") : undefined}
+                value={dateMode === "date"
+                  ? (tags.date ?? "").replace(/^(\d{4})(\d{2})(\d{2})$/, "$1-$2-$3")
+                  : tags.date ?? ""}
+                onChange={(event) => setTags({ ...tags, date: dateMode === "year"
+                  ? event.target.value.replace(/\D/g, "").slice(0, 4) : event.target.value })}
+                className="min-w-0 flex-1 rounded-ui border-2 border-fog bg-snow px-2 py-2 font-normal" />
+            </div>
+          </div>
+        ) : (
+          <label key={key} className={`block space-y-1 text-sm font-semibold ${key === "description" ? "sm:col-span-2" : ""}`}>
+            <span>{t("lib.tag." + key)}</span>
+            {key === "description" ? (
+              <textarea rows={3} value={tags[key] ?? ""} onChange={(e) => setTags({ ...tags, [key]: e.target.value })}
+                maxLength={4096} className="w-full rounded-ui border-2 border-fog bg-snow px-3 py-2 font-normal" />
+            ) : (
+              <input value={tags[key] ?? ""} onChange={(e) => setTags({ ...tags, [key]: e.target.value })}
+                maxLength={4096} className="w-full rounded-ui border-2 border-fog bg-snow px-3 py-2 font-normal" />
+            )}
+          </label>
+        ))}
+      </fieldset>}
+      {error && <p role="alert" className="break-words text-sm text-rose-500">{error}</p>}
+      <div className="flex justify-end gap-2">
+        <button disabled={saving} onClick={onClose} className="rounded-ui border-2 border-fog px-4 py-2 text-sm font-semibold hover:bg-fog">{t("common.cancel")}</button>
+        <button disabled={!original || saving || !Object.keys(changed).length || invalidYear} onClick={() => void save()}
+          className="rounded-ui border-2 border-ink bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+          {t(saving ? "lib.tagsSaving" : "lib.tagsSave")}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 function CardAction({
   icon: Icon,
   title,

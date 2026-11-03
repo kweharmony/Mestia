@@ -2693,16 +2693,20 @@ dependencies = [
 
 [[package]]
 name = "mestia"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "axum",
+ "flate2",
  "futures-util",
  "if-addrs",
  "keepawake",
+ "libc",
  "notify",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "sha1",
+ "sha2",
  "socket2",
  "tauri",
  "tauri-build",
@@ -2713,12 +2717,14 @@ dependencies = [
  "tauri-plugin-shell",
  "tauri-plugin-sql",
  "tauri-plugin-updater",
+ "tempfile",
  "tokio",
  "tokio-tungstenite 0.26.2",
  "tokio-util",
  "tower",
  "tower-http",
  "trash",
+ "zip",
 ]
 
 [[package]]
@@ -7619,6 +7625,7 @@ checksum = "caa8cd6af31c3b31c6631b8f483848b91589021b28fffe50adada48d4f4d2ed1"
 dependencies = [
  "arbitrary",
  "crc32fast",
+ "flate2",
  "indexmap 2.14.0",
  "memchr",
 ]

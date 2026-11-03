@@ -5,6 +5,8 @@ mod media;
 #[cfg(mobile)]
 mod mobile;
 mod storage;
+#[cfg(desktop)]
+mod transcription;
 
 #[cfg(desktop)]
 use tauri::menu::{Menu, MenuItem};
@@ -59,6 +61,12 @@ pub fn run() {
             version: 3,
             description: "index videos.url (findVideoByUrl)",
             sql: "CREATE INDEX IF NOT EXISTS idx_videos_url ON videos(url);",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 4,
+            description: "persistent download queue",
+            sql: "CREATE TABLE IF NOT EXISTS download_queue (history_id INTEGER PRIMARY KEY, options TEXT NOT NULL);",
             kind: MigrationKind::Up,
         },
     ];
@@ -128,6 +136,16 @@ pub fn run() {
 
     builder
         .invoke_handler(tauri::generate_handler![
+            #[cfg(desktop)]
+            transcription::transcription_info,
+            #[cfg(desktop)]
+            transcription::transcribe,
+            #[cfg(desktop)]
+            transcription::save_transcript,
+            #[cfg(desktop)]
+            storage::read_media_tags,
+            #[cfg(desktop)]
+            storage::write_media_tags,
             downloader::fetch_metadata,
             downloader::start_download,
             downloader::cancel_download,
@@ -138,6 +156,7 @@ pub fn run() {
             storage::watch_library,
             storage::existing_paths,
             storage::get_storage_root,
+            storage::available_storage,
             storage::set_storage_root,
             storage::pick_storage_dir,
             storage::get_setting,

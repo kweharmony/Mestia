@@ -235,11 +235,6 @@ export async function updateVideoThumb(id: number, path: string): Promise<void> 
   await d.execute("UPDATE videos SET thumbnail_path = $1 WHERE id = $2", [path, id]);
 }
 
-export async function renameVideo(id: number, title: string): Promise<void> {
-  const d = await db();
-  await d.execute("UPDATE videos SET title = $1 WHERE id = $2", [title, id]);
-}
-
 export async function deleteVideoRow(id: number): Promise<void> {
   const d = await db();
   await d.execute("DELETE FROM videos WHERE id = $1", [id]);
@@ -321,6 +316,21 @@ export async function rebaseRoot(
 export async function listHistory(): Promise<HistoryRow[]> {
   const d = await db();
   return d.select<HistoryRow[]>("SELECT * FROM history ORDER BY timestamp DESC LIMIT 200");
+}
+
+export async function saveQueuedDownload(historyId: number, options: string): Promise<void> {
+  const d = await db();
+  await d.execute("INSERT OR REPLACE INTO download_queue (history_id, options) VALUES ($1, $2)", [historyId, options]);
+}
+
+export async function removeQueuedDownload(historyId: number): Promise<void> {
+  const d = await db();
+  await d.execute("DELETE FROM download_queue WHERE history_id = $1", [historyId]);
+}
+
+export async function listQueuedDownloads(): Promise<{ history_id: number; options: string }[]> {
+  const d = await db();
+  return d.select("SELECT history_id, options FROM download_queue ORDER BY history_id");
 }
 
 export async function insertHistory(h: {

@@ -32,6 +32,12 @@ Video and music from 1800+ sites — in a library with its own player. For deskt
 - Folders, thumbnails, drag-and-drop, multi-select, search; changes on disk are picked up automatically.
 - Player with controls over the frame, audio as a cover-art card; remembers the position of every file.
 - **Ctrl+K** command palette: paste a link, find a file, switch theme, jump to a section.
+- **File tags on desktop** — the pencil on a library card opens the embedded tag editor. Audio fields include artist, album and track number. Video fields include director, description, series, season and episode. Changes are written to the file without re-encoding.
+
+**Desktop transcription**
+- Open Transcription, choose one of nine Whisper models, then pick audio or video from the library. The model downloads from [Hugging Face](https://huggingface.co/ggerganov/whisper.cpp) on first use, and recognition runs locally.
+- Choose the spoken language or automatic detection, add timestamps, or translate to English with a compatible model. Transcription continues when switching tabs. Copy the result or save it as **TXT** or **Markdown**.
+- Choose automatic mode, CPU or NVIDIA CUDA. Mestia installs the appropriate whisper.cpp build on Windows x64. On other systems, install `whisper-cli`.
 
 **Android**
 - **Media notification** with cover art and buttons, playback with the screen off.

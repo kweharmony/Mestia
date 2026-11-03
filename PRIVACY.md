@@ -21,6 +21,7 @@ Mestia выходит в сеть только для того, что вы са
 | Сайт, ссылку на который вы вставили (YouTube, VK и т.д.) | Получить сведения о видео и скачать его. Запросы делает встроенный движок [yt-dlp](https://github.com/yt-dlp/yt-dlp) напрямую с вашего устройства. |
 | `github.com` / `objects.githubusercontent.com` | Проверка новой версии приложения при запуске (Windows, macOS, Linux) и обновление движка yt-dlp по кнопке в настройках. Передаётся только обычный HTTP-запрос к файлам релиза. |
 | `open.spotify.com`, `music.apple.com` | Только если вы вставили ссылку на трек Spotify или Apple Music — чтобы узнать исполнителя и название и найти этот трек на YouTube. |
+| Hugging Face и GitHub Releases | При запуске транскрибации Mestia скачивает отсутствующую модель Whisper с Hugging Face, а на Windows x64 при необходимости скачивает движок с GitHub Releases. Аудио, видео и результат распознавания обрабатываются на устройстве. |
 | Устройства в вашей локальной сети | Только когда включена видимость в разделе «Рядом»: UDP-анонсы и HTTP/WebSocket на порту 53318 — для обмена файлами и совместного просмотра. В интернет эти данные не уходят. |
 | Ваш прокси-сервер | Только если вы сами указали его в настройках. |
 
@@ -81,6 +82,7 @@ Mestia only goes online to do what you asked for:
 | The site whose link you pasted (YouTube, VK, etc.) | To fetch video info and download it. Requests are made directly from your device by the bundled [yt-dlp](https://github.com/yt-dlp/yt-dlp) engine. |
 | `github.com` / `objects.githubusercontent.com` | Checking for a new app version on launch (Windows, macOS, Linux) and updating yt-dlp when you press the button in Settings. Only a plain HTTP request for release files. |
 | `open.spotify.com`, `music.apple.com` | Only when you paste a Spotify or Apple Music track link — to read the artist and title and find that track on YouTube. |
+| Hugging Face and GitHub Releases | When transcription starts, Mestia downloads a missing Whisper model from Hugging Face and, on Windows x64, downloads the engine from GitHub Releases if needed. Audio, video, and transcripts are processed on your device. |
 | Devices on your local network | Only while visibility is on in “Nearby”: UDP announcements and HTTP/WebSocket on port 53318 for file sharing and watching together. This traffic never leaves your network. |
 | Your proxy server | Only if you set one in Settings. |
 

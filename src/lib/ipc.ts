@@ -224,6 +224,14 @@ export function onItem(cb: (p: ItemPayload) => void): Promise<UnlistenFn> {
   return listen<ItemPayload>("download://item", (e) => cb(e.payload));
 }
 
+export function onProcessing(cb: (id: string) => void): Promise<UnlistenFn> {
+  return listen<string>("download://processing", (e) => cb(e.payload));
+}
+
+export function availableStorage(): Promise<number> {
+  return invoke<number>("available_storage");
+}
+
 export function onDone(cb: (p: DonePayload) => void): Promise<UnlistenFn> {
   return listen<DonePayload>("download://done", (e) => cb(e.payload));
 }
@@ -256,7 +264,7 @@ export const VIDEO_FORMATS: DownloadFormat[] = [
     minHeight: 900,
     // Предпочитаем H.264/AAC: только такой mp4 гарантированно играется в Windows.
     format:
-      "bestvideo[vcodec^=avc1][height<=1080]+bestaudio[ext=m4a]/bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4][height<=1080]/best[height<=1080]",
+      "bestvideo[vcodec^=avc1][height<=1080]+bestaudio[ext=m4a]/bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[ext=mp4][height<=1080]/best[height<=?1080]",
     ext: "mp4",
     isAudio: false,
   },
@@ -265,7 +273,7 @@ export const VIDEO_FORMATS: DownloadFormat[] = [
     label: "720p · MP4",
     minHeight: 600,
     format:
-      "bestvideo[vcodec^=avc1][height<=720]+bestaudio[ext=m4a]/bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best[ext=mp4][height<=720]/best[height<=720]",
+      "bestvideo[vcodec^=avc1][height<=720]+bestaudio[ext=m4a]/bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[ext=mp4][height<=720]/best[height<=?720]",
     ext: "mp4",
     isAudio: false,
   },
@@ -274,7 +282,7 @@ export const VIDEO_FORMATS: DownloadFormat[] = [
     label: "480p · MP4",
     minHeight: 400,
     format:
-      "bestvideo[vcodec^=avc1][height<=480]+bestaudio[ext=m4a]/bestvideo[ext=mp4][height<=480]+bestaudio[ext=m4a]/best[ext=mp4][height<=480]/best[height<=480]",
+      "bestvideo[vcodec^=avc1][height<=480]+bestaudio[ext=m4a]/bestvideo[ext=mp4][height<=480]+bestaudio[ext=m4a]/bestvideo[height<=480]+bestaudio/best[ext=mp4][height<=480]/best[height<=?480]",
     ext: "mp4",
     isAudio: false,
   },

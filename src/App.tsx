@@ -9,6 +9,7 @@ import Modal from "./components/Modal";
 import Splash from "./components/Splash";
 import UpdateModal from "./components/UpdateModal";
 import DownloadsPanel from "./components/DownloadsPanel";
+import Transcription from "./views/Transcription";
 import CommandPalette from "./components/CommandPalette";
 import Downloader from "./views/Downloader";
 import Locker from "./views/Locker";
@@ -156,6 +157,8 @@ export default function App() {
         )}
         {tab === "history" && <History onPlay={openPlayer} onGoToDownloader={() => setTab("downloader")} />}
         {tab === "nearby" && <Nearby />}
+        {/* Сохраняем процесс, журнал и текст при переключении вкладок. */}
+        {!IS_ANDROID && <div hidden={tab !== "transcription"}><Transcription /></div>}
       </main>
 
       <DownloadsPanel onOpenSettings={() => setSettingsOpen(true)} />

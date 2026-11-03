@@ -19,6 +19,7 @@ import { useI18n } from "../context/LanguageContext";
 import { useToast } from "./Toast";
 import { IS_ANDROID } from "../lib/platform";
 import AnimatedNumber from "./AnimatedNumber";
+import { useLan } from "../context/LanContext";
 
 /**
  * Прогресс для полосы и подписи. Для плейлиста — агрегат по всем роликам
@@ -45,6 +46,7 @@ export function ringPercent(ds: ActiveDownload[]): number | null {
 
 export default function DownloadsPanel({ onOpenSettings }: { onOpenSettings: () => void }) {
   const { downloads, cancel, dismiss, retry } = useDownloads();
+  const { room, roomMinimized } = useLan();
   const { t } = useI18n();
   // hovering — для мыши; pinned — для тача/контроллера Steam Deck (клик по кружку).
   const [hovering, setHovering] = useState(false);
@@ -98,7 +100,7 @@ export default function DownloadsPanel({ onOpenSettings }: { onOpenSettings: () 
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.96 }}
             transition={{ duration: 0.15 }}
-            className="mestia-anim w-[min(330px,calc(100vw-2rem))] space-y-2 rounded-ui border-2 border-ink bg-snow p-3 shadow-lg"
+            className={`mestia-anim w-[min(330px,calc(100vw-2rem))] space-y-2 rounded-ui border-2 border-ink bg-snow p-3 shadow-lg ${room && roomMinimized ? "mb-20 md:mb-16" : ""}`}
           >
             <div className="flex items-center gap-2 px-1 pb-1 text-xs font-bold uppercase tracking-wider text-smoke">
               <ArrowDownToLine className="h-3.5 w-3.5 text-accent" strokeWidth={2.5} />
@@ -112,6 +114,12 @@ export default function DownloadsPanel({ onOpenSettings }: { onOpenSettings: () 
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-xs font-semibold">{d.title}</div>
                       <StatusLine d={d} />
+                      {d.isPlaylist && d.errors && d.errors.length > 1 && (
+                        <details className="text-[11px] text-rose-500">
+                          <summary>{t("dp.failedItems", { count: d.errors.length })}</summary>
+                          {d.errors.map ( (error, index) => <div key={index} className="break-words">{error}</div>)}
+                        </details>
+                      )}
                       {d.status === "error" && (
                         <ErrorCta d={d} onOpenSettings={onOpenSettings} />
                       )}
@@ -268,11 +276,11 @@ function StatusLine({ d }: { d: ActiveDownload }) {
   if (d.status === "downloading") {
     const pct = overallPercent(d);
     // 100 % у одиночного файла — yt-dlp уже склеивает потоки / встраивает метаданные.
-    const processing = !d.isPlaylist && d.percent >= 100;
+    const processing = d.processing || (!d.isPlaylist && d.percent >= 100);
     return (
       <div className="text-[11px] font-semibold text-smoke">
         {d.isPlaylist && d.totalItems
-          ? `${t("dp.videoOf", { index: d.index ?? "?", total: d.totalItems })} · `
+          ? `${t("dp.videoOf", { index: d.index ?? "?", total: d.totalItems })} · ${processing ? t("dp.processing") : ""}`
           : `${t(processing ? "dp.processing" : "dp.downloading")}${processing ? "" : " · "}`}
         {!processing && <AnimatedNumber value={pct} />}
       </div>
@@ -293,6 +301,7 @@ function StatusLine({ d }: { d: ActiveDownload }) {
   }
   return (
     <div className="truncate text-[11px] font-semibold text-rose-500">
+      {d.isPlaylist && d.doneCount > 0 && `${t("dp.downloaded", { count: d.doneCount })} · `}
       {d.error ? humanizeError(d.error) : t("dp.error")}
     </div>
   );

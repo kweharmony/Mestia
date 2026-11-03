@@ -377,6 +377,191 @@ const MEDIA_EXTS: &[&str] = &[
     "mp3", "m4a", "wav", "flac", "opus", "aac", "ogg", "oga", // аудио
 ];
 
+#[cfg(desktop)]
+const EDITABLE_TAGS: &[&str] = &[
+    "title",
+    "artist",
+    "album",
+    "album_artist",
+    "genre",
+    "date",
+    "track",
+    "disc",
+    "composer",
+    "comment",
+    "director",
+    "description",
+    "show",
+    "season_number",
+    "episode_sort",
+];
+
+#[cfg(desktop)]
+fn tag_media_path(app: &tauri::AppHandle, path: String) -> Result<PathBuf, String> {
+    let root = storage_root(app)?
+        .canonicalize()
+        .map_err(|e| e.to_string())?;
+    let path = PathBuf::from(path)
+        .canonicalize()
+        .map_err(|e| e.to_string())?;
+    let extension = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if !path.starts_with(root) || !path.is_file() {
+        return Err("Выберите файл из медиатеки Mestia".into());
+    }
+    if ![
+        "mp3", "flac", "m4a", "mp4", "m4v", "mov", "mkv", "webm", "ogg", "oga", "opus",
+    ]
+    .contains(&extension.as_str())
+    {
+        return Err("Редактирование тегов для этого формата недоступно".into());
+    }
+    Ok(path)
+}
+
+#[cfg(desktop)]
+#[tauri::command(async)]
+pub fn read_media_tags(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<std::collections::BTreeMap<String, String>, String> {
+    let path = tag_media_path(&app, path)?;
+    probe_tags(&path)
+}
+
+#[cfg(desktop)]
+fn probe_tags(
+    path: &std::path::Path,
+) -> Result<std::collections::BTreeMap<String, String>, String> {
+    let ffprobe = crate::transcription::program("ffprobe").ok_or("Не найден FFprobe")?;
+    let mut command = crate::transcription::command(&ffprobe);
+    let stream_tags = uses_stream_tags(path);
+    command.args(["-v", "error", "-show_entries", if stream_tags { "stream_tags" } else { "format_tags" }, "-of", "json"]);
+    if stream_tags {
+        command.args(["-select_streams", "a:0"]);
+    }
+    let output = command
+        .arg(path)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().into());
+    }
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).map_err(|e| e.to_string())?;
+    let mut tags = std::collections::BTreeMap::new();
+    // Ogg и Opus хранят теги на уровне аудиодорожки.
+    let source = if stream_tags { &value["streams"][0]["tags"] } else { &value["format"]["tags"] };
+    if let Some(source) = source.as_object() {
+        for (key, value) in source {
+            let key = key.to_ascii_lowercase();
+            if let Some(value) = value
+                .as_str()
+                .filter(|_| EDITABLE_TAGS.contains(&key.as_str()))
+            {
+                tags.insert(key, value.to_owned());
+            }
+        }
+    }
+    Ok(tags)
+}
+
+#[cfg(desktop)]
+fn uses_stream_tags(path: &std::path::Path) -> bool {
+    path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext|
+        ["ogg", "oga", "opus"].iter().any(|format| ext.eq_ignore_ascii_case(format)))
+}
+
+#[cfg(desktop)]
+#[tauri::command(async)]
+pub fn write_media_tags(
+    app: tauri::AppHandle,
+    path: String,
+    tags: std::collections::BTreeMap<String, String>,
+) -> Result<(), String> {
+    static EDITING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _editing = EDITING
+        .try_lock()
+        .map_err(|_| "Уже сохраняются теги другого файла")?;
+    let path = tag_media_path(&app, path)?;
+    rewrite_media_tags(&path, &tags)
+}
+
+#[cfg(desktop)]
+fn rewrite_media_tags(path: &std::path::Path, tags: &std::collections::BTreeMap<String, String>) -> Result<(), String> {
+    if tags.is_empty() {
+        return Ok(());
+    }
+    if tags.iter().any(|(key, value)| {
+        !EDITABLE_TAGS.contains(&key.as_str()) || value.contains('\0') || value.len() > 16384
+    }) {
+        return Err("Недопустимое поле или значение тега".into());
+    }
+    let ffmpeg = crate::transcription::program("ffmpeg").ok_or("Не найден FFmpeg")?;
+    let parent = path.parent().ok_or("Не удалось определить папку файла")?;
+    let ext = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let original = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+    let staging = tempfile::Builder::new()
+        .prefix(".mestia-tags-")
+        .tempdir_in(parent)
+        .map_err(|e| e.to_string())?;
+    let temp = tempfile::Builder::new().suffix(&format!(".{ext}"))
+        .tempfile_in(staging.path()).map_err(|e| e.to_string())?.into_temp_path();
+    let mut command = crate::transcription::command(&ffmpeg);
+    command
+        .args(["-nostdin", "-v", "error", "-y", "-i"])
+        .arg(&path)
+        .args([
+            "-map",
+            "0",
+            "-c",
+            "copy",
+            "-map_metadata",
+            "0",
+            "-map_chapters",
+            "0",
+        ]);
+    let scope = if uses_stream_tags(path) {
+        "-metadata:s:a:0"
+    } else {
+        "-metadata"
+    };
+    if ["m4a", "mp4", "m4v", "mov"].contains(&ext.as_str()) {
+        command.args(["-movflags", "use_metadata_tags"]);
+        if ext == "m4v" {
+            command.args(["-f", "mp4"]);
+        }
+    }
+    for (key, value) in tags {
+        command.arg(scope).arg(format!("{key}={value}"));
+    }
+    let output = command.arg(&*temp).output().map_err(|e| e.to_string())?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().into());
+    }
+    let written = probe_tags(&temp)?;
+    if tags
+        .iter()
+        .any(|(key, value)| written.get(key).map(String::as_str).unwrap_or("") != value)
+    {
+        return Err("Формат файла не сохранил все указанные теги".into());
+    }
+    let current = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+    if original.len() != current.len() || original.modified().ok() != current.modified().ok() {
+        return Err("Файл изменился во время редактирования".into());
+    }
+    std::fs::set_permissions(&temp, original.permissions()).map_err(|e| e.to_string())?;
+    temp.persist(&path).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Подпапка, найденная сканированием.
 #[derive(Serialize)]
 pub struct DirEntry {
@@ -461,6 +646,50 @@ pub(crate) fn sanitize(name: &str) -> String {
 #[tauri::command(async)]
 pub fn get_storage_root(app: tauri::AppHandle) -> Result<String, String> {
     Ok(storage_root(&app)?.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn available_storage(app: tauri::AppHandle) -> Result<u64, String> {
+    let root = storage_root(&app)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        let path =
+            std::ffi::CString::new(root.as_os_str().as_bytes()).map_err(|e| e.to_string())?;
+        let mut stats = std::mem::MaybeUninit::<libc::statvfs>::uninit();
+        if unsafe { libc::statvfs(path.as_ptr(), stats.as_mut_ptr()) } != 0 {
+            return Err(std::io::Error::last_os_error().to_string());
+        }
+        let stats = unsafe { stats.assume_init() };
+        Ok((stats.f_bavail as u64).saturating_mul(stats.f_frsize as u64))
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn GetDiskFreeSpaceExW(
+                path: *const u16,
+                free: *mut u64,
+                total: *mut u64,
+                total_free: *mut u64,
+            ) -> i32;
+        }
+        let path: Vec<u16> = root.as_os_str().encode_wide().chain(Some(0)).collect();
+        let mut free = 0;
+        if unsafe {
+            GetDiskFreeSpaceExW(
+                path.as_ptr(),
+                &mut free,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        } == 0
+        {
+            return Err(std::io::Error::last_os_error().to_string());
+        }
+        Ok(free)
+    }
 }
 
 /// Создаёт папку на диске. Если задан parent (путь родительской папки) —
@@ -1119,6 +1348,59 @@ mod tests {
         let mut names: Vec<String> = scan_media(t.str()).unwrap().into_iter().map(|m| m.name).collect();
         names.sort();
         assert_eq!(names, vec!["clip", "song"]);
+    }
+
+    #[cfg(desktop)]
+    #[test]
+    #[ignore = "Требует FFmpeg и FFprobe в PATH"]
+    fn media_tags_round_trip_without_reencoding() {
+        let dir = TempDir::new();
+        let ffmpeg = crate::transcription::program("ffmpeg").expect("ffmpeg");
+        for (ext, source, codec) in [
+            ("mp3", "sine=frequency=440:duration=0.2", "libmp3lame"),
+            ("opus", "sine=frequency=440:duration=0.2", "libopus"),
+            ("mp4", "color=c=black:s=32x32:d=0.2", "mpeg4"),
+            ("mkv", "color=c=black:s=32x32:d=0.2", "mpeg4"),
+        ] {
+            let path = dir.join(&format!("sample.{ext}"));
+            let created = crate::transcription::command(&ffmpeg)
+                .args(["-v", "error", "-f", "lavfi", "-i", source, "-c", codec, "-metadata", "title=Original", "-metadata", "genre=Test"])
+                .arg(&path).output().unwrap();
+            assert!(created.status.success(), "{ext}: {}", String::from_utf8_lossy(&created.stderr));
+            let hash = || {
+                let output = crate::transcription::command(&ffmpeg)
+                    .args(["-v", "error", "-i"]).arg(&path)
+                    .args(["-map", "0", "-c", "copy", "-f", "streamhash", "-"]).output().unwrap();
+                assert!(output.status.success());
+                output.stdout
+            };
+            let original_hash = hash();
+            assert_eq!(probe_tags(&path).unwrap()["title"], "Original");
+            rewrite_media_tags(&path, &[
+                ("title".into(), "Привет 你好".into()), ("artist".into(), "Mestia".into()),
+            ].into()).unwrap();
+            let tags = probe_tags(&path).unwrap();
+            assert_eq!(tags["title"], "Привет 你好");
+            assert_eq!(tags["artist"], "Mestia");
+            assert_eq!(tags["genre"], "Test");
+            if matches!(ext, "mp4" | "mkv") {
+                let video_tags = [
+                    ("director", "Режиссёр"),
+                    ("description", "Описание\nВторая строка"),
+                    ("show", "Сериал"),
+                    ("season_number", "2"),
+                    ("episode_sort", "7"),
+                ];
+                rewrite_media_tags(&path, &video_tags.map(|(key, value)| (key.into(), value.into())).into()).unwrap();
+                let saved = probe_tags(&path).unwrap();
+                for (key, value) in video_tags {
+                    assert_eq!(saved[key], value, "{ext}: {key}");
+                }
+            }
+            rewrite_media_tags(&path, &[("title".into(), String::new())].into()).unwrap();
+            assert!(!probe_tags(&path).unwrap().contains_key("title"));
+            assert_eq!(hash(), original_hash, "{ext}");
+        }
     }
 
     #[test]

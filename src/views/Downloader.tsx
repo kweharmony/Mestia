@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import {
   AUDIO_FORMATS,
+  availableStorage,
   DEFAULT_VIDEO_FORMAT,
   VIDEO_FORMATS,
   estimateAudioBytes,
@@ -102,6 +103,7 @@ export default function Downloader({
   const [dup, setDup] = useState<{ title: string; onConfirm: () => void } | null>(null);
   // Большой плейлист — подтверждение перед массовой загрузкой.
   const [bigWarn, setBigWarn] = useState<{ count: number; onConfirm: () => void } | null>(null);
+  const [spaceWarn, setSpaceWarn] = useState<{ required: number; available: number; onConfirm: () => void } | null>(null);
   // Сервис без прямой поддержки (Spotify/Apple/VK/Звук) — ручной поиск по названию.
   const [manual, setManual] = useState<string | null>(null);
   const [manualQuery, setManualQuery] = useState("");
@@ -307,7 +309,21 @@ export default function Downloader({
 
     // Запуск в фоне — можно сразу искать следующее. recovery="restart"
     // перезаписывает существующий файл (для повторного скачивания).
-    const launch = (recovery?: "restart") => {
+    const launch = async (recovery?: "restart") => {
+      const size = !isPlaylist ? (fmt.isAudio
+        ? estimateAudioBytes(info.duration, fmt.id)
+        : info.sizes?.[fmt.id as keyof FormatSizes]) : null;
+      if (typeof size === "number" && size > 0) {
+        const available = await availableStorage().catch(() => null);
+        const required = Math.ceil(size * 2);
+        if (available !== null && available < required) {
+          setSpaceWarn({ required, available, onConfirm: () => launchNow(recovery) });
+          return;
+        }
+      }
+      launchNow(recovery);
+    };
+    const launchNow = (recovery?: "restart") => {
       void start({
         url: searchUrl ?? url.trim(),
         format: fmt.format,
@@ -830,6 +846,16 @@ export default function Downloader({
             </div>
           </>
         )}
+      </Modal>
+      <Modal open={!!spaceWarn} onClose={() => setSpaceWarn(null)}>
+        {spaceWarn && <>
+          <h3 className="text-base font-semibold">{t("dl.spaceTitle")}</h3>
+          <p className="text-sm text-smoke">{t("dl.spaceText", { required: formatBytes(spaceWarn.required), available: formatBytes(spaceWarn.available) })}</p>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setSpaceWarn(null)} className="rounded-ui border-2 border-fog px-4 py-2">{t("common.cancel")}</button>
+            <button onClick={() => { const fn = spaceWarn.onConfirm; setSpaceWarn(null); fn(); }} className="rounded-ui border-2 border-ink bg-accent px-4 py-2 text-white">{t("dl.continueAnyway")}</button>
+          </div>
+        </>}
       </Modal>
     </div>
   );

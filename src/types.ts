@@ -10,7 +10,7 @@ export type ThemeName =
   | "forest"
   | "graphite";
 
-export type TabId = "downloader" | "locker" | "history" | "nearby";
+export type TabId = "downloader" | "locker" | "history" | "nearby" | "transcription";
 
 /** Результат получения метаданных: одиночное видео или плейлист. */
 export interface FetchResult {
@@ -80,6 +80,7 @@ export interface DonePayload {
   count: number; // сколько видео скачано
   ok: boolean;
   error: string | null;
+  errors: string[];
 }
 
 // ── Строки таблиц SQLite ──────────────────────────────────────────────────────

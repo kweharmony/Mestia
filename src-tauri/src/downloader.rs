@@ -13,6 +13,7 @@ use crate::engine::{self, RunEnd};
 // Маркеры в выводе yt-dlp, по которым отличаем строки прогресса и итоговых файлов.
 const MARK_PROGRESS: &str = "[[MP]]";
 const MARK_FILE: &str = "[[MF]]";
+const MARK_PROCESSING: &str = "[[MPOST]]";
 /// Перед загрузкой ролика: format_id ("137+140") и ожидаемые размеры потоков.
 const MARK_PARTS: &str = "[[MS]]";
 /// Папка промежуточных файлов (потоки видео/аудио, .part) внутри папки загрузки.
@@ -100,6 +101,7 @@ struct DonePayload {
     count: u32,
     ok: bool,
     error: Option<String>,
+    errors: Vec<String>,
 }
 
 /// Аргументы доступа к источнику (куки браузера) — общие для метаданных и загрузки.
@@ -424,6 +426,8 @@ pub async fn start_download(app: AppHandle, args: DownloadArgs) -> Result<(), St
         format!(
             "before_dl:{MARK_PARTS}%(format_id)s|%(requested_formats.:.filesize)j|%(requested_formats.:.filesize_approx)j"
         ),
+        "--progress-template".into(),
+        format!("postprocess:{MARK_PROCESSING}%(progress.status)s"),
         "--print".into(),
         // JSON-объект по каждому перемещённому файлу (не-ASCII → \uXXXX).
         format!("after_move:{MARK_FILE}%(.{{title,filepath,webpage_url,duration,thumbnail,extractor_key,filesize,filesize_approx}})j"),
@@ -537,9 +541,10 @@ pub async fn start_download(app: AppHandle, args: DownloadArgs) -> Result<(), St
     let id = args.id.clone();
     let mut count: u32 = 0;
     let mut last_err = String::new();
+    let mut errors = Vec::new();
     let mut combined = Combined::default();
     let end = engine::run(&app, &id, yt_args, true, |_, line| {
-        handle_line(line, &id, &app, &mut count, &mut last_err, &mut combined)
+        handle_line(line, &id, &app, &mut count, &mut last_err, &mut errors, &mut combined)
     })
     .await;
     // Пустую TMP_DIR убираем (remove_dir не тронет непустую: там .part для дозакачки
@@ -551,15 +556,14 @@ pub async fn start_download(app: AppHandle, args: DownloadArgs) -> Result<(), St
         RunEnd::Exited(code) => code,
         // Отменено, пока резолвилась ссылка: фронтенд уже показал «отменено».
         RunEnd::CancelledBeforeStart => {
-            let _ = app.emit("download://done", DonePayload { id, count: 0, ok: false, error: None });
+            let _ = app.emit("download://done", DonePayload { id, count: 0, ok: false, error: None, errors });
             return Ok(());
         }
     };
     // Успех определяем по коду выхода yt-dlp, а не только по числу перемещённых
-    // файлов: при «дозакачке» уже готовый файл пропускается (--no-overwrites) и
-    // count==0, хотя это не ошибка. Провал — ненулевой код, либо код 0, но был
-    // вывод ERROR и ни одного файла (например, весь плейлист упал под --ignore-errors).
-    let ok = code == Some(0) && (count > 0 || last_err.is_empty());
+    // файлов: при «дозакачке» готовый файл может быть пропущен. Ошибка отдельного
+    // элемента плейлиста также делает результат неуспешным.
+    let ok = code == Some(0) && last_err.is_empty();
     let error = if ok {
         None
     } else if !last_err.is_empty() {
@@ -567,7 +571,7 @@ pub async fn start_download(app: AppHandle, args: DownloadArgs) -> Result<(), St
     } else {
         Some(format!("Загрузка не завершилась успешно (код {code:?})"))
     };
-    let _ = app.emit("download://done", DonePayload { id, count, ok, error });
+    let _ = app.emit("download://done", DonePayload { id, count, ok, error, errors });
     Ok(())
 }
 
@@ -651,6 +655,7 @@ fn handle_line(
     app: &AppHandle,
     count: &mut u32,
     last_err: &mut String,
+    errors: &mut Vec<String>,
     combined: &mut Combined,
 ) {
     if let Some(rest) = line.strip_prefix(MARK_PROGRESS) {
@@ -666,6 +671,8 @@ fn handle_line(
             }
             let _ = app.emit("download://progress", p);
         }
+    } else if line.strip_prefix(MARK_PROCESSING) == Some("started") {
+        let _ = app.emit("download://processing", id.to_string());
     } else if let Some(rest) = line.strip_prefix(MARK_PARTS) {
         *combined = Combined::from_parts(rest);
     } else if let Some(rest) = line.strip_prefix(MARK_FILE) {
@@ -686,6 +693,7 @@ fn handle_line(
         }
     } else if line.contains("ERROR") {
         *last_err = line.trim().to_string();
+        errors.push(last_err.clone());
     }
 }
 

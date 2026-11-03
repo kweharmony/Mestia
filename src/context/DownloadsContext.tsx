@@ -21,6 +21,7 @@ import {
   onDone,
   onItem,
   onProgress,
+  onProcessing,
   startDownload as ipcStartDownload,
 } from "../lib/ipc";
 import { t } from "../lib/i18n";
@@ -30,6 +31,9 @@ import {
   insertHistory,
   insertVideo,
   markInterrupted,
+  listQueuedDownloads,
+  saveQueuedDownload,
+  removeQueuedDownload,
   updateHistoryStatus,
 } from "../lib/db";
 import { useToast } from "../components/Toast";
@@ -47,6 +51,8 @@ export interface ActiveDownload {
   status: DownloadStatus;
   error?: string;
   kind?: DownloadFailureKind;
+  processing?: boolean;
+  errors?: string[];
 }
 
 export interface StartOpts {
@@ -112,6 +118,7 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
   const { notify } = useToast();
   const [downloads, setDownloads] = useState<ActiveDownload[]>([]);
   const [libraryVersion, setLibraryVersion] = useState(0);
+  const [recoverable, setRecoverable] = useState<{ history_id: number; options: string }[]>([]);
   const bumpLibrary = useCallback(() => setLibraryVersion((v) => v + 1), []);
   const metaMap = useRef(new Map<string, Meta>());
   // Исходные параметры задачи — для повтора проваленной загрузки (CTA «Повторить»).
@@ -130,7 +137,10 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
 
   // При старте помечаем зависшие «downloading» как прерванные.
   useEffect(() => {
-    markInterrupted().catch(() => {});
+    void (async () => {
+      await markInterrupted();
+      setRecoverable(await listQueuedDownloads());
+    })().catch(() => {});
   }, []);
 
   // Когда активных загрузок не осталось — убираем завершённые/отменённые карточки,
@@ -159,6 +169,7 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
     activeRef.current = Math.max(0, activeRef.current - 1);
     const m = metaMap.current.get(id);
     if (m?.historyId) void updateHistoryStatus(m.historyId, "error", null);
+    if (m?.historyId) void removeQueuedDownload(m.historyId);
     metaMap.current.delete(id);
     setStatus(id, { status: "error", error: String(e), kind: classifyError(e) });
     void pumpQueue();
@@ -193,12 +204,17 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
         setDownloads((ds) =>
           ds.map((d) =>
             d.id === p.id && d.status === "downloading"
-              ? { ...d, percent: p.percent, index: p.index, totalItems: p.total_items }
+              ? { ...d, percent: p.percent, index: p.index, totalItems: p.total_items, processing: false }
               : d
           )
         );
       })
     );
+
+    reg(onProcessing((id) => {
+      setDownloads((ds) => ds.map((d) => d.id === id && d.status === "downloading"
+        ? { ...d, processing: true } : d));
+    }));
 
     reg(
       onItem(async (it) => {
@@ -237,6 +253,7 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
         if (d.ok) optsMap.current.delete(d.id); // повтор успешной не нужен
         if (m.historyId) {
           await updateHistoryStatus(m.historyId, d.ok ? "success" : "error", null);
+          await removeQueuedDownload(m.historyId);
         }
         metaMap.current.delete(d.id);
         // Не трогаем задачи, отменённые пользователем.
@@ -247,6 +264,7 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
                   ...x,
                   status: d.ok ? "done" : "error",
                   error: d.error ?? undefined,
+                  errors: d.errors,
                   kind: d.ok ? undefined : classifyError(d.error),
                 }
               : x
@@ -319,6 +337,7 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
       });
       // Запоминаем в резолвнутую папку/историю — повтор продолжит ту же загрузку.
       optsMap.current.set(id, { ...opts, outDir, folderId, historyId });
+      await saveQueuedDownload(historyId, JSON.stringify({ ...opts, outDir, folderId, historyId }));
 
       const invokeArgs: QueuedInvoke = {
         id,
@@ -387,6 +406,7 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
       await ipcCancel(id).catch(() => {});
     }
     if (m?.historyId) await updateHistoryStatus(m.historyId, "interrupted", null);
+    if (m?.historyId) await removeQueuedDownload(m.historyId);
     setStatus(id, { status: "cancelled" });
     setLibraryVersion((v) => v + 1); // обновить статусы в Истории
     notify(t("toast.cancelled"));
@@ -404,6 +424,28 @@ export function DownloadsProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={{ downloads, hasActive, libraryVersion, start, cancel, dismiss, retry, bumpLibrary }}>
       {children}
+      {recoverable.length > 0 && (
+        <div className="fixed bottom-24 left-4 z-50 max-w-sm rounded-ui border-2 border-ink bg-snow p-4 shadow-lg">
+          <p className="text-sm font-semibold">{t("dp.restoreQueue", { count: recoverable.length })}</p>
+          <div className="mt-3 flex gap-3 text-sm font-bold">
+            <button onClick={() => {
+              const entries = recoverable;
+              setRecoverable([]);
+              void (async () => {
+                for (const entry of entries) {
+                  try { await start({ ...JSON.parse(entry.options), recovery: "resume" }); }
+                  catch { /* Запись остаётся доступной после перезапуска. */ }
+                }
+              })();
+            }}>{t("dp.restore")}</button>
+            <button onClick={() => {
+              const entries = recoverable;
+              setRecoverable([]);
+              void Promise.all(entries.map((entry) => removeQueuedDownload(entry.history_id)));
+            }}>{t("dp.dismiss")}</button>
+          </div>
+        </div>
+      )}
     </Ctx.Provider>
   );
 }
