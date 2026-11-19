@@ -8,7 +8,7 @@
   <meta property="og:title" content="Mestia — загрузчик видео и медиатека" />
   <meta property="og:description" content="Скачивай. Храни. Смотри. Open source · Windows · Linux · Android." />
   <meta property="og:type" content="website" />
-  <meta property="og:image" content="media/poster.png" />
+  <meta property="og:image" content="media/poster.png?v=7b5efb7" />
   <meta name="theme-color" content="#fbfbfb" />
   <link rel="icon" id="favicon" href="data:," />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -153,8 +153,8 @@
       <a class="btn ghost" href="https://github.com/kweharmony/Mestia" data-i18n="source">Исходный код</a>
     </div>
     <div class="frame reveal" style="--i:4">
-      <video id="promo" autoplay muted loop playsinline preload="metadata" poster="media/poster.png" aria-label="Mestia promo">
-        <source src="media/promo.mp4" type="video/mp4" />
+      <video id="promo" autoplay muted loop playsinline preload="metadata" poster="media/poster.png?v=7b5efb7" aria-label="Mestia promo">
+        <source src="media/promo.mp4?v=7b5efb7" data-en-src="media/promo.en.mp4?v=7b5efb7" type="video/mp4" />
       </video>
     </div>
   </div>
@@ -412,12 +412,13 @@
 
       // ── Ролик: язык подписей + не грузим его, пока он не нужен пользователю с reduced-motion ──
       const video = document.getElementById("promo");
+      const source = video.querySelector("source");
+      const russianSource = source.getAttribute("src");
       const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
       function setVideo(lang) {
-        const src = lang === "en" ? "media/promo.en.mp4" : "media/promo.mp4";
-        const s = video.querySelector("source");
-        if (s.getAttribute("src") === src) return;
-        s.setAttribute("src", src);
+        const src = lang === "en" ? source.dataset.enSrc : russianSource;
+        if (source.getAttribute("src") === src) return;
+        source.setAttribute("src", src);
         video.load();
         if (!reduce) video.play().catch(() => {});
       }
