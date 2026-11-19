@@ -8,7 +8,7 @@ import {
 } from "react";
 import { getSetting, setSetting } from "../lib/ipc";
 import {
-  detectLang,
+  DEFAULT_LANG,
   LANGS,
   LANG_STORAGE_KEY,
   setActiveLang,
@@ -26,10 +26,10 @@ interface LanguageContextValue {
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  // localStorage — для мгновенного языка без мигания при старте; иначе — по ОС.
+  // localStorage сохраняет язык между запусками и предотвращает мигание интерфейса.
   const [lang, setLangState] = useState<Lang>(() => {
     const saved = localStorage.getItem(LANG_STORAGE_KEY) as Lang | null;
-    return saved && LANGS.includes(saved) ? saved : detectLang();
+    return saved && LANGS.includes(saved) ? saved : DEFAULT_LANG;
   });
 
   // Файл настроек (Rust) — надёжное хранилище, переживающее перезапуск.
@@ -40,7 +40,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
         if (saved && LANGS.includes(saved as Lang)) {
           setLangState(saved as Lang);
         } else {
-          // на диске пусто — сохраняем текущее (определённое по ОС) значение
+          // На диске пусто — сохраняем текущий язык.
           setSetting("lang", lang).catch(() => {});
         }
         loadedFromDisk.current = true;

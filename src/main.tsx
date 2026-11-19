@@ -8,8 +8,11 @@ import { LanguageProvider } from "./context/LanguageContext";
 import { ToastProvider } from "./components/Toast";
 import { DragProvider } from "./context/DragContext";
 import { DownloadsProvider } from "./context/DownloadsContext";
-import { LanProvider } from "./context/LanContext";
+import { IS_ANDROID } from "./lib/platform";
 import MiniPlayer from "./views/MiniPlayer";
+
+// Убираем стандартное меню WebView во всех окнах Mestia.
+if (!IS_ANDROID) document.addEventListener("contextmenu", (event) => event.preventDefault(), true);
 
 // Отдельное окно плеера: index.html?mini=<id> — рендерим только проигрыватель.
 const miniId = new URLSearchParams(window.location.search).get("mini");
@@ -25,11 +28,9 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
           ) : (
             <ToastProvider>
               <DownloadsProvider>
-                <LanProvider>
-                  <DragProvider>
-                    <App />
-                  </DragProvider>
-                </LanProvider>
+                <DragProvider>
+                  <App />
+                </DragProvider>
               </DownloadsProvider>
             </ToastProvider>
           )}

@@ -211,18 +211,15 @@ export async function reassignVideosToFolder(
 /** Вся медиатека, новые сверху (выбор файлов для отправки/комнаты). */
 export async function allVideos(): Promise<VideoRow[]> {
   const d = await db();
-  return d.select<VideoRow[]>("SELECT * FROM videos ORDER BY created_at DESC LIMIT 2000");
+  return d.select<VideoRow[]>("SELECT * FROM videos ORDER BY created_at DESC, id DESC");
 }
 
 export async function searchVideos(query: string): Promise<VideoRow[]> {
   const q = query.trim().toLowerCase();
   if (!q) return [];
-  const d = await db();
   // Фильтруем в JS: toLowerCase() корректно сворачивает регистр Unicode/кириллицы,
   // а SQL LIKE/lower() в SQLite регистронезависим только для латиницы.
-  const all = await d.select<VideoRow[]>(
-    "SELECT * FROM videos ORDER BY created_at DESC LIMIT 2000"
-  );
+  const all = await allVideos();
   return all.filter(
     (v) =>
       (v.title ?? "").toLowerCase().includes(q) ||

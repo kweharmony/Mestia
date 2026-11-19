@@ -4,7 +4,8 @@
 
 export type Lang = "ru" | "en" | "zh";
 
-export const LANGS: Lang[] = ["ru", "en", "zh"];
+export const DEFAULT_LANG: Lang = "en";
+export const LANGS: Lang[] = ["en", "ru", "zh"];
 
 /** Названия языков (в собственном написании) — для селектора в настройках. */
 export const LANG_LABELS: Record<Lang, string> = {
@@ -15,14 +16,6 @@ export const LANG_LABELS: Record<Lang, string> = {
 
 export const LANG_STORAGE_KEY = "mestia.lang";
 
-/** Определение языка по локали ОС; всё, кроме zh/en, → русский. */
-export function detectLang(): Lang {
-  const n = (navigator.language || "").toLowerCase();
-  if (n.startsWith("zh")) return "zh";
-  if (n.startsWith("en")) return "en";
-  return "ru";
-}
-
 function readInitial(): Lang {
   try {
     const saved = localStorage.getItem(LANG_STORAGE_KEY) as Lang | null;
@@ -30,7 +23,7 @@ function readInitial(): Lang {
   } catch {
     /* нет localStorage — не критично */
   }
-  return detectLang();
+  return DEFAULT_LANG;
 }
 
 // Активный язык на уровне модуля (для не-React вызовов). React-код меняет его
@@ -59,6 +52,44 @@ const DICT: Record<string, Entry> = {
   "nav.history": { ru: "История", en: "History", zh: "历史" },
   "nav.nearby": { ru: "Рядом", en: "Nearby", zh: "附近" },
   "nav.transcription": { ru: "Транскрибация", en: "Transcription", zh: "转录" },
+  "nav.addons": { ru: "Дополнения", en: "Add-ons", zh: "扩展" },
+  "addons.loading": { ru: "Загружаем список дополнений…", en: "Loading add-ons…", zh: "正在加载扩展…" },
+  "addons.loadError": { ru: "Не удалось проверить состояние дополнений.", en: "Could not check the add-ons’ status.", zh: "无法检查扩展状态。" },
+  "addons.retry": { ru: "Повторить", en: "Retry", zh: "重试" },
+  "addons.open": { ru: "Открыть", en: "Open", zh: "打开" },
+  "addons.install": { ru: "Установить", en: "Install", zh: "安装" },
+  "addons.installing": { ru: "Установка движка Whisper…", en: "Installing the Whisper engine…", zh: "正在安装 Whisper 引擎…" },
+  "addons.remove": { ru: "Удалить", en: "Uninstall", zh: "卸载" },
+  "addons.removing": { ru: "Удаление дополнения…", en: "Uninstalling add-on…", zh: "正在卸载扩展…" },
+  "addons.removeTitle": { ru: "Удалить транскрибацию?", en: "Uninstall Transcription?", zh: "要卸载转录扩展吗？" },
+  "addons.keepModels": { ru: "Сохранить скачанные модели для повторной установки", en: "Keep downloaded models for reinstallation", zh: "保留已下载的模型以便重新安装" },
+  "addons.downloadedSize": { ru: "Скачанные файлы занимают {size}", en: "Downloaded files use {size}", zh: "已下载的文件占用 {size}" },
+  "addons.removalSize": { ru: "Будет удалено {size} скачанных файлов.", en: "This will remove {size} of downloaded files.", zh: "将删除 {size} 的已下载文件。" },
+  "addons.deleteFiles": { ru: "Удалить скачанные файлы", en: "Delete downloaded files", zh: "删除已下载的文件" },
+  "addons.deleteFilesTitle": { ru: "Удалить скачанные файлы Whisper?", en: "Delete downloaded Whisper files?", zh: "要删除已下载的 Whisper 文件吗？" },
+  "addons.removePackageTitle": { ru: "Удалить «{name}»?", en: "Uninstall {name}?", zh: "要卸载{name}吗？" },
+  "addons.packageInstalling": { ru: "Установка дополнения…", en: "Installing the add-on…", zh: "正在安装扩展…" },
+  "addons.packageNotPublished": { ru: "Пакет ещё не опубликован для этой версии Mestia.", en: "This add-on has yet to be published for this version of Mestia.", zh: "此 Mestia 版本的扩展尚未发布。" },
+  "addons.androidBusy": { ru: "Завершите загрузки и активные операции «Рядом», чтобы установить или удалить дополнение.", en: "Finish active downloads and Nearby sessions before changing add-ons.", zh: "请先完成下载和附近会话，再安装或卸载扩展。" },
+  "addons.androidPermission": { ru: "Разрешите Mestia устанавливать приложения из этого источника в настройках Android.", en: "In Android settings, allow Mestia to install apps from this source.", zh: "请在 Android 设置中允许 Mestia 安装来自此来源的应用。" },
+  "addons.androidCancelled": { ru: "Операция с дополнением отменена в установщике Android.", en: "The add-on operation was cancelled in the Android installer.", zh: "已在 Android 安装程序中取消扩展操作。" },
+  "addons.packageProgress": { ru: "Скачано {size}", en: "Downloaded {size}", zh: "已下载 {size}" },
+  "addons.tags": { ru: "Редактор тегов", en: "Tag editor", zh: "标签编辑器" },
+  "addons.tagsDescription": { ru: "Редактируйте название, исполнителя, альбом и другие теги аудио и видео в медиатеке.", en: "Edit titles, artists, albums, and other audio and video tags in the library.", zh: "在媒体库中编辑音视频的标题、艺人、专辑和其他标签。" },
+  "addons.timestamps": { ru: "Таймкоды", en: "Timestamps", zh: "时间码" },
+  "addons.transcriptExport": { ru: "TXT и Markdown", en: "TXT and Markdown", zh: "TXT 和 Markdown" },
+  "addons.nearbyBusy": { ru: "Раздел занят. Завершите передачу или закройте комнату перед отключением.", en: "Nearby is busy. Finish the transfer or close the room before disabling it.", zh: "附近功能正在使用。停用前请完成传输或关闭房间。" },
+  "lib.fileActions": { ru: "Действия с файлом", en: "File actions", zh: "文件操作" },
+  "asr.action": { ru: "Расшифровать", en: "Transcribe", zh: "转录" },
+  "asr.run": { ru: "Начать распознавание", en: "Start transcription", zh: "开始转录" },
+  "asr.downloadAndRun": { ru: "Скачать модель и начать", en: "Download model and start", zh: "下载模型并开始" },
+  "asr.cachedModel": { ru: "Скачана", en: "Downloaded", zh: "已下载" },
+  "asr.downloadModel": { ru: "Скачать модель", en: "Download model", zh: "下载模型" },
+  "asr.deleteModel": { ru: "Удалить модель", en: "Delete model", zh: "删除模型" },
+  "asr.deletingModel": { ru: "Удаляем модель…", en: "Deleting model…", zh: "正在删除模型…" },
+  "asr.modelAction": { ru: "{action} {model}", en: "{action} {model}", zh: "{action} {model}" },
+  "asr.deleteModelTitle": { ru: "Удалить модель {model}?", en: "Delete the {model} model?", zh: "要删除 {model} 模型吗？" },
+  "asr.deleteModelHint": { ru: "Её можно будет скачать снова.", en: "You can download it again.", zh: "之后可以重新下载。" },
   "asr.saveFormat": { ru: "Сохранить {format}", en: "Save {format}", zh: "保存 {format}" },
   "lib.editTags": { ru: "Редактировать теги файла", en: "Edit tags in file", zh: "编辑文件内的标签" },
   "lib.tagsHint": { ru: "Теги записываются в файл. Аудио и видео сохраняются без перекодирования.", en: "Tags are written to the file without re-encoding audio or video.", zh: "标签写入文件，音频和视频无需重新编码。" },
@@ -125,11 +156,11 @@ const DICT: Record<string, Entry> = {
   "asr.auto": { ru: "Авто", en: "Automatic", zh: "自动" },
   "asr.cuda": { ru: "Видеокарта NVIDIA (CUDA)", en: "NVIDIA GPU (CUDA)", zh: "NVIDIA 显卡（CUDA）" },
   "asr.cpu": { ru: "Процессор", en: "CPU", zh: "处理器" },
-  "asr.deviceHint": { ru: "Авто пробует CUDA при обнаружении NVIDIA и при сбое использует CPU. На Windows x64 движок скачивается при первом запуске (CUDA — около 650 МБ).", en: "Automatic tries CUDA when NVIDIA is detected and falls back to the CPU. On Windows x64 the engine downloads on first use (CUDA is about 650 MB).", zh: "检测到 NVIDIA 时自动尝试 CUDA，失败后使用 CPU。Windows x64 首次使用时下载引擎（CUDA 约 650 MB）。" },
+  "asr.deviceHint": { ru: "Авто пробует CUDA при обнаружении NVIDIA и при сбое использует CPU. На Windows x64 пакет CUDA (около 650 МБ) загружается при первом использовании.", en: "Automatic tries CUDA when NVIDIA is detected and falls back to the CPU. On Windows x64 the CUDA package (about 650 MB) downloads on first use.", zh: "检测到 NVIDIA 时自动尝试 CUDA，失败后使用 CPU。Windows x64 首次使用 CUDA 时下载约 650 MB 的 CUDA 包。" },
   "asr.engine": { ru: "Загрузка движка: {size}", en: "Downloading engine: {size}", zh: "正在下载引擎：{size}" },
   "asr.fallback": { ru: "Переход на процессор", en: "Switching to CPU", zh: "正在切换到 CPU" },
   "asr.gpu": { ru: "Ядер CPU: {cores}, память NVIDIA: {memory}.", en: "CPU cores: {cores}, NVIDIA memory: {memory}.", zh: "CPU 核心：{cores}，NVIDIA 显存：{memory}。" },
-  "asr.intro": { ru: "Преобразуйте речь из файлов медиатеки в текст. Модель скачивается при первом запуске.", en: "Turn speech from library files into text. The model downloads on first use.", zh: "将媒体库文件中的语音转为文字。首次使用时下载模型。" },
+  "asr.intro": { ru: "Преобразуйте речь из файлов медиатеки в текст. Скачайте модель заранее или при первом распознавании.", en: "Turn speech from library files into text. Download a model now or when you first transcribe a file.", zh: "将媒体库文件中的语音转为文字。可提前下载模型，也可在首次转录时下载。" },
   "asr.hardware": { ru: "Логических ядер CPU: {cores}. Рекомендация ориентирована на работу без видеокарты.", en: "Logical CPU cores: {cores}. The recommendation assumes CPU processing.", zh: "逻辑 CPU 核心：{cores}。建议基于 CPU 处理。" },
   "asr.setup": { ru: "Установите whisper-cli и FFmpeg и добавьте их в PATH, затем перезапустите Mestia. Релизы whisper.cpp", en: "Install whisper-cli and FFmpeg, add them to PATH, and restart Mestia. whisper.cpp releases", zh: "安装 whisper-cli 和 FFmpeg 并加入 PATH，然后重启 Mestia。whisper.cpp 发行版" },
   "asr.model": { ru: "Модель", en: "Model", zh: "模型" },
@@ -146,6 +177,7 @@ const DICT: Record<string, Entry> = {
   "asr.error": { ru: "Ошибка: {detail}", en: "Error: {detail}", zh: "错误：{detail}" },
   "asr.log": { ru: "Журнал обработки", en: "Processing log", zh: "处理日志" },
   "asr.result": { ru: "Текст", en: "Transcript", zh: "转录文本" },
+  "asr.noSpeech": { ru: "Не удалось распознать речь в файле.", en: "No speech was recognized in this file.", zh: "未能在此文件中识别到语音。" },
   "asr.copy": { ru: "Копировать текст", en: "Copy transcript", zh: "复制文本" },
   "sidebar.collapse": { ru: "Свернуть панель", en: "Collapse sidebar", zh: "收起侧栏" },
   "sidebar.expand": { ru: "Развернуть панель", en: "Expand sidebar", zh: "展开侧栏" },
@@ -359,6 +391,7 @@ const DICT: Record<string, Entry> = {
   "lib.delete": { ru: "Удалить", en: "Delete", zh: "删除" },
   "lib.deselect": { ru: "Снять", en: "Deselect", zh: "取消选择" },
   "lib.noResults": { ru: "Ничего не найдено по запросу «{query}».", en: "No results for “{query}”.", zh: "没有找到“{query}”的结果。" },
+  "lib.searching": { ru: "Поиск в медиатеке…", en: "Searching the library…", zh: "正在搜索媒体库…" },
   "lib.emptyFolder": { ru: "В этой папке пусто.", en: "This folder is empty.", zh: "此文件夹为空。" },
   "lib.emptyRoot": {
     ru: "Пусто. Скачайте видео во вкладке «Загрузчик».",
@@ -763,7 +796,7 @@ const DICT: Record<string, Entry> = {
 /** Перевод для явно заданного языка (используется React-хуком). */
 export function translate(lang: Lang, key: string, params?: Record<string, string | number>): string {
   const entry = DICT[key];
-  const s = entry ? entry[lang] ?? entry.ru : key;
+  const s = entry ? entry[lang] ?? entry[DEFAULT_LANG] : key;
   if (!params) return s;
   return s.replace(/\{(\w+)\}/g, (_, k) => (k in params ? String(params[k]) : `{${k}}`));
 }

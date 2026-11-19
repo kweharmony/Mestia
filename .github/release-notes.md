@@ -1,8 +1,9 @@
-## Mestia 1.2.0 — транскрибация, теги и новый вид медиатеки
+## Mestia 1.2.1
 
-- **Транскрибация на компьютере.** Девять локальных моделей Whisper, выбор языка, перевод на английский для совместимых моделей и таймкоды. Результат можно скопировать или сохранить в TXT и Markdown. На Windows x64 Mestia устанавливает движок автоматически. Для GPU нужен совместимый движок NVIDIA CUDA.
-- **Редактор тегов на компьютере.** Карандаш на карточке открывает теги самого файла. Для аудио доступны музыкальные поля, для видео — режиссёр, описание, сериал, сезон и серия. Запись выполняется без перекодирования.
-- **Плитки и список.** Вид медиатеки переключается рядом с поиском и сохраняется между запусками.
-- **Загрузки.** Mestia предлагает восстановить незавершённую очередь после перезапуска, показывает этап обработки и предупреждает о возможной нехватке места, если известен размер файла.
+- **Add-ons for Windows x64 and Android.** Install or remove Tag editor and Nearby from the Add-ons tab. Android users should install the main APK for their device first. Mestia downloads the modules when requested.
+- **Desktop transcription.** Download and delete individual Whisper models. Improved recognition during silence to reduce repeated phrases.
+- **Android playback.** Control music and video from the notification shade. Fixed a background playback issue when the screen is off.
+- **Media library.** Improved folder refresh, missing-file handling, and search across the library.
+- **Desktop windows and defaults.** A second launch focuses the existing window. Fresh installations start in English with the light Clean Mono theme.
 
-Сборки для Linux, macOS и Android остаются экспериментальными. На Linux и macOS для транскрибации нужен установленный whisper-cli.
+Android requires Android 11 or later. Linux and macOS builds remain experimental. Transcription on Linux and macOS requires `whisper-cli`.

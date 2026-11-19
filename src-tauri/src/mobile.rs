@@ -26,7 +26,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
 }
 
 /// Кнопки медиапанели (уведомление, гарнитура) → событие `media://action` во фронтенд.
-/// Kotlin держит вызов `mediaListen` открытым и шлёт нажатия в канал.
+/// Kotlin сохраняет канал, полученный через `mediaListen`, и шлёт в него нажатия.
 fn listen_media_actions<R: Runtime>(app: AppHandle<R>, handle: PluginHandle<R>) {
     #[derive(Serialize)]
     struct Args {
@@ -49,6 +49,35 @@ pub fn plugin(app: &AppHandle) -> &PluginHandle<Wry> {
 
 fn call<T: DeserializeOwned>(app: &AppHandle, cmd: &str, payload: impl Serialize) -> Result<T, String> {
     plugin(app).run_mobile_plugin(cmd, payload).map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "android")]
+pub(crate) fn addon_packages(app: &AppHandle) -> Result<Value, String> {
+    call(app, "addonPackages", ())
+}
+
+#[cfg(target_os = "android")]
+pub(crate) fn addon_worker(app: &AppHandle, id: &str) -> Result<std::path::PathBuf, String> {
+    call::<PathResult>(app, "addonWorker", serde_json::json!({ "id": id })).map(|result| result.path.into())
+}
+
+#[cfg(target_os = "android")]
+#[derive(Deserialize)]
+pub(crate) struct TagTools {
+    pub ffmpeg: String,
+    pub ffprobe: String,
+    pub libs: String,
+}
+
+#[cfg(target_os = "android")]
+pub(crate) fn addon_tag_tools(app: &AppHandle) -> Result<TagTools, String> {
+    call(app, "addonTagTools", ())
+}
+
+#[cfg(target_os = "android")]
+pub(crate) async fn change_addon(app: &AppHandle, id: &str, path: Option<&std::path::Path>) -> Result<(), String> {
+    plugin(app).run_mobile_plugin_async::<Value>("changeAddon", serde_json::json!({ "id": id, "path": path }))
+        .await.map(|_| ()).map_err(|error| error.to_string())
 }
 
 #[derive(Serialize)]

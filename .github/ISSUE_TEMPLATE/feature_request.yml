@@ -1,33 +1,33 @@
-name: Идея · Feature request
-description: Предложить улучшение · Suggest an improvement
+name: Feature request · Идея
+description: Suggest an improvement · Предложить улучшение
 labels: [enhancement]
 body:
   - type: textarea
     id: problem
     attributes:
-      label: Какую задачу это решит? · What problem does it solve?
-      placeholder: Мне неудобно, когда… · It's frustrating when…
+      label: What problem does it solve? · Какую задачу это решит?
+      placeholder: It's frustrating when… · Мне неудобно, когда…
     validations:
       required: true
   - type: textarea
     id: idea
     attributes:
-      label: Как вы это видите · Proposed solution
+      label: Proposed solution · Как вы это видите
     validations:
       required: true
   - type: dropdown
     id: platforms
     attributes:
-      label: Платформы · Platforms
+      label: Platforms · Платформы
       multiple: true
       options:
         - Windows
         - Linux
         - macOS
         - Android
-        - Все · All
+        - All · Все
   - type: textarea
     id: extra
     attributes:
-      label: Дополнительно · Additional context
-      description: Скриншоты, примеры из других приложений · Screenshots, examples from other apps
+      label: Additional context · Дополнительно
+      description: Screenshots, examples from other apps · Скриншоты, примеры из других приложений

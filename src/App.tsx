@@ -9,6 +9,7 @@ import Modal from "./components/Modal";
 import Splash from "./components/Splash";
 import UpdateModal from "./components/UpdateModal";
 import DownloadsPanel from "./components/DownloadsPanel";
+import Addons from "./views/Addons";
 import Transcription from "./views/Transcription";
 import CommandPalette from "./components/CommandPalette";
 import Downloader from "./views/Downloader";
@@ -17,24 +18,82 @@ import History from "./views/History";
 import Player from "./views/Player";
 import Nearby from "./views/Nearby";
 import Room from "./views/Room";
-import { exitApp, moveAppToBack, takeSharedText } from "./lib/ipc";
+import {
+  addonPackages, exitApp, installAddonPackage, moveAppToBack, takeSharedText, transcriptionAddonStatus,
+  uninstallAddonPackage, type AddonPackageId, type AddonPackageStatus,
+} from "./lib/ipc";
 import { IS_ANDROID } from "./lib/platform";
 import { useDownloads } from "./context/DownloadsContext";
-import { useLan } from "./context/LanContext";
+import { LanProvider, useLan } from "./context/LanContext";
 import { useI18n } from "./context/LanguageContext";
 import type { TabId, VideoRow } from "./types";
 
+type CatalogState = {
+  transcription?: boolean | null;
+  packages?: Record<AddonPackageId, AddonPackageStatus>;
+};
+const RESUME_ADDONS = "mestia.resumeAddons";
+
 export default function App() {
+  const [catalog, setCatalog] = useState<CatalogState>({});
+  const [catalogError, setCatalogError] = useState(false);
+  const [catalogAttempt, setCatalogAttempt] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    setCatalogError(false);
+    async function loadCatalog() {
+      if (!IS_ANDROID) {
+        const transcription = await transcriptionAddonStatus();
+        if (!active) return;
+        setCatalog((current) => current.transcription === undefined ? { ...current, transcription } : current);
+        if (transcription === null) return;
+      }
+      const packages = await addonPackages();
+      if (active) setCatalog((current) => ({ ...current, packages }));
+    }
+    void loadCatalog().catch((error) => {
+      if (!active) return;
+      console.error(error);
+      setCatalogError(true);
+    });
+    return () => { active = false; };
+  }, [catalogAttempt]);
+
+  const nearbyEnabled = catalog.transcription === null || catalog.packages?.nearby.installed === true;
+  return (
+    <LanProvider enabled={nearbyEnabled}>
+      <AppContent catalog={catalog} nearbyEnabled={nearbyEnabled}
+        catalogError={catalogError} onCatalogRetry={() => setCatalogAttempt((n) => n + 1)}
+        onTranscriptionChange={(transcription) => setCatalog((current) => ({ ...current, transcription }))}
+        onPackageChange={(id, status) => setCatalog((current) => current.packages ? {
+          ...current, packages: { ...current.packages, [id]: status },
+        } : current)} />
+    </LanProvider>
+  );
+}
+
+function AppContent({ catalog, catalogError, onCatalogRetry, nearbyEnabled, onTranscriptionChange, onPackageChange }: {
+  catalog: CatalogState;
+  catalogError: boolean;
+  onCatalogRetry: () => void;
+  nearbyEnabled: boolean;
+  onTranscriptionChange: (installed: boolean) => void;
+  onPackageChange: (id: AddonPackageId, status: AddonPackageStatus) => void;
+}) {
   const { hasActive } = useDownloads();
   const { t } = useI18n();
-  const { room, roomMinimized, setRoomMinimized } = useLan();
-  const [tab, setTab] = useState<TabId>("downloader");
+  const { room, roomMinimized, setRoomMinimized, stopNetwork, networkBusy } = useLan();
+  const [tab, setTab] = useState<TabId>(() => IS_ANDROID && localStorage.getItem(RESUME_ADDONS) ? "addons" : "downloader");
   const [playing, setPlaying] = useState<VideoRow | null>(null);
   const [playQueue, setPlayQueue] = useState<VideoRow[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [storageVersion, setStorageVersion] = useState(0);
   const [closePrompt, setClosePrompt] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
+  const [transcriptionFile, setTranscriptionFile] = useState<VideoRow | null>();
+  const [transcriptionBusy, setTranscriptionBusy] = useState(false);
+  useEffect(() => { if (IS_ANDROID) localStorage.removeItem(RESUME_ADDONS); }, []);
   // Ссылка из «Поделиться → Mestia» (Android); n — чтобы повторная та же ссылка тоже сработала.
   const [shared, setShared] = useState<{ text: string; n: number } | null>(null);
 
@@ -140,11 +199,43 @@ export default function App() {
     setPlaying(video);
   }
 
+  function openTranscription(file: VideoRow | null = null) {
+    setTranscriptionFile(file);
+    setTab("transcription");
+  }
+
+  function changeTab(next: TabId) {
+    if (next === "transcription") openTranscription();
+    else setTab(next);
+  }
+
+  async function installPackage(id: AddonPackageId, onProgress: (bytes: number) => void) {
+    if (IS_ANDROID) localStorage.setItem(RESUME_ADDONS, "1");
+    try {
+      onPackageChange(id, await installAddonPackage(id, onProgress));
+    } finally {
+      if (IS_ANDROID) localStorage.removeItem(RESUME_ADDONS);
+    }
+  }
+
+  async function removePackage(id: AddonPackageId) {
+    if (id === "nearby" && catalog.packages?.nearby.installed) await stopNetwork();
+    if (IS_ANDROID) localStorage.setItem(RESUME_ADDONS, "1");
+    try {
+      await uninstallAddonPackage(id);
+    } finally {
+      if (IS_ANDROID) localStorage.removeItem(RESUME_ADDONS);
+    }
+    onPackageChange(id, { installed: false, present: false, bytes: 0 });
+    if (id === "nearby") setTab((current) => current === "nearby" ? "addons" : current);
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-snow text-ink">
       <Sidebar
-        active={tab}
-        onChange={setTab}
+        active={tab === "transcription" ? "addons" : tab}
+        showNearby={nearbyEnabled}
+        onChange={changeTab}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenSearch={() => setCmdOpen(true)}
         onHideToTray={hideToTray}
@@ -153,12 +244,32 @@ export default function App() {
       <main className="relative flex flex-1 flex-col overflow-y-auto pb-16 md:pb-0">
         {tab === "downloader" && <Downloader onOpenSettings={() => setSettingsOpen(true)} incoming={shared} />}
         {tab === "locker" && (
-          <Locker key={storageVersion} onPlay={openPlayer} onGoToDownloader={() => setTab("downloader")} />
+          <Locker key={storageVersion} onPlay={openPlayer} onGoToDownloader={() => setTab("downloader")}
+            tagsEnabled={catalog.packages?.tags.installed ?? (catalog.transcription === null)} canSendNearby={nearbyEnabled}
+            onTranscribe={catalog.transcription === undefined || catalog.transcription === false ? undefined : openTranscription} />
         )}
         {tab === "history" && <History onPlay={openPlayer} onGoToDownloader={() => setTab("downloader")} />}
-        {tab === "nearby" && <Nearby />}
+        {tab === "nearby" && nearbyEnabled && <Nearby />}
+        <div hidden={tab !== "addons"}>
+          <Addons active={tab === "addons"} installed={catalog.transcription} packages={catalog.packages} nearbyBusy={networkBusy}
+            downloadsBusy={hasActive}
+            loadError={catalogError} onRetry={onCatalogRetry}
+            transcriptionBusy={transcriptionBusy} onOpen={openTranscription}
+            onPackageInstall={installPackage} onPackageRemove={removePackage} onPackageOpen={(id) => setTab(id === "nearby" ? "nearby" : "locker")}
+            onInstalledChange={(installed) => {
+              onTranscriptionChange(installed);
+              if (!installed) {
+                setTranscriptionFile(undefined);
+                setTab((current) => current === "transcription" ? "addons" : current);
+              }
+            }} />
+        </div>
         {/* Сохраняем процесс, журнал и текст при переключении вкладок. */}
-        {!IS_ANDROID && <div hidden={tab !== "transcription"}><Transcription /></div>}
+        {transcriptionFile !== undefined && (
+          <div hidden={tab !== "transcription"}>
+            <Transcription file={transcriptionFile} busy={transcriptionBusy} onBusyChange={setTranscriptionBusy} />
+          </div>
+        )}
       </main>
 
       <DownloadsPanel onOpenSettings={() => setSettingsOpen(true)} />
@@ -181,11 +292,12 @@ export default function App() {
           onClose={() => setCmdOpen(false)}
           onTab={(tb) => {
             setPlaying(null);
-            setTab(tb);
+            changeTab(tb);
           }}
           onOpenSettings={() => setSettingsOpen(true)}
           onPlay={(v) => openPlayer(v)}
           onLink={openLink}
+          showNearby={nearbyEnabled}
         />
       )}
 

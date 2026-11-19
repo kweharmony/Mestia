@@ -265,8 +265,8 @@
       </div>
       <div class="panel" data-panel="android">
         <div class="files">
-          <a class="btn" data-match="_android_arm64\.apk$" href="https://github.com/kweharmony/Mestia/releases/latest">APK · arm64</a>
-          <a class="btn ghost" data-match="_android_armv7\.apk$" href="https://github.com/kweharmony/Mestia/releases/latest"><span data-i18n="armv7">APK · armv7 (старые)</span></a>
+          <a class="btn" data-match="^Mestia_[0-9].*_android_arm64\.apk$" href="https://github.com/kweharmony/Mestia/releases/latest">APK · arm64</a>
+          <a class="btn ghost" data-match="^Mestia_[0-9].*_android_armv7\.apk$" href="https://github.com/kweharmony/Mestia/releases/latest"><span data-i18n="armv7">APK · armv7 (старые)</span></a>
         </div>
         <p class="hint" data-i18n-html="androidHint"></p>
       </div>
@@ -373,8 +373,8 @@
       },
       armv7: { ru: "APK · armv7 (старые)", en: "APK · armv7 (older)" },
       androidHint: {
-        ru: "<strong>Экспериментально.</strong> Android 11+. Почти всем подходит <strong>arm64</strong>. Откройте скачанный APK — Android попросит разрешить установку. Ссылку можно отправить из YouTube или браузера: <em>Поделиться → Скачать в Mestia</em>.",
-        en: "<strong>Experimental.</strong> Android 11+. Almost every phone needs <strong>arm64</strong>. Open the downloaded APK — Android will ask to allow the install. Send links from YouTube or the browser: <em>Share → Download with Mestia</em>.",
+        ru: "Android 11+. Почти всем подходит <strong>arm64</strong>. Откройте скачанный APK и подтвердите установку. Ссылки из YouTube и браузера можно отправлять через <em>Поделиться → Скачать в Mestia</em>.",
+        en: "Android 11+. Most phones use <strong>arm64</strong>. Open the downloaded APK and confirm installation. Send links from YouTube or your browser through <em>Share → Download with Mestia</em>.",
       },
       current: { ru: "Текущая версия", en: "Current version" },
       allReleases: { ru: "все релизы", en: "all releases" },

@@ -41,6 +41,8 @@ finish-args:
   - --filesystem=home            # папка загрузок / медиатека (по умолчанию в ~)
   - --filesystem=/run/media      # microSD / внешние диски (Steam Deck монтирует сюда)
   - --talk-name=org.freedesktop.Notifications
+  - --own-name=org.com_mestia_app.SingleInstance
+  - --talk-name=org.com_mestia_app.SingleInstance
 
 modules:
   # libappindicator3.so.1 для системного трея. В рантайме GNOME его нет, а Tauri

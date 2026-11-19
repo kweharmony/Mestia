@@ -41,7 +41,7 @@ pub async fn local_media_url(app: AppHandle, path: String) -> Result<String, Str
         match g.1.get(&p) {
             Some(t) => t.clone(),
             None => {
-                let t = crate::lan::rand_id();
+                let t = crate::local_network::rand_id();
                 g.0.insert(t.clone(), p.clone());
                 g.1.insert(p, t.clone());
                 t
@@ -54,7 +54,7 @@ pub async fn local_media_url(app: AppHandle, path: String) -> Result<String, Str
         *port = Some(listener.local_addr().map_err(|e| e.to_string())?.port());
         let router = Router::new()
             .route("/m/{token}", get(serve))
-            .layer(middleware::from_fn(crate::lan::only_native_peers))
+            .layer(middleware::from_fn(crate::local_network::only_native_peers))
             .with_state(app.clone());
         tauri::async_runtime::spawn(async move {
             let _ = axum::serve(listener, router).await;

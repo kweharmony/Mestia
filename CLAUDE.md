@@ -16,7 +16,7 @@ manager, and themes.
 - **i18n:** свой лёгкий контекст без зависимостей — `src/lib/i18n.ts` (словари
   `ru`/`en`/`zh`, ключ → `{ru,en,zh}`) + `src/context/LanguageContext.tsx`
   (`useI18n().t`). Не-React код зовёт модульный `t()`. Язык хранится в настройке
-  `lang` (и `localStorage`), при первом запуске определяется по локали ОС.
+  `lang` (и `localStorage`), при первом запуске используется английский.
 - **Animation:** `framer-motion` (layout/exit transitions, sliding tab pills); global
   `<MotionConfig reducedMotion="user">` honors OS reduced-motion. Motion-animated
   elements carry the `.mestia-anim` class so the global CSS `transform`/`opacity`
@@ -63,7 +63,7 @@ docs/               GitHub Pages site, RU/EN: index.html, privacy.html, shared s
                     (8 app themes, i18n, reveal animations, release links via GitHub API),
                     media/ (promo.mp4/.webp, poster.png). Static, not part of the app build.
 PRIVACY.md, SECURITY.md, CONTRIBUTING.md, CODE_OF_CONDUCT.md  Policies (RU + EN);
-                    .github/ISSUE_TEMPLATE/ + PULL_REQUEST_TEMPLATE.md. README.md (RU) / README.en.md.
+                    .github/ISSUE_TEMPLATE/ + PULL_REQUEST_TEMPLATE.md. README.md (EN) / README.ru.md.
 scripts/            Node scripts: fetch-binaries.mjs, free-port.mjs
 src/                Frontend (React + TS)
   context/          React contexts: ThemeContext, LanguageContext (i18n), DownloadsContext (queue/events), DragContext,
@@ -85,6 +85,9 @@ src-tauri/          Backend (Rust + Tauri v2)
   src/mobile.rs     Android bridge to MestiaPlugin (storage root, thumbnails, share, update)
   src/storage.rs    Files, folders, file-watcher, thumbnails, settings
   src/lan.rs        LAN: UDP discovery, axum HTTP/WS server, file offers/uploads, watch-together room + clock sync
+  src/android_addons.rs Download and install Android split APKs via AddonInstaller.kt
+  src/addon_runtime.rs Start optional Android and Windows x64 workers over private stdio
+  addon-workers/    Separate tag editor and Nearby workers for Android and Windows x64
   src/media.rs      Android: loopback HTTP for player media (asset:// breaks audio >1 MB on Android)
   src/main.rs       Entry point -> mestia_lib::run()
   migrations/       SQLite schema

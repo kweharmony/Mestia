@@ -19,16 +19,24 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         ConnectInfo, DefaultBodyLimit, Query, Request, State,
     },
-    http::{header, StatusCode},
-    middleware::{self, Next},
+    http::StatusCode,
+    middleware,
     response::{IntoResponse, Response},
     routing::{get, post, put},
     Json, Router,
 };
+#[cfg(test)]
+use axum::http::header;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+#[cfg(not(mestia_addon))]
 use tauri::{AppHandle, Emitter, Manager};
+#[cfg(mestia_addon)]
+use crate::AppHandle;
+use crate::local_network::{only_native_peers, rand_id};
+#[cfg(test)]
+use crate::local_network::host_is_ip;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::{mpsc, oneshot, watch};
 use tower::ServiceExt;
@@ -87,7 +95,7 @@ impl Awake {
         #[cfg(mobile)]
         {
             let (app, id) = (app.clone(), id.clone());
-            tauri::async_runtime::spawn_blocking(move || crate::mobile::keep_awake(&app, &id, true));
+            tokio::task::spawn_blocking(move || crate::mobile::keep_awake(&app, &id, true));
         }
         #[cfg(desktop)]
         desktop_awake(true);
@@ -106,7 +114,7 @@ impl Awake {
             *last = Some(Instant::now());
             let pct = if total > 0 { done as f64 * 100.0 / total as f64 } else { 0.0 };
             let (app, id, name) = (self.app.clone(), self.id.clone(), name.to_string());
-            tauri::async_runtime::spawn_blocking(move || {
+            tokio::task::spawn_blocking(move || {
                 crate::mobile::download_progress(&app, &id, Some(&name), pct)
             });
         }
@@ -118,7 +126,7 @@ impl Drop for Awake {
         #[cfg(mobile)]
         {
             let (app, id) = (self.app.clone(), self.id.clone());
-            tauri::async_runtime::spawn_blocking(move || crate::mobile::keep_awake(&app, &id, false));
+            tokio::task::spawn_blocking(move || crate::mobile::keep_awake(&app, &id, false));
         }
         #[cfg(desktop)]
         desktop_awake(false);
@@ -205,7 +213,11 @@ struct Inner {
 pub struct Lan(Mutex<Inner>);
 
 fn lan(app: &AppHandle) -> MutexGuard<'_, Inner> {
-    app.state::<Lan>().inner().0.lock().unwrap_or_else(|e| e.into_inner())
+    #[cfg(not(mestia_addon))]
+    let state = app.state::<Lan>().inner();
+    #[cfg(mestia_addon)]
+    let state = &app.lan;
+    state.0.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 fn now_ms() -> f64 {
@@ -213,20 +225,6 @@ fn now_ms() -> f64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs_f64() * 1000.0)
         .unwrap_or(0.0)
-}
-
-/// Случайный идентификатор (RandomState засеивается ОС; криптостойкость не нужна).
-pub(crate) fn rand_id() -> String {
-    use std::hash::{BuildHasher, Hasher};
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let mut h = std::collections::hash_map::RandomState::new().build_hasher();
-    h.write_u128(nanos);
-    let mut h2 = std::collections::hash_map::RandomState::new().build_hasher();
-    h2.write_u64(h.finish());
-    format!("{:016x}{:016x}", h.finish(), h2.finish())
 }
 
 fn es(e: impl std::fmt::Display) -> String {
@@ -246,6 +244,7 @@ fn device_id(app: &AppHandle) -> String {
         return id;
     }
     let id = rand_id();
+    #[cfg(not(mestia_addon))]
     let _ = crate::storage::write_setting(app, "lanId", json!(id));
     id
 }
@@ -321,13 +320,13 @@ fn info(app: &AppHandle) -> LanInfo {
     }
 }
 
-#[tauri::command(async)]
+#[cfg_attr(not(mestia_addon), tauri::command(async))]
 pub fn lan_info(app: AppHandle) -> LanInfo {
     info(&app)
 }
 
 /// Включает видимость: сервер + анонсы. Повторный вызов — просто вернуть сведения.
-#[tauri::command]
+#[cfg_attr(not(mestia_addon), tauri::command)]
 pub async fn lan_start(app: AppHandle) -> Result<LanInfo, String> {
     if lan(&app).running.is_some() {
         return Ok(info(&app));
@@ -339,7 +338,7 @@ pub async fn lan_start(app: AppHandle) -> Result<LanInfo, String> {
     let port = listener.local_addr().map_err(es)?.port();
     let (stop, mut stop_rx) = watch::channel(false);
     let router = routes(app.clone());
-    tauri::async_runtime::spawn(async move {
+    tokio::spawn(async move {
         // ConnectInfo — адрес гостя нужен, чтобы раздавать предложенные им файлы.
         let _ = axum::serve(listener, router.into_make_service_with_connect_info::<SocketAddr>())
             .with_graceful_shutdown(async move {
@@ -359,7 +358,7 @@ pub async fn lan_start(app: AppHandle) -> Result<LanInfo, String> {
 }
 
 /// Выключает видимость: закрывает комнату, сервер и анонсы.
-#[tauri::command(async)]
+#[cfg_attr(not(mestia_addon), tauri::command(async))]
 pub fn lan_stop(app: AppHandle) {
     stop_room(&app);
     let running = {
@@ -379,7 +378,7 @@ pub fn lan_stop(app: AppHandle) {
     emit_peers(&app);
 }
 
-#[tauri::command(async)]
+#[cfg_attr(not(mestia_addon), tauri::command(async))]
 pub fn lan_peers(app: AppHandle) -> Vec<Peer> {
     peers_sorted(&app)
 }
@@ -395,7 +394,7 @@ fn emit_peers(app: &AppHandle) {
 }
 
 /// Добавить устройство вручную по адресу (ip или ip:port) — если анонсы не доходят.
-#[tauri::command]
+#[cfg_attr(not(mestia_addon), tauri::command)]
 pub async fn lan_probe(app: AppHandle, addr: String) -> Result<Peer, String> {
     let addr = addr.trim().trim_start_matches("http://").trim_end_matches('/').to_string();
     let addr = if addr.contains(':') { addr } else { format!("{addr}:{PORT}") };
@@ -543,30 +542,6 @@ fn routes(app: AppHandle) -> Router {
         .with_state(app)
 }
 
-/// Пускаем только Mestia с других устройств, а не веб-страницы из браузера на этом же
-/// устройстве. Браузер ставит Origin на WebSocket и на запросы через CORS — у Mestia
-/// (reqwest/tungstenite) его нет, а <video> гостя при обычной загрузке медиа его не шлёт.
-/// Host — только IP: имя вместо адреса означает DNS-rebinding.
-pub(crate) async fn only_native_peers(req: Request, next: Next) -> Response {
-    let host_ok = req
-        .headers()
-        .get(header::HOST)
-        .and_then(|h| h.to_str().ok())
-        .is_some_and(host_is_ip);
-    if req.headers().contains_key(header::ORIGIN) || !host_ok {
-        return StatusCode::FORBIDDEN.into_response();
-    }
-    next.run(req).await
-}
-
-/// «192.168.1.5», «192.168.1.5:53318», «[::1]:53318» — да; «evil.example:53318» — нет.
-fn host_is_ip(host: &str) -> bool {
-    if let Some(rest) = host.strip_prefix('[') {
-        return rest.split(']').next().is_some_and(|ip| ip.parse::<std::net::Ipv6Addr>().is_ok());
-    }
-    host.split(':').next().is_some_and(|ip| ip.parse::<Ipv4Addr>().is_ok())
-}
-
 async fn info_h(State(app): State<AppHandle>) -> Json<Value> {
     let port = lan(&app).running.as_ref().map(|r| r.port).unwrap_or(PORT);
     Json(self_payload(&app, port, false))
@@ -607,7 +582,7 @@ async fn offer_h(State(app): State<AppHandle>, Json(o): Json<Offer>) -> Response
         return StatusCode::FORBIDDEN.into_response();
     }
     let app2 = app.clone();
-    let dir = match tauri::async_runtime::spawn_blocking(move || crate::storage::storage_root(&app2)).await {
+    let dir = match tokio::task::spawn_blocking(move || crate::storage::storage_root(&app2)).await {
         Ok(Ok(d)) => d,
         _ => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     };
@@ -626,7 +601,7 @@ async fn offer_h(State(app): State<AppHandle>, Json(o): Json<Offer>) -> Response
 }
 
 /// Ответ пользователя на входящее предложение.
-#[tauri::command(async)]
+#[cfg_attr(not(mestia_addon), tauri::command(async))]
 pub fn lan_answer_offer(app: AppHandle, id: String, accept: bool) {
     let mut g = lan(&app);
     if let Some(tx) = g.offers.remove(&id) {
@@ -641,7 +616,7 @@ pub fn lan_answer_offer(app: AppHandle, id: String, accept: bool) {
 /// Имя файла от чужого устройства: только последний компонент, без запрещённых символов.
 fn safe_name(name: &str) -> String {
     let base = name.rsplit(['/', '\\']).next().unwrap_or_default();
-    let clean: String = crate::storage::sanitize(base)
+    let clean: String = crate::file_paths::sanitize(base)
         .chars()
         .filter(|c| !c.is_control())
         .collect();
@@ -670,7 +645,7 @@ async fn upload_h(State(app): State<AppHandle>, Query(q): Query<UploadQ>, body: 
         return StatusCode::FORBIDDEN;
     };
     let name = safe_name(&name);
-    let target = crate::storage::unique_path(dir.join(&name));
+    let target = crate::file_paths::unique_path(dir.join(&name));
     let tmp = dir.join(format!(".{name}.mestia-part"));
     let id = format!("{}:{}", q.session, q.file);
     let progress = |done: u64| {
@@ -725,7 +700,7 @@ async fn upload_h(State(app): State<AppHandle>, Query(q): Query<UploadQ>, body: 
     #[cfg(mobile)]
     {
         let (app, p) = (app.clone(), target.to_string_lossy().to_string());
-        tauri::async_runtime::spawn_blocking(move || crate::mobile::scan_file(&app, &p));
+        tokio::task::spawn_blocking(move || crate::mobile::scan_file(&app, &p));
     }
     let _ = app.emit("lan://progress", progress(size));
     let _ = app.emit(
@@ -738,7 +713,7 @@ async fn upload_h(State(app): State<AppHandle>, Query(q): Query<UploadQ>, body: 
 // ── Отправка файлов ─────────────────────────────────────────────────────────
 
 /// Отправить файлы на устройство addr: предложение → (после согласия) загрузка по одному.
-#[tauri::command]
+#[cfg_attr(not(mestia_addon), tauri::command)]
 pub async fn lan_send(app: AppHandle, addr: String, peer: String, paths: Vec<String>) -> Result<(), String> {
     let files: Vec<(OfferFile, PathBuf)> = paths
         .iter()
@@ -902,7 +877,7 @@ fn local_item(path: String, title: String, kind: String) -> Result<QItem, String
 }
 
 /// Открыть комнату совместного просмотра с файлом path первым в очереди.
-#[tauri::command(async)]
+#[cfg_attr(not(mestia_addon), tauri::command(async))]
 pub fn lan_room_start(app: AppHandle, path: String, title: String, kind: String) -> Result<String, String> {
     if lan(&app).running.is_none() {
         return Err("Сначала включите видимость в сети".into());
@@ -923,7 +898,7 @@ pub fn lan_room_start(app: AppHandle, path: String, title: String, kind: String)
 }
 
 /// Добавить свой файл в конец очереди.
-#[tauri::command(async)]
+#[cfg_attr(not(mestia_addon), tauri::command(async))]
 pub fn lan_room_add(app: AppHandle, path: String, title: String, kind: String) -> Result<(), String> {
     let item = local_item(path, title, kind)?;
     match lan(&app).room.as_mut() {
@@ -935,7 +910,7 @@ pub fn lan_room_add(app: AppHandle, path: String, title: String, kind: String) -
 }
 
 /// Переставить элемент очереди (delta: -1 — выше, +1 — ниже).
-#[tauri::command(async)]
+#[cfg_attr(not(mestia_addon), tauri::command(async))]
 pub fn lan_room_move(app: AppHandle, id: String, delta: i64) {
     let moved = lan(&app).room.as_mut().is_some_and(|r| move_item(&mut r.queue, &id, delta));
     if moved {
@@ -944,7 +919,7 @@ pub fn lan_room_move(app: AppHandle, id: String, delta: i64) {
 }
 
 /// Убрать элемент из очереди (текущий — нельзя: сначала переключитесь на другой).
-#[tauri::command(async)]
+#[cfg_attr(not(mestia_addon), tauri::command(async))]
 pub fn lan_room_remove(app: AppHandle, id: String) {
     let removed = lan(&app).room.as_mut().is_some_and(|r| {
         let before = r.queue.len();
@@ -959,7 +934,7 @@ pub fn lan_room_remove(app: AppHandle, id: String) {
 }
 
 /// Включить элемент очереди у всех (ведущий сам запускает его в своём плеере).
-#[tauri::command(async)]
+#[cfg_attr(not(mestia_addon), tauri::command(async))]
 pub fn lan_room_play(app: AppHandle, id: String) {
     let ok = lan(&app).room.as_mut().is_some_and(|r| {
         let found = r.queue.iter().any(|x| x.id == id);
@@ -975,7 +950,7 @@ pub fn lan_room_play(app: AppHandle, id: String) {
 }
 
 /// Очередь текущей комнаты (ведущему — свою, гостю — последнюю полученную).
-#[tauri::command(async)]
+#[cfg_attr(not(mestia_addon), tauri::command(async))]
 pub fn lan_room_queue(app: AppHandle) -> Value {
     let g = lan(&app);
     match (&g.room, &g.guest_queue) {
@@ -986,7 +961,7 @@ pub fn lan_room_queue(app: AppHandle) -> Value {
 }
 
 /// Состояние плеера ведущего → всем гостям (с меткой времени ведущего).
-#[tauri::command(async)]
+#[cfg_attr(not(mestia_addon), tauri::command(async))]
 pub fn lan_room_state(app: AppHandle, playing: bool, pos: f64, rate: f64) {
     let mut g = lan(&app);
     let Some(room) = g.room.as_mut() else {
@@ -1001,7 +976,7 @@ pub fn lan_room_state(app: AppHandle, playing: bool, pos: f64, rate: f64) {
     room.last = Some(msg);
 }
 
-#[tauri::command(async)]
+#[cfg_attr(not(mestia_addon), tauri::command(async))]
 pub fn lan_room_stop(app: AppHandle) {
     stop_room(&app);
 }
@@ -1222,7 +1197,7 @@ pub struct JoinInfo {
 }
 
 /// Подключиться к комнате на устройстве addr.
-#[tauri::command]
+#[cfg_attr(not(mestia_addon), tauri::command)]
 pub async fn lan_room_join(app: AppHandle, addr: String) -> Result<JoinInfo, String> {
     leave(&app);
     let info: Value = lan_client().build().map_err(es)?
@@ -1241,7 +1216,7 @@ pub async fn lan_room_join(app: AppHandle, addr: String) -> Result<JoinInfo, Str
         .map_err(es)?;
     let (tx, rx) = mpsc::unbounded_channel();
     lan(&app).joined = Some(tx);
-    tauri::async_runtime::spawn(guest_loop(app.clone(), ws, rx, device_name(&app), addr));
+    tokio::spawn(guest_loop(app.clone(), ws, rx, device_name(&app), addr));
     Ok(JoinInfo {
         title: info["title"].as_str().unwrap_or_default().to_string(),
         kind: info["kind"].as_str().unwrap_or("video").to_string(),
@@ -1333,7 +1308,7 @@ async fn guest_loop(
 }
 
 /// Гость: команда ведущему (play/pause/seek).
-#[tauri::command(async)]
+#[cfg_attr(not(mestia_addon), tauri::command(async))]
 pub fn lan_room_cmd(app: AppHandle, action: String, pos: f64) {
     if let Some(tx) = lan(&app).joined.as_ref() {
         let _ = tx.send(json!({ "t": "cmd", "action": action, "pos": pos }).to_string());
@@ -1341,7 +1316,7 @@ pub fn lan_room_cmd(app: AppHandle, action: String, pos: f64) {
 }
 
 /// Гость: предложить свой файл в очередь. Файл раздаёт наш сервер по одноразовому токену.
-#[tauri::command(async)]
+#[cfg_attr(not(mestia_addon), tauri::command(async))]
 pub fn lan_room_propose(app: AppHandle, path: String, title: String, kind: String) -> Result<(), String> {
     if !Path::new(&path).is_file() {
         return Err("Файл не найден".into());
@@ -1367,7 +1342,7 @@ fn leave(app: &AppHandle) {
     g.shares.clear();
 }
 
-#[tauri::command(async)]
+#[cfg_attr(not(mestia_addon), tauri::command(async))]
 pub fn lan_room_leave(app: AppHandle) {
     leave(&app);
 }

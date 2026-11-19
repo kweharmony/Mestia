@@ -1,7 +1,23 @@
+#[cfg(any(target_os = "android", all(windows, target_arch = "x86_64")))]
+mod addon_wire;
+#[cfg(any(target_os = "android", all(windows, target_arch = "x86_64")))]
+mod addon_runtime;
+#[cfg(all(windows, target_arch = "x86_64"))]
+mod addons;
+#[cfg(target_os = "android")]
+mod android_addons;
+#[cfg(desktop)]
+mod desktop_process;
 mod downloader;
+mod file_paths;
 mod engine;
+#[cfg(not(any(target_os = "android", all(windows, target_arch = "x86_64"))))]
 mod lan;
+mod local_network;
+#[cfg(not(all(windows, target_arch = "x86_64")))]
 mod media;
+#[cfg(all(desktop, any(test, not(all(windows, target_arch = "x86_64")))))]
+mod media_tags;
 #[cfg(mobile)]
 mod mobile;
 mod storage;
@@ -71,10 +87,24 @@ pub fn run() {
         },
     ];
 
-    let builder = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Первым регистрируем проверку экземпляра до запуска остальных плагинов.
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _, _| {
+        show_main(app);
+    }));
+
+    #[cfg(not(all(windows, target_arch = "x86_64")))]
+    let builder = builder.manage(media::LocalMedia::default());
+    #[cfg(not(any(target_os = "android", all(windows, target_arch = "x86_64"))))]
+    let builder = builder.manage(lan::Lan::default());
+    #[cfg(any(target_os = "android", all(windows, target_arch = "x86_64")))]
+    let builder = builder.manage(addon_runtime::AddonWorkers::default());
+    #[cfg(target_os = "android")]
+    let builder = builder.manage(android_addons::InstallLock::default());
+
+    let builder = builder
         .manage(engine::ActiveProcs::default())
-        .manage(lan::Lan::default())
-        .manage(media::LocalMedia::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
@@ -97,8 +127,13 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         // Иконка в системном трее с меню.
         .setup(|app| {
-            let show = MenuItem::with_id(app, "show", "Открыть Mestia", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
+            let (show_label, quit_label) = match storage::setting(app.handle(), "lang").as_deref() {
+                Some("ru") => ("Открыть Mestia", "Выход"),
+                Some("zh") => ("打开 Mestia", "退出"),
+                _ => ("Open Mestia", "Quit"),
+            };
+            let show = MenuItem::with_id(app, "show", show_label, true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", quit_label, true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &quit])?;
 
             TrayIconBuilder::with_id("main-tray")
@@ -139,12 +174,24 @@ pub fn run() {
             #[cfg(desktop)]
             transcription::transcription_info,
             #[cfg(desktop)]
+            transcription::download_transcription_model,
+            #[cfg(desktop)]
+            transcription::delete_transcription_model,
+            #[cfg(desktop)]
+            transcription::transcription_addon_status,
+            #[cfg(desktop)]
+            transcription::transcription_addon_storage,
+            #[cfg(desktop)]
+            transcription::install_transcription_addon,
+            #[cfg(desktop)]
+            transcription::uninstall_transcription_addon,
+            #[cfg(desktop)]
             transcription::transcribe,
             #[cfg(desktop)]
             transcription::save_transcript,
-            #[cfg(desktop)]
+            #[cfg(all(desktop, not(all(windows, target_arch = "x86_64"))))]
             storage::read_media_tags,
-            #[cfg(desktop)]
+            #[cfg(all(desktop, not(all(windows, target_arch = "x86_64"))))]
             storage::write_media_tags,
             downloader::fetch_metadata,
             downloader::start_download,
@@ -181,25 +228,61 @@ pub fn run() {
             storage::media_session,
             storage::ensure_media_access,
             storage::set_playback_active,
+            #[cfg(all(windows, target_arch = "x86_64"))]
+            addons::addon_packages,
+            #[cfg(all(windows, target_arch = "x86_64"))]
+            addons::install_addon_package,
+            #[cfg(all(windows, target_arch = "x86_64"))]
+            addons::uninstall_addon_package,
+            #[cfg(all(windows, target_arch = "x86_64"))]
+            addons::addon_command,
+            #[cfg(target_os = "android")]
+            android_addons::addon_packages,
+            #[cfg(target_os = "android")]
+            android_addons::install_addon_package,
+            #[cfg(target_os = "android")]
+            android_addons::uninstall_addon_package,
+            #[cfg(target_os = "android")]
+            android_addons::addon_command,
+            #[cfg(not(all(windows, target_arch = "x86_64")))]
             media::local_media_url,
+            #[cfg(not(any(target_os = "android", all(windows, target_arch = "x86_64"))))]
             lan::lan_info,
+            #[cfg(not(any(target_os = "android", all(windows, target_arch = "x86_64"))))]
             lan::lan_start,
+            #[cfg(not(any(target_os = "android", all(windows, target_arch = "x86_64"))))]
             lan::lan_stop,
+            #[cfg(not(any(target_os = "android", all(windows, target_arch = "x86_64"))))]
             lan::lan_peers,
+            #[cfg(not(any(target_os = "android", all(windows, target_arch = "x86_64"))))]
             lan::lan_probe,
+            #[cfg(not(any(target_os = "android", all(windows, target_arch = "x86_64"))))]
             lan::lan_answer_offer,
+            #[cfg(not(any(target_os = "android", all(windows, target_arch = "x86_64"))))]
             lan::lan_send,
+            #[cfg(not(any(target_os = "android", all(windows, target_arch = "x86_64"))))]
             lan::lan_room_start,
+            #[cfg(not(any(target_os = "android", all(windows, target_arch = "x86_64"))))]
             lan::lan_room_state,
+            #[cfg(not(any(target_os = "android", all(windows, target_arch = "x86_64"))))]
             lan::lan_room_stop,
+            #[cfg(not(any(target_os = "android", all(windows, target_arch = "x86_64"))))]
             lan::lan_room_join,
+            #[cfg(not(any(target_os = "android", all(windows, target_arch = "x86_64"))))]
             lan::lan_room_cmd,
+            #[cfg(not(any(target_os = "android", all(windows, target_arch = "x86_64"))))]
             lan::lan_room_leave,
+            #[cfg(not(any(target_os = "android", all(windows, target_arch = "x86_64"))))]
             lan::lan_room_add,
+            #[cfg(not(any(target_os = "android", all(windows, target_arch = "x86_64"))))]
             lan::lan_room_move,
+            #[cfg(not(any(target_os = "android", all(windows, target_arch = "x86_64"))))]
             lan::lan_room_remove,
+            #[cfg(not(any(target_os = "android", all(windows, target_arch = "x86_64"))))]
             lan::lan_room_play,
+            #[cfg(not(any(target_os = "android", all(windows, target_arch = "x86_64"))))]
             lan::lan_room_queue,
+            #[cfg(not(any(target_os = "android", all(windows, target_arch = "x86_64"))))]
             lan::lan_room_propose,
         ])
         .run(tauri::generate_context!())

@@ -479,6 +479,93 @@ class MestiaPlugin(private val activity: Activity) : Plugin(activity) {
         invoke.resolve()
     }
 
+    @Command
+    fun addonPackages(invoke: Invoke) {
+        invoke.resolve(AddonInstaller.packages(activity))
+    }
+
+    @Command
+    fun addonWorker(invoke: Invoke) {
+        val args = invoke.parseArgs(AddonArgs::class.java)
+        val file = AddonInstaller.worker(activity, args.id)
+        if (file == null) invoke.reject("Сначала установите дополнение в каталоге")
+        else invoke.resolve(JSObject().put("path", file.absolutePath))
+    }
+
+    @Command
+    fun addonTagTools(invoke: Invoke) {
+        pool.execute {
+            try {
+                ensureInit()
+                @Suppress("DEPRECATION")
+                val info = activity.packageManager.getApplicationInfo(activity.packageName, 0)
+                val native = File(info.nativeLibraryDir)
+                // Та же последовательность библиотек, что у встроенного yt-dlp.
+                val packages = File(activity.noBackupFilesDir, "youtubedl-android/packages")
+                val libs = listOf("python/usr/lib", "ffmpeg/usr/lib").joinToString(":") { File(packages, it).absolutePath }
+                invoke.resolve(JSObject().put("ffmpeg", File(native, "libffmpeg.so").absolutePath)
+                    .put("ffprobe", File(native, "libffprobe.so").absolutePath).put("libs", libs))
+            } catch (error: Exception) {
+                invoke.reject(error.message ?: "Не удалось запустить FFmpeg")
+            }
+        }
+    }
+
+    @Command
+    fun changeAddon(invoke: Invoke) {
+        if (activity.packageManager.canRequestPackageInstalls()) {
+            stageAddon(invoke)
+        } else {
+            startActivityForResult(invoke, Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:${activity.packageName}")), "onAddonInstallAccess")
+        }
+    }
+
+    @ActivityCallback
+    private fun onAddonInstallAccess(invoke: Invoke, result: ActivityResult) {
+        if (activity.packageManager.canRequestPackageInstalls()) stageAddon(invoke)
+        else invoke.reject("Разрешите Mestia устанавливать дополнения")
+    }
+
+    private fun stageAddon(invoke: Invoke) {
+        val args = invoke.parseArgs(AddonArgs::class.java)
+        pool.execute {
+            try {
+                AddonInstaller.change(activity.applicationContext, args, invoke)
+            } catch (error: Exception) {
+                invoke.reject(error.message ?: "Не удалось подготовить установку модуля")
+            }
+        }
+    }
+
+    /** Состояние локального плеера для системной медиапанели и фонового воспроизведения. */
+    @Command
+    fun mediaSession(invoke: Invoke) {
+        val a = invoke.parseArgs(MediaArgs::class.java)
+        val playing = if (a.active) NowPlaying(
+            title = a.title,
+            artist = a.artist,
+            artwork = a.artwork,
+            path = a.path,
+            durationMs = (a.duration * 1000).toLong(),
+            positionMs = (a.position * 1000).toLong(),
+            playing = a.playing,
+            rate = a.rate.toFloat(),
+            hasPrev = a.hasPrev,
+            hasNext = a.hasNext,
+        ) else null
+        PlaybackService.update(activity.applicationContext, playing)
+        invoke.resolve()
+    }
+
+    /** Кнопки системной медиапанели и гарнитуры возвращаются в плеер. */
+    @Command
+    fun mediaListen(invoke: Invoke) {
+        val channel = invoke.parseArgs(ChannelArgs::class.java).channel
+        PlaybackService.onAction = { channel.send(it) }
+        invoke.resolve()
+    }
+
     /** Иконка лаунчера под тему (переключится в MainActivity.onStop, см. LauncherIcon). */
     @Command
     fun setLauncherIcon(invoke: Invoke) {

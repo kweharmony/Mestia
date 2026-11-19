@@ -1,0 +1,31 @@
+[package]
+name = "mestia-addon-workers"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "mestia-addon-tags"
+path = "src/tags.rs"
+
+[[bin]]
+name = "mestia-addon-nearby"
+path = "src/nearby.rs"
+
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "ws", "tokio"] }
+futures-util = "0.3"
+if-addrs = "0.13"
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+socket2 = "0.6"
+tempfile = "3"
+tokio = { version = "1", features = ["fs", "io-std", "io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+tokio-tungstenite = "0.26"
+tokio-util = { version = "0.7", features = ["io"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["fs"] }
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+keepawake = "0.6.1"

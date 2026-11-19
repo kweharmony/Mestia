@@ -10,6 +10,7 @@ import {
   History as HistoryIcon,
   Link2,
   Music,
+  Puzzle,
   Radar,
   Search,
   Settings,
@@ -45,6 +46,7 @@ export default function CommandPalette({
   onOpenSettings,
   onPlay,
   onLink,
+  showNearby,
 }: {
   open: boolean;
   onClose: () => void;
@@ -52,6 +54,7 @@ export default function CommandPalette({
   onOpenSettings: () => void;
   onPlay: (v: VideoRow) => void;
   onLink: (text: string) => void;
+  showNearby: boolean;
 }) {
   const { t } = useI18n();
   const { theme, setTheme } = useTheme();
@@ -112,9 +115,12 @@ export default function CommandPalette({
       { id: "tab-downloader", group: "actions", label: t("nav.downloader"), icon: Download, run: done(() => onTab("downloader")) },
       { id: "tab-locker", group: "actions", label: t("nav.locker"), icon: Folders, run: done(() => onTab("locker")) },
       { id: "tab-history", group: "actions", label: t("nav.history"), icon: HistoryIcon, run: done(() => onTab("history")) },
-      { id: "tab-nearby", group: "actions", label: t("nav.nearby"), icon: Radar, run: done(() => onTab("nearby")) },
+      { id: "tab-addons", group: "actions", label: t("nav.addons"), icon: Puzzle, run: done(() => onTab("addons")) },
       { id: "settings", group: "actions", label: t("sidebar.settings"), icon: Settings, run: done(onOpenSettings) },
     ];
+    if (showNearby) {
+      actions.push({ id: "tab-nearby", group: "actions", label: t("nav.nearby"), icon: Radar, run: done(() => onTab("nearby")) });
+    }
     out.push(...actions.filter((a) => match(a.label)));
 
     for (const v of files) {
@@ -142,7 +148,7 @@ export default function CommandPalette({
       }
     }
     return out;
-  }, [query, files, theme, t, onClose, onLink, onTab, onOpenSettings, onPlay, setTheme]);
+  }, [query, files, theme, t, onClose, onLink, onTab, onOpenSettings, onPlay, setTheme, showNearby]);
 
   useEffect(() => setSel(0), [query]);
   useEffect(() => {

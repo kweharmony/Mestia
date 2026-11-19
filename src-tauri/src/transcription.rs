@@ -25,13 +25,16 @@ const MODELS: [(&str, &str); 9] = [
 ];
 const ENGINE_RELEASE: &str = "b5454";
 const AUTO_INSTALL: bool = cfg!(all(windows, target_arch = "x86_64"));
+const ADDON_SETTING: &str = "transcriptionAddon";
+const ENGINE_CACHE: &str = "transcription-engine";
+const MODEL_CACHE: &str = "transcription-models";
 
 fn engine_dir(app: &AppHandle, cuda: bool) -> Result<PathBuf, String> {
     Ok(app
         .path()
         .app_data_dir()
         .map_err(|e| e.to_string())?
-        .join("transcription-engine")
+        .join(ENGINE_CACHE)
         .join(ENGINE_RELEASE)
         .join(if cuda { "cuda" } else { "cpu" }))
 }
@@ -162,10 +165,122 @@ async fn ensure_engine(
 static BUSY: AtomicBool = AtomicBool::new(false);
 
 struct Job;
+impl Job {
+    fn start() -> Result<Self, String> {
+        if BUSY.swap(true, Ordering::AcqRel) {
+            return Err("Транскрибация уже выполняется".into());
+        }
+        Ok(Self)
+    }
+}
+
 impl Drop for Job {
     fn drop(&mut self) {
         BUSY.store(false, Ordering::Release);
     }
+}
+
+fn addon_installed(app: &AppHandle) -> bool {
+    crate::storage::setting(app, ADDON_SETTING).as_deref() == Some("installed")
+}
+
+fn require_addon(app: &AppHandle) -> Result<(), String> {
+    if AUTO_INSTALL && !addon_installed(app) {
+        return Err("Установите дополнение «Транскрибация»".into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn transcription_addon_status(app: AppHandle) -> Option<bool> {
+    AUTO_INSTALL.then(|| addon_installed(&app))
+}
+
+fn cache_size(path: &Path) -> std::io::Result<u64> {
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(error) => return Err(error),
+    };
+    if metadata.is_file() {
+        return Ok(metadata.len());
+    }
+    if !metadata.is_dir() {
+        return Ok(0);
+    }
+    let entries = match std::fs::read_dir(path) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(error) => return Err(error),
+    };
+    let mut total = 0;
+    for entry in entries {
+        total += cache_size(&entry?.path())?;
+    }
+    Ok(total)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddonStorage {
+    engine_bytes: u64,
+    model_bytes: u64,
+}
+
+#[tauri::command(async)]
+pub fn transcription_addon_storage(app: AppHandle) -> Result<AddonStorage, String> {
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    Ok(AddonStorage {
+        engine_bytes: cache_size(&dir.join(ENGINE_CACHE)).map_err(|e| e.to_string())?,
+        model_bytes: cache_size(&dir.join(MODEL_CACHE)).map_err(|e| e.to_string())?,
+    })
+}
+
+#[tauri::command]
+pub async fn install_transcription_addon(
+    app: AppHandle,
+    updates: Channel<Update>,
+) -> Result<(), String> {
+    if !AUTO_INSTALL {
+        return Err("Дополнение доступно на Windows x64".into());
+    }
+    let _job = Job::start()?;
+    ensure_engine(&app, false, &updates).await?;
+    crate::storage::write_setting(&app, ADDON_SETTING, serde_json::json!("installed"))
+}
+
+fn remove_addon_files(data_dir: &Path, keep_models: bool) -> std::io::Result<()> {
+    let remove_cache = |name| match std::fs::remove_dir_all(data_dir.join(name)) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        result => result,
+    };
+    remove_cache(ENGINE_CACHE)?;
+    if !keep_models {
+        remove_cache(MODEL_CACHE)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn uninstall_transcription_addon(
+    app: AppHandle,
+    keep_models: bool,
+) -> Result<(), String> {
+    if !AUTO_INSTALL {
+        return Err("Дополнение доступно на Windows x64".into());
+    }
+    let job = Job::start()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let _job = job;
+        let data_dir = app
+            .path()
+            .app_data_dir()
+            .map_err(|error| error.to_string())?;
+        remove_addon_files(&data_dir, keep_models).map_err(|error| error.to_string())?;
+        crate::storage::write_setting(&app, ADDON_SETTING, serde_json::json!("removed"))
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 pub(crate) fn program(name: &str) -> Option<PathBuf> {
@@ -184,15 +299,7 @@ pub(crate) fn program(name: &str) -> Option<PathBuf> {
         .find(|path| path.is_file())
 }
 
-pub(crate) fn command(path: &Path) -> Command {
-    let mut command = Command::new(path);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x08000000);
-    }
-    command
-}
+pub(crate) use crate::desktop_process::command;
 
 #[derive(Serialize)]
 pub struct Info {
@@ -200,13 +307,26 @@ pub struct Info {
     recommended: &'static str,
     ready: bool,
     vram: Option<u32>,
+    cached_models: Vec<&'static str>,
 }
 
 #[tauri::command]
-pub async fn transcription_info() -> Result<Info, String> {
-    tauri::async_runtime::spawn_blocking(detect)
-        .await
-        .map_err(|e| e.to_string())
+pub async fn transcription_info(app: AppHandle) -> Result<Info, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let dir = app
+            .path()
+            .app_data_dir()
+            .map_err(|error| error.to_string())?;
+        let mut info = detect();
+        info.cached_models = MODELS
+            .iter()
+            .map(|&(name, _)| name)
+            .filter(|name| model_path(&dir, name).is_file())
+            .collect();
+        Ok(info)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 fn detect() -> Info {
@@ -242,6 +362,7 @@ fn detect() -> Info {
             }
         },
         ready: (AUTO_INSTALL || program("whisper-cli").is_some()) && program("ffmpeg").is_some(),
+        cached_models: Vec::new(),
     }
 }
 
@@ -329,6 +450,151 @@ impl TranscriptionOptions {
     }
 }
 
+fn silence_intervals(metadata: &str) -> Vec<(f64, f64)> {
+    let mut intervals = Vec::new();
+    let mut start = None;
+    for line in metadata.lines() {
+        if let Some(value) = line.strip_prefix("lavfi.silence_start=") {
+            start = value.parse::<f64>().ok();
+        } else if let Some(value) = line.strip_prefix("lavfi.silence_end=") {
+            if let (Some(start), Ok(end)) = (start.take(), value.parse::<f64>()) {
+                intervals.push((start, end));
+            }
+        }
+    }
+    // FFmpeg не пишет конец тишины в метаданные, если дальше идёт конец файла.
+    if let Some(start) = start {
+        intervals.push((start, f64::INFINITY));
+    }
+    intervals
+}
+
+fn subtitle_seconds(timestamp: &str) -> Option<f64> {
+    let (clock, millis) = timestamp.split_once(',')?;
+    let (hours, rest) = clock.split_once(':')?;
+    let (minutes, seconds) = rest.split_once(':')?;
+    Some(
+        hours.parse::<u32>().ok()? as f64 * 3600.0
+            + minutes.parse::<u32>().ok()? as f64 * 60.0
+            + seconds.parse::<u32>().ok()? as f64
+            + millis.parse::<u32>().ok()? as f64 / 1000.0,
+    )
+}
+
+fn remove_silent_subtitles(srt: &str, silences: &[(f64, f64)], timestamps: bool) -> Option<String> {
+    let normalized = srt.replace("\r\n", "\n");
+    let mut output = String::new();
+    let mut index = 1;
+    let mut removed = false;
+    for block in normalized.trim_end_matches('\n').split("\n\n") {
+        let (_, rest) = block.split_once('\n')?;
+        let (timing, text) = rest.split_once('\n')?;
+        let (from, to) = timing.split_once(" --> ")?;
+        let from = subtitle_seconds(from)?;
+        let to = subtitle_seconds(to)?;
+        if silences
+            .iter()
+            .any(|&(start, end)| from >= start && to <= end)
+        {
+            removed = true;
+            continue;
+        }
+
+        if timestamps {
+            output.push_str(&format!("{index}\n{timing}\n{text}\n\n"));
+            index += 1;
+        } else {
+            output.push_str(text);
+            output.push('\n');
+        }
+    }
+    removed.then_some(output)
+}
+
+fn model_spec(model: &str) -> Result<(&'static str, &'static str), String> {
+    MODELS
+        .iter()
+        .copied()
+        .find(|(name, _)| *name == model)
+        .ok_or_else(|| "Неизвестная модель".into())
+}
+
+fn model_path(data_dir: &Path, name: &str) -> PathBuf {
+    data_dir.join(MODEL_CACHE).join(format!("ggml-{name}.bin"))
+}
+
+async fn ensure_model(
+    data_dir: &Path,
+    (name, checksum): (&str, &str),
+    updates: &Channel<Update>,
+) -> Result<PathBuf, String> {
+    let model_path = model_path(data_dir, name);
+    if !model_path.is_file() {
+        let dir = data_dir.join(MODEL_CACHE);
+        tokio::fs::create_dir_all(&dir)
+            .await
+            .map_err(|e| e.to_string())?;
+        let temp = tempfile::NamedTempFile::new_in(&dir)
+            .map_err(|e| e.to_string())?
+            .into_temp_path();
+        let mut file = tokio::fs::File::create(&temp)
+            .await
+            .map_err(|e| e.to_string())?;
+        let mut response = reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(15))
+            .read_timeout(std::time::Duration::from_secs(60))
+            .build().map_err(|e| e.to_string())?
+            .get(format!("https://huggingface.co/ggerganov/whisper.cpp/resolve/87cd18b47b941d2f65d09981dad23bb7d0481c77/ggml-{name}.bin"))
+            .send().await.and_then(reqwest::Response::error_for_status).map_err(|e| e.to_string())?;
+        let mut hash = Sha1::new();
+        let mut bytes = 0;
+        let _ = updates.send(Update::Download(0));
+        while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+            file.write_all(&chunk).await.map_err(|e| e.to_string())?;
+            hash.update(&chunk);
+            bytes += chunk.len() as u64;
+            let _ = updates.send(Update::Download(bytes));
+        }
+        file.flush().await.map_err(|e| e.to_string())?;
+        drop(file);
+        if format!("{:x}", hash.finalize()) != checksum {
+            return Err("Контрольная сумма модели не совпала".into());
+        }
+        temp.persist(&model_path).map_err(|e| e.to_string())?;
+    }
+    Ok(model_path)
+}
+
+#[tauri::command]
+pub async fn download_transcription_model(
+    app: AppHandle,
+    model: String,
+    updates: Channel<Update>,
+) -> Result<(), String> {
+    let _job = Job::start()?;
+    require_addon(&app)?;
+    let spec = model_spec(&model)?;
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    ensure_model(&dir, spec, &updates).await.map(|_| ())
+}
+
+async fn remove_model(data_dir: &Path, model: &str) -> Result<(), String> {
+    let (name, _) = model_spec(model)?;
+    match tokio::fs::remove_file(model_path(data_dir, name)).await {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+#[tauri::command]
+pub async fn delete_transcription_model(app: AppHandle, model: String) -> Result<(), String> {
+    let _job = Job::start()?;
+    require_addon(&app)?;
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    remove_model(&dir, &model).await
+}
+
 #[tauri::command]
 pub async fn transcribe(
     app: AppHandle,
@@ -337,10 +603,9 @@ pub async fn transcribe(
     updates: Channel<Update>,
     options: Option<TranscriptionOptions>,
 ) -> Result<String, String> {
-    if BUSY.swap(true, Ordering::AcqRel) {
-        return Err("Транскрибация уже выполняется".into());
-    }
-    let job = Job;
+    let job = Job::start()?;
+    require_addon(&app)?;
+    let spec = model_spec(&model)?;
     let options = options.unwrap_or_default();
     let language = options.language_for(&model)?.to_owned();
     let ffmpeg = program("ffmpeg").ok_or("Не найден FFmpeg")?;
@@ -372,49 +637,8 @@ pub async fn transcribe(
     } else {
         None
     };
-    let (name, checksum) = MODELS
-        .iter()
-        .copied()
-        .find(|(name, _)| *name == model)
-        .ok_or("Неизвестная модель")?;
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("transcription-models");
-    tokio::fs::create_dir_all(&dir)
-        .await
-        .map_err(|e| e.to_string())?;
-    let model_path = dir.join(format!("ggml-{name}.bin"));
-    if !model_path.is_file() {
-        let temp = tempfile::NamedTempFile::new_in(&dir)
-            .map_err(|e| e.to_string())?
-            .into_temp_path();
-        let mut file = tokio::fs::File::create(&temp)
-            .await
-            .map_err(|e| e.to_string())?;
-        let mut response = reqwest::Client::builder()
-            .connect_timeout(std::time::Duration::from_secs(15))
-            .read_timeout(std::time::Duration::from_secs(60))
-            .build().map_err(|e| e.to_string())?
-            .get(format!("https://huggingface.co/ggerganov/whisper.cpp/resolve/87cd18b47b941d2f65d09981dad23bb7d0481c77/ggml-{name}.bin"))
-            .send().await.and_then(reqwest::Response::error_for_status).map_err(|e| e.to_string())?;
-        let mut hash = Sha1::new();
-        let mut bytes = 0;
-        let _ = updates.send(Update::Download(0));
-        while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
-            file.write_all(&chunk).await.map_err(|e| e.to_string())?;
-            hash.update(&chunk);
-            bytes += chunk.len() as u64;
-            let _ = updates.send(Update::Download(bytes));
-        }
-        file.flush().await.map_err(|e| e.to_string())?;
-        drop(file);
-        if format!("{:x}", hash.finalize()) != checksum {
-            return Err("Контрольная сумма модели не совпала".into());
-        }
-        temp.persist(&model_path).map_err(|e| e.to_string())?;
-    }
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let model_path = ensure_model(&dir, spec, &updates).await?;
     tauri::async_runtime::spawn_blocking(move || {
         let _job = job;
         let dir = tempfile::tempdir().map_err(|e| e.to_string())?;
@@ -422,6 +646,7 @@ pub async fn transcribe(
         let output = dir.path().join("transcript");
         let _ = updates.send(Update::Prepare);
         let mut cmd = command(&ffmpeg);
+        cmd.current_dir(dir.path());
         cmd.args([
             "-nostdin",
             "-hide_banner",
@@ -431,9 +656,14 @@ pub async fn transcribe(
             "-i",
         ])
         .arg(input)
+        .args([
+            "-af",
+            "aresample=16000,aformat=channel_layouts=mono,silencedetect=noise=-55dB:d=2,ametadata=mode=print:file=silence.log",
+        ])
         .args(["-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le"])
         .arg(&wav);
         run(cmd, &updates)?;
+        let silences = silence_intervals(&std::fs::read_to_string(dir.path().join("silence.log")).unwrap_or_default());
         let _ = updates.send(Update::Recognize);
         let recognize = |engine: &Path, cpu: bool| {
             let mut cmd = command(engine);
@@ -441,14 +671,15 @@ pub async fn transcribe(
                 .arg(&model_path)
                 .arg("-f")
                 .arg(&wav)
-                .args([
-                    "-l",
-                    &language,
-                    "-pp",
-                    if options.timestamps { "-osrt" } else { "-otxt" },
-                    "-of",
-                ])
+                // Предыдущая реплика не должна становиться подсказкой для следующего участка.
+                .args(["-l", &language, "-pp", "--max-context", "0", "-of"])
                 .arg(&output);
+            if options.timestamps || !silences.is_empty() {
+                cmd.arg("-osrt");
+            }
+            if !options.timestamps {
+                cmd.arg("-otxt");
+            }
             if options.translate {
                 cmd.arg("-tr");
             }
@@ -457,16 +688,28 @@ pub async fn transcribe(
             }
             run(cmd, &updates)
         };
+        let read_result = || -> Result<String, String> {
+            let text = std::fs::read_to_string(output.with_extension(options.output_extension()))
+                .map_err(|e| e.to_string())?;
+            if silences.is_empty() {
+                return Ok(text);
+            }
+            let srt = if options.timestamps {
+                std::borrow::Cow::Borrowed(text.as_str())
+            } else if let Ok(srt) = std::fs::read_to_string(output.with_extension("srt")) {
+                std::borrow::Cow::Owned(srt)
+            } else {
+                return Ok(text);
+            };
+            Ok(remove_silent_subtitles(&srt, &silences, options.timestamps).unwrap_or(text))
+        };
         if let Some(engine) = gpu_engine {
             match recognize(&engine, false) {
                 Ok(used_cuda) if used_cuda || device != "gpu" => {
                     if !used_cuda {
                         let _ = updates.send(Update::CpuFallback);
                     }
-                    return std::fs::read_to_string(
-                        output.with_extension(options.output_extension()),
-                    )
-                    .map_err(|e| e.to_string());
+                    return read_result();
                 }
                 Ok(false) if device == "gpu" => {
                     return Err("whisper.cpp не смог запустить CUDA".into())
@@ -478,8 +721,7 @@ pub async fn transcribe(
             }
         }
         recognize(&cpu_engine.ok_or("Не найден движок CPU")?, true)?;
-        std::fs::read_to_string(output.with_extension(options.output_extension()))
-            .map_err(|e| e.to_string())
+        read_result()
     })
     .await
     .map_err(|e| e.to_string())?
@@ -563,11 +805,83 @@ mod tests {
     use super::*;
 
     #[test]
+    fn filters_silent_repetitions_and_preserves_spoken_repetitions_and_times() {
+        let log = "lavfi.silence_start=1.2\r\nlavfi.silence_end=4.5\r\nlavfi.silence_start=7.2\r\n";
+        let srt = concat!(
+            "1\r\n00:00:00,000 --> 00:00:01,000\r\nПовтор.\r\n\r\n",
+            "2\r\n00:00:02,000 --> 00:00:03,000\r\nПовтор.\r\n\r\n",
+            "3\r\n00:00:05,000 --> 00:00:06,000\r\nПовтор.\r\n\r\n",
+            "4\r\n00:00:10,000 --> 00:00:11,000\r\nПовтор.\r\n\r\n",
+        );
+        let silences = silence_intervals(log);
+        assert_eq!(
+            remove_silent_subtitles(srt, &silences, true).as_deref(),
+            Some(concat!(
+                "1\n00:00:00,000 --> 00:00:01,000\nПовтор.\n\n",
+                "2\n00:00:05,000 --> 00:00:06,000\nПовтор.\n\n",
+            ))
+        );
+        assert_eq!(
+            remove_silent_subtitles(srt, &silences, false).as_deref(),
+            Some("Повтор.\nПовтор.\n")
+        );
+    }
+
+    #[test]
+    fn removing_addon_can_keep_models_for_reinstallation() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let engines = data_dir.path().join(ENGINE_CACHE);
+        let models = data_dir.path().join(MODEL_CACHE);
+        std::fs::create_dir_all(engines.join(ENGINE_RELEASE).join("cpu")).unwrap();
+        std::fs::create_dir_all(engines.join(ENGINE_RELEASE).join("cuda")).unwrap();
+        std::fs::write(
+            engines.join(ENGINE_RELEASE).join("cpu/whisper-cli.exe"),
+            b"cpu",
+        )
+        .unwrap();
+        std::fs::write(
+            engines.join(ENGINE_RELEASE).join("cuda/whisper-cli.exe"),
+            b"cuda",
+        )
+        .unwrap();
+        std::fs::create_dir(&models).unwrap();
+        let model = models.join("ggml-tiny.bin");
+        std::fs::write(&model, b"model").unwrap();
+        assert_eq!(cache_size(&engines).unwrap(), 7);
+
+        remove_addon_files(data_dir.path(), true).unwrap();
+        assert_eq!(cache_size(&engines).unwrap(), 0);
+        assert_eq!(cache_size(&models).unwrap(), 5);
+
+        remove_addon_files(data_dir.path(), false).unwrap();
+        assert!(!models.exists());
+        assert_eq!(cache_size(&models).unwrap(), 0);
+        remove_addon_files(data_dir.path(), false).unwrap();
+    }
+
+    #[test]
     fn export_preserves_unicode_and_plain_text() {
         let text = "Привет\n你好\n";
         for format in ["txt", "md"] {
             assert_eq!(export_content(text, format, false), text);
         }
+    }
+
+    #[tokio::test]
+    async fn removing_one_model_preserves_other_cached_models() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let tiny = model_path(data_dir.path(), "tiny");
+        let base = model_path(data_dir.path(), "base");
+        std::fs::create_dir(tiny.parent().unwrap()).unwrap();
+        std::fs::write(&tiny, b"tiny").unwrap();
+        std::fs::write(&base, b"base").unwrap();
+
+        assert!(remove_model(data_dir.path(), "../base").await.is_err());
+        remove_model(data_dir.path(), "tiny").await.unwrap();
+        remove_model(data_dir.path(), "tiny").await.unwrap();
+
+        assert!(!tiny.exists());
+        assert_eq!(std::fs::read(base).unwrap(), b"base");
     }
 
     #[test]

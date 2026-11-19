@@ -1,16 +1,16 @@
-name: Ошибка · Bug report
-description: Что-то работает не так · Something doesn't work
+name: Bug report · Ошибка
+description: Something doesn't work · Что-то работает не так
 labels: [bug]
 body:
   - type: markdown
     attributes:
       value: |
-        Спасибо за отчёт! Уязвимости — не сюда, а по [SECURITY.md](../blob/main/SECURITY.md).
         Thanks for the report! Security issues go to [SECURITY.md](../blob/main/SECURITY.md), not here.
+        Спасибо за отчёт! Уязвимости — не сюда, а по [SECURITY.md](../blob/main/SECURITY.md).
   - type: dropdown
     id: platform
     attributes:
-      label: Платформа · Platform
+      label: Platform · Платформа
       options:
         - Windows
         - Linux (.deb)
@@ -23,20 +23,20 @@ body:
   - type: input
     id: version
     attributes:
-      label: Версия Mestia · Mestia version
-      description: Из имени установщика/APK или страницы релиза · From the installer/APK name or release page
+      label: Mestia version · Версия Mestia
+      description: From the installer/APK name or release page · Из имени установщика/APK или страницы релиза
       placeholder: "1.0.0"
     validations:
       required: true
   - type: input
     id: link
     attributes:
-      label: Ссылка, на которой воспроизводится · Example link
-      description: Если ошибка при загрузке · If it's a download problem
+      label: Example link · Ссылка, на которой воспроизводится
+      description: If it's a download problem · Если ошибка при загрузке
   - type: textarea
     id: steps
     attributes:
-      label: Шаги · Steps to reproduce
+      label: Steps to reproduce · Шаги
       placeholder: |
         1. …
         2. …
@@ -45,11 +45,11 @@ body:
   - type: textarea
     id: expected
     attributes:
-      label: Что ожидали и что получили · Expected vs actual
+      label: Expected vs actual · Что ожидали и что получили
     validations:
       required: true
   - type: textarea
     id: logs
     attributes:
-      label: Текст ошибки, скриншот · Error text, screenshot
-      description: Можно вставить картинку · You can paste an image
+      label: Error text, screenshot · Текст ошибки, скриншот
+      description: You can paste an image · Можно вставить картинку

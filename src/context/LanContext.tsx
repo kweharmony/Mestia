@@ -41,6 +41,8 @@ interface LanValue {
   transfers: LanProgress[];
   room: LanRoom | null;
   setVisible: (on: boolean) => Promise<void>;
+  stopNetwork: () => Promise<void>;
+  networkBusy: boolean;
   rename: (name: string) => Promise<void>;
   clearTransfers: () => void;
   hostRoom: (video: VideoRow) => Promise<void>;
@@ -69,7 +71,7 @@ export function useLan(): LanValue {
  * Локальная сеть: видимость устройства, найденные устройства, передачи файлов,
  * входящие предложения (модалка здесь — чтобы появлялась на любой вкладке) и комната.
  */
-export function LanProvider({ children }: { children: ReactNode }) {
+export function LanProvider({ enabled, children }: { enabled: boolean; children: ReactNode }) {
   const { t } = useI18n();
   const { notify } = useToast();
   const { bumpLibrary } = useDownloads();
@@ -80,8 +82,12 @@ export function LanProvider({ children }: { children: ReactNode }) {
   const [room, setRoom] = useState<LanRoom | null>(null);
   const [roomMinimized, setRoomMinimized] = useState(false);
   const [sending, setSending] = useState<Set<string>>(new Set());
+  const [restoring, setRestoring] = useState(false);
+  const [connecting, setConnecting] = useState(0);
 
   useEffect(() => {
+    if (!enabled) return;
+    let active = true;
     const subs = [
       listen<LanPeer[]>("lan://peers", (e) => setPeers(e.payload)),
       listen<LanOffer>("lan://offer", (e) => setOffers((o) => [...o, e.payload])),
@@ -101,28 +107,43 @@ export function LanProvider({ children }: { children: ReactNode }) {
       }),
     ];
     // Видимость включена в прошлый раз — включаем снова при запуске.
-    lanInfo().then(setInfo).catch(() => {});
+    lanInfo().then((value) => active && setInfo(value)).catch(() => {});
+    setRestoring(true);
     getSetting("lanVisible")
-      .then((v) => (v === "1" ? lanStart().then(setInfo) : undefined))
-      .catch(() => {});
-    lanPeers().then(setPeers).catch(() => {});
-    return () => subs.forEach((s) => s.then((u) => u()));
-  }, [t, notify, bumpLibrary]);
+      .then(async (value) => {
+        if (!active || value !== "1") return;
+        const network = await lanStart();
+        if (active) setInfo(network);
+      })
+      .catch(() => {})
+      .finally(() => { if (active) setRestoring(false); });
+    lanPeers().then((value) => active && setPeers(value)).catch(() => {});
+    return () => {
+      active = false;
+      subs.forEach((s) => s.then((u) => u()).catch(() => {}));
+    };
+  }, [enabled, t, notify, bumpLibrary]);
+
+  const stopNetwork = useCallback(async () => {
+    await lanStop();
+    setInfo(await lanInfo());
+  }, []);
 
   const setVisible = useCallback(
     async (on: boolean) => {
+      if (!enabled) return;
+      setConnecting((n) => n + 1);
       try {
         if (on) setInfo(await lanStart());
-        else {
-          await lanStop();
-          setInfo(await lanInfo());
-        }
+        else await stopNetwork();
         await setSetting("lanVisible", on ? "1" : "0");
       } catch (e) {
         notify(humanizeError(e), "error");
+      } finally {
+        setConnecting((n) => n - 1);
       }
     },
-    [notify]
+    [enabled, notify, stopNetwork]
   );
 
   const rename = useCallback(async (name: string) => {
@@ -132,32 +153,40 @@ export function LanProvider({ children }: { children: ReactNode }) {
 
   const hostRoom = useCallback(
     async (video: VideoRow) => {
+      if (!enabled) return;
+      setConnecting((n) => n + 1);
       try {
         if (!info?.running) setInfo(await lanStart());
         await lanRoomStart(video.file_path, video.title, isAudioPath(video.file_path) ? "audio" : "video");
         setRoom({ role: "host", video });
       } catch (e) {
         notify(humanizeError(e), "error");
+      } finally {
+        setConnecting((n) => n - 1);
       }
     },
-    [info, notify]
+    [enabled, info, notify]
   );
 
   const joinRoom = useCallback(
     async (peer: LanPeer) => {
+      if (!enabled) return;
+      setConnecting((n) => n + 1);
       try {
         const j = await lanRoomJoin(peer.addr);
         setRoom({ role: "guest", host: peer.name, ...j });
       } catch (e) {
         notify(humanizeError(e), "error");
+      } finally {
+        setConnecting((n) => n - 1);
       }
     },
-    [notify]
+    [enabled, notify]
   );
 
   const sendFiles = useCallback(
     async (peer: LanPeer, paths: string[]) => {
-      if (!paths.length) return;
+      if (!enabled || !paths.length) return;
       setSending((s) => new Set(s).add(peer.id));
       notify(t("lan.waitingAnswer", { name: peer.name }));
       try {
@@ -173,7 +202,7 @@ export function LanProvider({ children }: { children: ReactNode }) {
         });
       }
     },
-    [notify, t]
+    [enabled, notify, t]
   );
 
   const queueFiles = useCallback(
@@ -202,7 +231,7 @@ export function LanProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const offer = offers[0] ?? null;
+  const offer = enabled ? offers[0] ?? null : null;
   function answer(accept: boolean) {
     if (!offer) return;
     lanAnswerOffer(offer.id, accept).catch(() => {});
@@ -217,6 +246,9 @@ export function LanProvider({ children }: { children: ReactNode }) {
         transfers,
         room,
         setVisible,
+        stopNetwork,
+        networkBusy: restoring || connecting > 0 || !!room || offers.length > 0 || sending.size > 0
+          || transfers.some((transfer) => !transfer.error && transfer.done < transfer.total),
         rename,
         clearTransfers: () => setTransfers((l) => l.filter((x) => !x.error && x.done < x.total)),
         hostRoom,

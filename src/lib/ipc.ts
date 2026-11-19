@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { t } from "./i18n";
 import type {
@@ -10,6 +10,66 @@ import type {
 } from "../types";
 
 // ── Команды Rust ──────────────────────────────────────────────────────────────
+
+export function transcriptionAddonStatus(): Promise<boolean | null> {
+  return invoke("transcription_addon_status");
+}
+
+export interface TranscriptionAddonStorage {
+  engineBytes: number;
+  modelBytes: number;
+}
+
+export function transcriptionAddonStorage(): Promise<TranscriptionAddonStorage> {
+  return invoke("transcription_addon_storage");
+}
+
+export function installTranscriptionAddon(onProgress: (bytes: number) => void): Promise<void> {
+  const updates = new Channel<{ kind: "engine"; value: number }>();
+  updates.onmessage = (update) => onProgress(update.value);
+  return invoke("install_transcription_addon", { updates });
+}
+
+export function uninstallTranscriptionAddon(keepModels: boolean): Promise<void> {
+  return invoke("uninstall_transcription_addon", { keepModels });
+}
+
+export type AddonPackageId = "tags" | "nearby";
+
+export interface AddonPackageStatus {
+  installed: boolean;
+  present: boolean;
+  bytes: number;
+}
+
+let externalAddons = false;
+
+export async function addonPackages(): Promise<Record<AddonPackageId, AddonPackageStatus>> {
+  const packages = await invoke<Record<AddonPackageId, AddonPackageStatus>>("addon_packages");
+  externalAddons = true;
+  return packages;
+}
+
+export function installAddonPackage(id: AddonPackageId, onProgress: (bytes: number) => void): Promise<AddonPackageStatus> {
+  const progress = new Channel<number>(onProgress);
+  return invoke("install_addon_package", { id, progress });
+}
+
+export function uninstallAddonPackage(id: AddonPackageId): Promise<void> {
+  return invoke("uninstall_addon_package", { id });
+}
+
+function invokeAddon<T>(id: AddonPackageId, command: string, args: Record<string, unknown> = {}): Promise<T> {
+  return externalAddons ? invoke("addon_command", { id, command, args }) : invoke(command, args);
+}
+
+export function readMediaTags<T>(path: string): Promise<T> {
+  return invokeAddon("tags", "read_media_tags", { path });
+}
+
+export function writeMediaTags(path: string, tags: Record<string, string>): Promise<void> {
+  return invokeAddon("tags", "write_media_tags", { path, tags });
+}
 
 /** Получить метаданные по ссылке (видео или плейлист). */
 export function fetchMetadata(url: string): Promise<FetchResult> {
@@ -428,6 +488,9 @@ function matches(raw: string, sigs: string[]): boolean {
 export function humanizeError(e: unknown): string {
   const raw = errText(e);
   if (!raw) return t("err.generic");
+  if (raw === "Пакет ещё не опубликован для этой версии Mestia") return t("addons.packageNotPublished");
+  if (raw === "Разрешите Mestia устанавливать дополнения") return t("addons.androidPermission");
+  if (raw === "Установка модуля отменена") return t("addons.androidCancelled");
   if (/^DRM:/i.test(raw)) return t("err.drm");
   if (isAuthError(raw)) return t("err.auth");
   if (matches(raw, SIG.network)) return t("err.network");
@@ -551,29 +614,29 @@ export interface RoomQueue {
   current: string | null;
 }
 
-export const lanInfo = () => invoke<LanInfo>("lan_info");
-export const lanStart = () => invoke<LanInfo>("lan_start");
-export const lanStop = () => invoke<void>("lan_stop");
-export const lanPeers = () => invoke<LanPeer[]>("lan_peers");
-export const lanProbe = (addr: string) => invoke<LanPeer>("lan_probe", { addr });
+export const lanInfo = () => invokeAddon<LanInfo>("nearby", "lan_info");
+export const lanStart = () => invokeAddon<LanInfo>("nearby", "lan_start");
+export const lanStop = () => invokeAddon<void>("nearby", "lan_stop");
+export const lanPeers = () => invokeAddon<LanPeer[]>("nearby", "lan_peers");
+export const lanProbe = (addr: string) => invokeAddon<LanPeer>("nearby", "lan_probe", { addr });
 export const lanAnswerOffer = (id: string, accept: boolean) =>
-  invoke<void>("lan_answer_offer", { id, accept });
+  invokeAddon<void>("nearby", "lan_answer_offer", { id, accept });
 export const lanSend = (addr: string, peer: string, paths: string[]) =>
-  invoke<void>("lan_send", { addr, peer, paths });
+  invokeAddon<void>("nearby", "lan_send", { addr, peer, paths });
 export const lanRoomStart = (path: string, title: string, kind: string) =>
-  invoke<string>("lan_room_start", { path, title, kind });
+  invokeAddon<string>("nearby", "lan_room_start", { path, title, kind });
 export const lanRoomState = (playing: boolean, pos: number, rate: number) =>
-  invoke<void>("lan_room_state", { playing, pos, rate });
-export const lanRoomStop = () => invoke<void>("lan_room_stop");
-export const lanRoomJoin = (addr: string) => invoke<RoomJoin>("lan_room_join", { addr });
+  invokeAddon<void>("nearby", "lan_room_state", { playing, pos, rate });
+export const lanRoomStop = () => invokeAddon<void>("nearby", "lan_room_stop");
+export const lanRoomJoin = (addr: string) => invokeAddon<RoomJoin>("nearby", "lan_room_join", { addr });
 export const lanRoomCmd = (action: "play" | "pause" | "seek", pos: number) =>
-  invoke<void>("lan_room_cmd", { action, pos });
-export const lanRoomLeave = () => invoke<void>("lan_room_leave");
+  invokeAddon<void>("nearby", "lan_room_cmd", { action, pos });
+export const lanRoomLeave = () => invokeAddon<void>("nearby", "lan_room_leave");
 export const lanRoomAdd = (path: string, title: string, kind: string) =>
-  invoke<void>("lan_room_add", { path, title, kind });
-export const lanRoomMove = (id: string, delta: number) => invoke<void>("lan_room_move", { id, delta });
-export const lanRoomRemove = (id: string) => invoke<void>("lan_room_remove", { id });
-export const lanRoomPlay = (id: string) => invoke<void>("lan_room_play", { id });
-export const lanRoomQueue = () => invoke<RoomQueue | null>("lan_room_queue");
+  invokeAddon<void>("nearby", "lan_room_add", { path, title, kind });
+export const lanRoomMove = (id: string, delta: number) => invokeAddon<void>("nearby", "lan_room_move", { id, delta });
+export const lanRoomRemove = (id: string) => invokeAddon<void>("nearby", "lan_room_remove", { id });
+export const lanRoomPlay = (id: string) => invokeAddon<void>("nearby", "lan_room_play", { id });
+export const lanRoomQueue = () => invokeAddon<RoomQueue | null>("nearby", "lan_room_queue");
 export const lanRoomPropose = (path: string, title: string, kind: string) =>
-  invoke<void>("lan_room_propose", { path, title, kind });
+  invokeAddon<void>("nearby", "lan_room_propose", { path, title, kind });

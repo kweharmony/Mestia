@@ -1,15 +1,14 @@
 <resources>
     <string name="app_name">Mestia</string>
     <string name="main_activity_title">Mestia</string>
-    <!-- Язык по умолчанию — русский, как и в интерфейсе (src/lib/i18n.ts) -->
-    <string name="downloads_channel">Загрузки</string>
-    <string name="downloads_running">Идёт загрузка…</string>
-    <string name="playback_channel">Воспроизведение</string>
-    <string name="playback_running">Идёт воспроизведение</string>
-    <string name="share_label">Скачать в Mestia</string>
-    <string name="media_play">Играть</string>
-    <string name="media_pause">Пауза</string>
-    <string name="media_next">Следующий</string>
-    <string name="media_prev">Предыдущий</string>
-    <string name="downloads_many">Загрузок: %1$d</string>
+    <string name="downloads_channel">Downloads</string>
+    <string name="downloads_running">Downloading…</string>
+    <string name="playback_channel">Playback</string>
+    <string name="playback_running">Playing</string>
+    <string name="share_label">Download with Mestia</string>
+    <string name="media_play">Play</string>
+    <string name="media_pause">Pause</string>
+    <string name="media_next">Next</string>
+    <string name="media_prev">Previous</string>
+    <string name="downloads_many">Downloads: %1$d</string>
 </resources>

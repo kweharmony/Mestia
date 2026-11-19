@@ -87,6 +87,22 @@ jobs:
           # Генерировать и прикладывать latest.json к релизу (нужно апдейтеру).
           includeUpdaterJson: true
 
+      - name: Собрать и подписать пакеты (Windows x64)
+        if: matrix.platform == 'windows-latest' && startsWith(github.ref, 'refs/tags/')
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run build-addons
+
+      - name: Прикрепить пакеты (Windows x64)
+        if: matrix.platform == 'windows-latest' && startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $packages = @(Get-ChildItem -Path 'src-tauri/target/addon-packages/Mestia_Addon_*_windows_x64.zip' | ForEach-Object FullName)
+          if ($packages.Count -ne 2) { throw "Ожидалось два пакета Mestia" }
+          gh release upload $env:GITHUB_REF_NAME @packages --clobber
+
       # ── Flatpak для Steam Deck / Linux ────────────────────────────────────────
       # Заворачиваем собранный .deb в Flatpak с рантаймом GNOME (внутри WebKitGTK),
       # чтобы приложение работало на SteamOS, где системного webkit2gtk нет.
@@ -189,6 +205,14 @@ jobs:
           NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
         run: npm run tauri android build -- --apk --split-per-abi --target aarch64 --target armv7
 
+      - name: Build Android add-on APKs
+        run: |
+          sdkmanager 'build-tools;36.0.0' 'platforms;android-36'
+          export NDK_HOME="${NDK_HOME:-$ANDROID_NDK_LATEST_HOME}"
+          OUT=src-tauri/gen/android/app/build/outputs/apk
+          python scripts/build-android-addons.py "$OUT/arm64/release/app-arm64-release.apk" --abi arm64-v8a
+          python scripts/build-android-addons.py "$OUT/arm/release/app-arm-release.apk" --abi armeabi-v7a
+
       # Ключ не должен пережить сборку (post-шаги кэша и любые следующие шаги его не увидят).
       - name: Удалить ключ подписи
         if: always()
@@ -203,7 +227,7 @@ jobs:
           OUT=src-tauri/gen/android/app/build/outputs/apk
           cp "$OUT/arm64/release/app-arm64-release.apk" "Mestia_${VERSION}_android_arm64.apk"
           cp "$OUT/arm/release/app-arm-release.apk" "Mestia_${VERSION}_android_armv7.apk"
-          gh release upload "${{ github.ref_name }}" Mestia_*_android_*.apk --clobber
+          gh release upload "${{ github.ref_name }}" Mestia_*_android_*.apk src-tauri/target/addon-apks/Mestia_Addon_*_android_*.apk --clobber
 
   # ── Текст релиза ──────────────────────────────────────────────────────────────
   # Описание берётся из .github/release-notes.md (обновляется перед каждым тегом).

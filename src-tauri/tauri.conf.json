@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Mestia",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "identifier": "com.mestia.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -45,8 +45,8 @@
     "publisher": "Mestia",
     "copyright": "© Mestia",
     "category": "Utility",
-    "shortDescription": "Загрузчик видео и медиатека",
-    "longDescription": "Mestia — кроссплатформенный загрузчик видео/аудио с медиатекой и плеером.",
+    "shortDescription": "Video downloader and media library",
+    "longDescription": "Mestia is a cross-platform audio and video downloader with a media library and player.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -74,7 +74,7 @@
         "headerImage": "installer/header.bmp",
         "sidebarImage": "installer/sidebar.bmp",
         "installMode": "currentUser",
-        "languages": ["Russian", "English"],
+        "languages": ["English", "Russian"],
         "displayLanguageSelector": true
       }
     }

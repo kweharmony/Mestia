@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { AlertCircle, Check, Clipboard, Cpu, FileAudio, FileText, Loader2, ShieldCheck } from "lucide-react";
+import { AlertCircle, Check, Clipboard, Cpu, Download, FileAudio, FileText, Loader2, ShieldCheck, Trash2 } from "lucide-react";
 import LibraryPicker from "../components/LibraryPicker";
+import Modal from "../components/Modal";
 import { useI18n } from "../context/LanguageContext";
 import { formatBytes, getSetting, setSetting } from "../lib/ipc";
 import type { VideoRow } from "../types";
@@ -18,19 +19,26 @@ const MODELS = [
   ["large-v3-turbo", "Whisper Large v3 Turbo", 1624555275, "asr.turbo"],
   ["large-v3-q5_0", "Whisper Large v3 Q5", 1081140203, "asr.largeQ5"],
 ] as const;
-type Info = { cores: number; recommended: string; ready: boolean; vram: number | null };
+type Model = typeof MODELS[number];
+type Info = { cores: number; recommended: string; ready: boolean; vram: number | null; cached_models: string[] };
 const LANGUAGES = ["auto", "ru", "en", "zh", "uk", "de", "fr", "es", "it", "pt", "ja", "ko", "tr", "ar", "hi", "ka"] as const;
 type Options = { language: string; translate: boolean; timestamps: boolean };
 const DEFAULT_OPTIONS: Options = { language: "auto", translate: false, timestamps: false };
 type Update = { kind: "download" | "engine"; value: number } | { kind: "log"; value: string } |
   { kind: "prepare" | "recognize" | "cpu_fallback" };
 
-export default function Transcription() {
+export default function Transcription({ file, busy, onBusyChange }: {
+  file: VideoRow | null;
+  busy: boolean;
+  onBusyChange: (busy: boolean) => void;
+}) {
   const { t } = useI18n();
   const [info, setInfo] = useState<Info>();
   const [model, setModel] = useState("");
+  const [modelToDelete, setModelToDelete] = useState<Model>();
+  const [modelOperation, setModelOperation] = useState<{ id: string; removing: boolean; bytes: number }>();
+  const [modelError, setModelError] = useState<{ id: string; detail: string }>();
   const [picking, setPicking] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [title, setTitle] = useState("");
   const [stage, setStage] = useState<Exclude<Update, { kind: "log" }>>();
   const [logs, setLogs] = useState<string[]>([]);
@@ -88,9 +96,37 @@ export default function Transcription() {
     }
   }
 
+  function setCached(id: string, cached: boolean) {
+    setInfo((current) => {
+      if (!current || current.cached_models.includes(id) === cached) return current;
+      return { ...current, cached_models: cached ? [...current.cached_models, id] : current.cached_models.filter((name) => name !== id) };
+    });
+  }
+
+  async function changeModel(id: string, removing: boolean) {
+    setModelToDelete(undefined);
+    setModelError(undefined);
+    setModelOperation({ id, removing, bytes: 0 });
+    onBusyChange(true);
+    try {
+      if (removing) await invoke("delete_transcription_model", { model: id });
+      else {
+        const updates = new Channel<{ kind: "download"; value: number }>();
+        updates.onmessage = ({ value }) => setModelOperation((current) => current?.id === id ? { ...current, bytes: value } : current);
+        await invoke("download_transcription_model", { model: id, updates });
+      }
+      setCached(id, !removing);
+    } catch (e) {
+      setModelError({ id, detail: String(e) });
+    } finally {
+      setModelOperation(undefined);
+      onBusyChange(false);
+    }
+  }
+
   async function start(file: VideoRow) {
     setPicking(false);
-    setBusy(true);
+    onBusyChange(true);
     setTitle(file.title);
     setStage(undefined);
     setLogs([]);
@@ -101,7 +137,10 @@ export default function Transcription() {
     const updates = new Channel<Update>();
     updates.onmessage = (update) => {
       if (update.kind === "log") setLogs((lines) => [...lines.slice(-299), update.value]);
-      else setStage(update);
+      else {
+        setStage(update);
+        if (update.kind === "prepare") setCached(model, true);
+      }
     };
     try {
       setResult(await invoke<string>("transcribe", {
@@ -111,7 +150,7 @@ export default function Transcription() {
     } catch (e) {
       setError(String(e));
     } finally {
-      setBusy(false);
+      onBusyChange(false);
     }
   }
 
@@ -128,6 +167,7 @@ export default function Transcription() {
   }
 
   const selected = MODELS.find(([id]) => id === model);
+  const needsModel = !!selected && !info?.cached_models.includes(model);
   const status = stage?.kind === "engine"
         ? t("asr.engine", { size: formatBytes(stage.value) })
         : stage?.kind === "cpu_fallback" ? t("asr.fallback") : stage?.kind === "download"
@@ -154,22 +194,43 @@ export default function Transcription() {
             {info.vram ? t("asr.gpu", { cores: info.cores, memory: formatBytes(info.vram * 1024 ** 2) })
               : t("asr.hardware", { cores: info.cores })}
           </p>}
-          {/* Choice Card из 21st.dev: нативный radio и цвета темы Mestia. */}
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {MODELS.map(([id, name, bytes, key]) => (
-              <label key={id} className="relative flex min-w-0 cursor-pointer items-start gap-2 rounded-ui border-2 border-fog p-3 has-[:checked]:border-accent has-[:checked]:bg-fog has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-ink hover:border-smoke has-[:disabled]:cursor-default">
-                <input type="radio" name="whisper-model" checked={model === id}
-                  onChange={() => setModel(id)} className="mt-0.5 size-4 shrink-0 accent-accent" />
-                <span className="min-w-0 space-y-1">
-                  <strong className="block text-sm leading-tight">{name}</strong>
-                  <span className="block text-xs text-smoke">{t(key)}</span>
-                  <span className="block text-xs font-semibold text-smoke">
-                    {id.endsWith(".en") ? t("asr.english") : t("asr.multilingual")} · {formatBytes(bytes)}
-                  </span>
-                  {info?.recommended === id && <span className="inline-block rounded-ui bg-accent/10 px-2 py-0.5 text-xs font-bold text-accent">{t("asr.recommended")}</span>}
-                </span>
-              </label>
-            ))}
+            {MODELS.map((entry) => {
+              const [id, name, bytes, key] = entry;
+              const cached = info?.cached_models.includes(id);
+              const changing = modelOperation?.id === id ? modelOperation : undefined;
+              const action = t(cached ? "asr.deleteModel" : "asr.downloadModel");
+              const Icon = cached ? Trash2 : Download;
+              return (
+                <div key={id} className="flex min-w-0 flex-col gap-2 rounded-ui border-2 border-fog p-3 has-[:checked]:border-accent has-[:checked]:bg-fog hover:border-smoke">
+                  <label className="flex flex-1 cursor-pointer items-start gap-2 has-[:disabled]:cursor-default">
+                    <input type="radio" name="whisper-model" checked={model === id}
+                      onChange={() => setModel(id)} className="mt-0.5 size-4 shrink-0 accent-accent" />
+                    <span className="min-w-0 space-y-1">
+                      <strong className="block text-sm leading-tight">{name}</strong>
+                      <span className="block text-xs text-smoke">{t(key)}</span>
+                      <span className="block text-xs font-semibold text-smoke">
+                        {id.endsWith(".en") ? t("asr.english") : t("asr.multilingual")} · {formatBytes(bytes)}
+                        {cached && ` · ${t("asr.cachedModel")}`}
+                      </span>
+                      {info?.recommended === id && <span className="inline-block rounded-ui bg-accent/10 px-2 py-0.5 text-xs font-bold text-accent">{t("asr.recommended")}</span>}
+                    </span>
+                  </label>
+                  <button type="button" disabled={!info}
+                    aria-label={t("asr.modelAction", { action, model: name })}
+                    onClick={() => cached ? setModelToDelete(entry) : void changeModel(id, false)}
+                    className="inline-flex items-center gap-1.5 self-start rounded-ui border-2 border-fog px-2 py-1 text-xs font-semibold hover:border-smoke disabled:opacity-50">
+                    <Icon className="size-3.5" aria-hidden="true" /> {action}
+                  </button>
+                  {changing && <p role="status" className="text-xs text-smoke">
+                    {changing.removing ? t("asr.deletingModel") : t("asr.download", { size: formatBytes(changing.bytes) })}
+                  </p>}
+                  {modelError?.id === id && <p role="alert" className="break-words text-xs text-rose-500">
+                    {t("asr.error", { detail: modelError.detail })}
+                  </p>}
+                </div>
+              );
+            })}
           </div>
         </fieldset>
 
@@ -229,10 +290,12 @@ export default function Transcription() {
               <p className="text-sm text-smoke">{selected
                 ? t("asr.selected", { model: selected[1] })
                 : t("asr.chooseFirst")}</p>
+              {file && <p className="break-words text-sm font-semibold">{file.title}</p>}
             </div>
-            <button disabled={!selected || !device || !options || busy || exporting || savingDevice || savingOptions || !info?.ready} onClick={() => setPicking(true)}
+            <button disabled={!selected || !device || !options || busy || exporting || savingDevice || savingOptions || !info?.ready}
+              onClick={() => file ? void start(file) : setPicking(true)}
               className="flex items-center justify-center gap-2 rounded-ui border-2 border-ink bg-accent px-3 py-2 text-sm font-bold text-white hover:opacity-90 disabled:opacity-50">
-              <FileAudio className="size-4" aria-hidden="true" /> {t("asr.pick")}
+              <FileAudio className="size-4" aria-hidden="true" /> {t(file ? needsModel ? "asr.downloadAndRun" : "asr.run" : "asr.pick")}
             </button>
           </div>
           {info && !info.ready && (
@@ -242,7 +305,7 @@ export default function Transcription() {
             </div>
           )}
           {title && <p className="break-words text-sm font-semibold">{title}</p>}
-          {busy && <p role="status" className="flex items-center gap-2 text-sm font-semibold text-accent">
+          {busy && !modelOperation && <p role="status" className="flex items-center gap-2 text-sm font-semibold text-accent">
             <Loader2 className="size-4 shrink-0 motion-safe:animate-spin" aria-hidden="true" /> {status}
           </p>}
           {/* Alert из 21st.dev: иконка и сообщение об ошибке. */}
@@ -250,7 +313,10 @@ export default function Transcription() {
             <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
             <p className="break-all">{t("asr.error", { detail: error })}</p>
           </div>}
-          {result !== undefined && <div className="space-y-3 border-t-2 border-fog pt-3">
+          {result !== undefined && !result.trim() && (
+            <p role="status" className="text-sm text-smoke">{t("asr.noSpeech")}</p>
+          )}
+          {result !== undefined && !!result.trim() && <div className="space-y-3 border-t-2 border-fog pt-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="flex items-center gap-2 font-bold"><FileText className="size-4 text-accent" aria-hidden="true" /> {t("asr.result")}</h3>
               <div className="flex flex-wrap gap-2">
@@ -269,7 +335,7 @@ export default function Transcription() {
             </div>
             <textarea aria-label={t("asr.result")} readOnly value={result} rows={10} className="w-full rounded-ui border-2 border-fog bg-snow p-3 text-sm leading-relaxed" />
           </div>}
-          {logs.length > 0 && <details open={busy} className="rounded-ui border-2 border-fog">
+          {logs.length > 0 && <details open={busy && !modelOperation} className="rounded-ui border-2 border-fog">
             <summary className="cursor-pointer px-3 py-2 text-sm font-semibold">{t("asr.log")}</summary>
             <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words border-t-2 border-fog bg-fog/40 p-3 text-xs">{logs.join("\n")}</pre>
           </details>}
@@ -277,6 +343,21 @@ export default function Transcription() {
       </div>
       <LibraryPicker open={picking} multi={false} title={t("asr.pick")} hint={t("asr.intro")}
         onClose={() => setPicking(false)} onPick={([file]) => { if (file) void start(file); }} />
+      <Modal open={!!modelToDelete} onClose={() => setModelToDelete(undefined)}>
+        {modelToDelete && <div role="dialog" aria-modal="true" aria-labelledby="delete-model-title" className="space-y-4">
+          <h2 id="delete-model-title" className="font-bold">{t("asr.deleteModelTitle", { model: modelToDelete[1] })}</h2>
+          <p className="text-sm text-smoke">{t("asr.deleteModelHint")}</p>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setModelToDelete(undefined)} className="rounded-ui border-2 border-fog px-3 py-2 text-sm font-semibold hover:bg-fog">
+              {t("common.cancel")}
+            </button>
+            <button disabled={busy} onClick={() => void changeModel(modelToDelete[0], true)}
+              className="rounded-ui border-2 border-ink bg-rose-600 px-3 py-2 text-sm font-bold text-white hover:opacity-90 disabled:opacity-50">
+              {t("asr.deleteModel")}
+            </button>
+          </div>
+        </div>}
+      </Modal>
     </section>
   );
 }

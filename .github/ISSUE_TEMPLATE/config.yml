@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Уязвимость · Security vulnerability
+  - name: Security vulnerability · Уязвимость
     url: https://github.com/kweharmony/Mestia/security/advisories/new
-    about: Закрытый отчёт, не публичный issue · Private report, not a public issue
-  - name: Не скачивается с сайта? · A site won't download?
+    about: Report vulnerabilities privately · Закрытый отчёт об уязвимости
+  - name: A site won't download? · Не скачивается с сайта?
     url: https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md
-    about: Сначала нажмите «Обновить движок» в настройках · First try "Update engine" in Settings
+    about: First try "Update engine" in Settings · Сначала нажмите «Обновить движок» в настройках

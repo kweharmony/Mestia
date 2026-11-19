@@ -1,7 +1,7 @@
 {
   "name": "mestia",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.2.1",
   "type": "module",
   "description": "Mestia — кроссплатформенный загрузчик видео и медиатека (Tauri v2 + React)",
   "author": "sesitskii",
@@ -13,11 +13,12 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "fetch-binaries": "node scripts/fetch-binaries.mjs",
+    "build-addons": "node scripts/build-addons.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.1.1",
+    "@tauri-apps/api": "^2.12.5",
     "@tauri-apps/plugin-clipboard-manager": "^2.3.2",
     "@tauri-apps/plugin-dialog": "^2.2.0",
     "@tauri-apps/plugin-notification": "^2.3.3",

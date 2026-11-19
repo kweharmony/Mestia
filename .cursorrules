@@ -16,6 +16,8 @@ Cross-platform (desktop + Android) video downloader & media library.
 ## Commands
 - Install: `npm install`
 - Fetch binaries: `npm run fetch-binaries`
+- Build signed Windows x64 add-ons: `npm run build-addons`
+- Build signed Android add-ons: `python scripts/build-android-addons.py <base-apk> --abi <abi>`
 - Dev: `npm run tauri dev` (frontend only: `npm run dev`)
 - Build + typecheck: `npm run build` (`tsc --noEmit && vite build`)
 - Build installers: `npm run tauri build`
@@ -26,15 +28,16 @@ Cross-platform (desktop + Android) video downloader & media library.
 - `src/context/` — ThemeContext, LanguageContext (i18n), DownloadsContext (queue/events), DragContext, LanContext (LAN peers/transfers/room)
 - `src/components/` — Sidebar, Settings, DownloadsPanel, Splash, Toast, LibraryPicker, SendToDevice, CommandPalette (Ctrl+K), AnimatedNumber, etc.
 - `src/lib/` — ipc.ts (bridge to Rust), db.ts (SQLite), i18n.ts (ru/en/zh dictionary + t()), platform.ts (IS_ANDROID), appIcon.ts (logo marks + theme-coloured favicon/window/tray/Android launcher icon), roomSync.ts (watch-together drift), media.ts (player src / media session / playback keep-alive)
-- `src/views/` — Downloader, Locker (library), History, Player, MiniPlayer, Nearby (LAN), Room (watch together + queue)
+- `src/views/` — Downloader, Locker (library), History, Player, MiniPlayer, Nearby (LAN), Room (watch together + queue), Addons (desktop and Android)
 - Desktop transcription — `src/views/Transcription.tsx` and `src-tauri/src/transcription.rs` (model cache, FFmpeg and whisper-cli)
 - `src-tauri/src/` — lib.rs (plugins/tray/commands), downloader.rs (yt-dlp args/events), engine.rs (yt-dlp runner: sidecar / Android plugin), mobile.rs (Android bridge), storage.rs (files/watcher/thumbnails), lan.rs (LAN discovery/server/transfers/room), media.rs (Android loopback media server)
+- Add-ons — `src-tauri/addon-workers/` builds the Nearby and tag editor workers. `src/addons.rs` verifies Windows x64 ZIPs. `src/android_addons.rs` downloads Android split APKs and `AddonInstaller.kt` uses the Android package installer. `src/addon_runtime.rs` hosts workers through private stdio. Workers share `lan.rs` and `media_tags.rs`.
 - `src-tauri/gen/android/` — Android project: MestiaPlugin.kt, DownloadService.kt, PlaybackService.kt, MainActivity.kt, manifest, Gradle deps
 - `flatpak/` — Flatpak packaging for Steam Deck/SteamOS (manifest + desktop/metainfo); wraps the built .deb in the GNOME runtime, built in CI.
 - `design/logo/` — logo concept SVGs + concepts.png (app-icon.svg = base black-and-white icon); not part of the build.
 - `design/promo/` — promo video source (promo.html with seek(t)) + render.mjs (Playwright + ffmpeg → docs/media/).
 - `docs/` — GitHub Pages site RU/EN: index.html, privacy.html, site.css/site.js, media/ (promo video); static, not part of the app build.
-- Root policies: PRIVACY.md, SECURITY.md, CONTRIBUTING.md, CODE_OF_CONDUCT.md (RU + EN); README.md (RU) / README.en.md; issue/PR templates in `.github/`.
+- Root policies: PRIVACY.md, SECURITY.md, CONTRIBUTING.md, CODE_OF_CONDUCT.md (RU + EN); README.md (EN) / README.ru.md; issue/PR templates in `.github/`.
 - Frontend ↔ Rust via `src/lib/ipc.ts`.
 
 ## Token-saving rules

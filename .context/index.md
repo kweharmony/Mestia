@@ -53,9 +53,9 @@ Build-time Node helpers.
 ### `src/` — Frontend
 - `main.tsx` / `App.tsx` — entry point and root component / routing between views.
 - `context/` — global React state:
-  - `ThemeContext` — 8 themes, persisted.
-  - `LanguageContext` — i18n (ru/en/zh); exposes `useI18n().t`, persists setting `lang`,
-    defaults to OS locale on first run.
+  - `ThemeContext` — 8 themes with Clean Mono as the default and user selection persisted.
+  - `LanguageContext` — i18n (en/ru/zh); exposes `useI18n().t`, persists setting `lang`,
+    and defaults to English on first run.
   - `DownloadsContext` — download queue, concurrency limit, live progress events.
   - `DragContext` — drag-and-drop state for the library.
   - `LanContext` — LAN: visibility (setting `lanVisible`), discovered peers, transfers,
@@ -78,9 +78,15 @@ Build-time Node helpers.
     because Tauri's Android asset protocol serves Range in 1 MB chunks and audio >1 MB never
     loads) and `setPlaybackActive` (Android PlaybackService while something plays).
 - `views/` — top-level screens:
-  - `Transcription` — desktop-only local speech recognition for library files.
+  - `Addons` — desktop and Android catalog. On Windows x64, Transcription installs its engine. The tag editor and Nearby
+    (file transfers and watch together) install separate packages. Installed files determine
+    availability, and uninstall removes the corresponding worker from disk.
+  - `Transcription` — desktop-only local speech recognition for library files. Each model can
+    be downloaded before recognition or removed from the cache individually.
   - `Downloader` — paste URL, pick format/quality, start downloads.
   - `Locker` — the media library (folders + videos grid, multi-select, drag-drop).
+    Refreshes scan the current folder in order. Missing entries are pruned only after successful
+    scans with a grace period. Search covers the full library and ignores outdated responses.
   - `History` — past downloads with statuses; resume interrupted (`.part`) downloads.
   - `Player` / `MiniPlayer` — main and floating video/audio players; playback position
     persisted per file.
@@ -91,15 +97,20 @@ Build-time Node helpers.
 
 ### `src-tauri/` — Backend
 - `src/main.rs` — thin entry, calls `mestia_lib::run()`.
-- `src/lib.rs` — registers plugins, builds the tray, smart-close behavior, and exposes
-  the Tauri commands the frontend calls.
+- `src/lib.rs` — registers plugins, restores the existing desktop window on a second launch,
+  builds the tray, handles smart close, and exposes the Tauri commands the frontend calls.
 - `src/transcription.rs` — caches verified Whisper models from Hugging Face, prepares library audio
   with FFmpeg, and streams logs from the local whisper-cli executable.
   Windows x64 can install verified CPU and CUDA builds from the official whisper.cpp release.
+  The Windows x64 add-on installs the CPU engine before enabling recognition. Removing it deletes
+  managed engines and offers to keep cached models. The catalog shows the space used and can
+  remove leftover downloads after uninstall. Existing models are reused on installation.
   The saved transcription device preference controls GPU use and automatic CPU fallback.
   Recognition options persist the spoken language, English translation (excluding Turbo/.en models),
   and timestamped SRT output. Omitted options retain automatic language detection and plain text.
-  The desktop tab stays mounted across navigation and exports completed transcripts as TXT or Markdown.
+  Whisper decodes each audio window without reusing earlier text. Captions fully inside long,
+  near-silent intervals detected by FFmpeg are removed without shifting the remaining timestamps.
+  The open transcription view stays mounted across navigation and exports transcripts as TXT or Markdown.
   The desktop library reads and writes common embedded media tags with FFprobe and lossless FFmpeg remuxing.
 - `src/downloader.rs` — builds `yt-dlp` arguments (metadata, download), parses and
   emits progress/item/done events.
@@ -115,6 +126,16 @@ Build-time Node helpers.
   target, `extractNativeLibs`.
 - `src/storage.rs` — filesystem ops: files/folders, real-time file-watcher, thumbnail
   generation (ffmpeg, cached), settings.
+- `src/addons.rs` — Windows x64 package installation. `src/addon_runtime.rs` and `src/addon_wire.rs` host workers over private stdio.
+  `addon-workers/` builds separate executables using `src/media_tags.rs` and `src/lan.rs`, with
+  shared `desktop_process.rs`, `file_paths.rs` and `local_network.rs`. Other desktop targets compile
+  their existing commands into the app. `npm run build-addons` signs the package manifests
+  with the updater key. CI attaches the ZIPs to the matching GitHub release. For a debug
+  client, `MESTIA_ADDON_DEV_DIR` and `MESTIA_ADDON_DEV_PUBKEY` select locally signed fixtures.
+- `src/android_addons.rs` — downloads per-ABI split APKs from the matching GitHub release.
+  `AddonInstaller.kt` delegates installation and removal to Android's package installer.
+  `scripts/build-android-addons.py` builds the worker splits and checks the certificate against the base APK before upload.
+  The base APK retains local playback and downloading. Nearby's worker delegates Android wake locks, transfer notifications, and MediaStore scans to the host.
 - `src/lan.rs` — LAN: UDP announces (multicast 239.255.77.18 + subnet broadcast, port
   53318), axum HTTP/WS server on TCP 53318 (`/api/info`, `/api/offer`, `/api/upload`,
   `/api/room`, `/api/room/media` with Range, `/api/room/ws`), sender via reqwest,

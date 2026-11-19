@@ -2,12 +2,12 @@ import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Download,
-  AudioLines,
   Folders,
   History as HistoryIcon,
   Minus,
   PanelLeftClose,
   PanelLeftOpen,
+  Puzzle,
   Radar,
   Search,
   Settings,
@@ -20,6 +20,7 @@ import { IS_ANDROID } from "../lib/platform";
 
 interface SidebarProps {
   active: TabId;
+  showNearby: boolean;
   onChange: (tab: TabId) => void;
   onOpenSettings: () => void;
   onOpenSearch: () => void;
@@ -38,19 +39,24 @@ const NAV: NavDef[] = [
   { id: "locker", labelKey: "nav.locker", icon: Folders, anim: "mestia-ico-folder" },
   { id: "history", labelKey: "nav.history", icon: HistoryIcon, anim: "mestia-ico-history" },
   { id: "nearby", labelKey: "nav.nearby", icon: Radar, anim: "mestia-ico-history" },
-  ...(!IS_ANDROID ? [{ id: "transcription" as const, labelKey: "nav.transcription", icon: AudioLines, anim: "mestia-ico-history" }] : []),
+  { id: "addons", labelKey: "nav.addons", icon: Puzzle, anim: "mestia-ico-history" },
 ];
 
 const COLLAPSED_KEY = "mestia.sidebarCollapsed";
 
 export default function Sidebar({
   active,
+  showNearby,
   onChange,
   onOpenSettings,
   onOpenSearch,
   onHideToTray,
 }: SidebarProps) {
   const { t } = useI18n();
+  const nav = NAV.filter(({ id }) => {
+    if (id === "nearby") return showNearby;
+    return true;
+  });
   const { downloads } = useDownloads();
   // Свёрнутая панель (только иконки) — удобство конкретного окна, храним локально.
   const [collapsed, setCollapsed] = useState(() => {
@@ -79,7 +85,7 @@ export default function Sidebar({
     {/* Узкий экран (телефон): нижняя панель вкладок вместо боковой. Как Expandable
         Tabs: у активной вкладки — плашка с подписью, остальные только иконками. */}
     <nav className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-around gap-1 border-t-2 border-fog bg-paper px-2 py-2 no-select md:hidden">
-      {[...NAV.map((n) => ({ ...n, onClick: () => onChange(n.id) })), {
+      {[...nav.map((n) => ({ ...n, onClick: () => onChange(n.id) })), {
         id: "settings" as const,
         labelKey: "sidebar.settings",
         icon: Settings,
@@ -114,7 +120,7 @@ export default function Sidebar({
                   animate={{ width: "auto", opacity: 1 }}
                   exit={{ width: 0, opacity: 0 }}
                   transition={{ duration: 0.2 }}
-                  className="mestia-anim relative overflow-hidden whitespace-nowrap"
+                  className="mestia-anim relative overflow-hidden whitespace-nowrap max-[360px]:hidden"
                 >
                   <span className="pl-1.5">{t(labelKey)}</span>
                 </motion.span>
@@ -173,7 +179,7 @@ export default function Sidebar({
 
         {/* Навигация */}
         <nav className="space-y-1">
-          {NAV.map(({ id, labelKey, icon: Icon, anim }) => {
+          {nav.map(({ id, labelKey, icon: Icon, anim }) => {
             const isActive = active === id;
             return (
               <button

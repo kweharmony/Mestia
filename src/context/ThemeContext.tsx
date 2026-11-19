@@ -34,7 +34,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // localStorage — для мгновенной отрисовки без мигания при старте.
   const [theme, setThemeState] = useState<ThemeName>(() => {
     const saved = localStorage.getItem(STORAGE_KEY) as ThemeName | null;
-    return saved && VALID.includes(saved) ? saved : "lavender";
+    return saved && VALID.includes(saved) ? saved : "mono";
   });
 
   // Файл настроек (Rust) — надёжное хранилище, переживающее перезапуск.
