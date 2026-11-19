@@ -13,7 +13,9 @@ Video and music from 1800+ sites — in a library with its own player. For deskt
 
 **English** · [Русский](README.ru.md) · [Website](https://kweharmony.github.io/Mestia/?lang=en)
 
-<a href="docs/media/promo.en.mp4"><img src="docs/media/promo.en.webp" width="860" alt="Mestia: paste a link, download, watch" /></a>
+<a href="docs/media/promo.en.mp4"><img src="docs/media/promo.en.webp" width="860" alt="Mestia 1.2.1 demo showing downloads, add-ons, and Android playback" /></a>
+
+[Watch the Mestia 1.2.1 demo](docs/media/promo.en.mp4)
 
 </div>
 
@@ -171,7 +173,7 @@ Tauri v2 (Rust) + React 18 + TypeScript + Tailwind CSS v4, SQLite, yt-dlp and ff
 on Android a Kotlin plugin on top of youtubedl-android. The module map and core flows are in
 [`.context/index.md`](.context/index.md), development rules in [CLAUDE.md](CLAUDE.md).
 
-The promo video is built from `design/promo/promo.html` by `design/promo/render.mjs`.
+Build the English promo from `design/promo/promo.html` with `node design/promo/render.mjs`. Pass `ru` to render the Russian edition.
 
 ## Contributing
 

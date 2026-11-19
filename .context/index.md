@@ -42,7 +42,7 @@ under reduced-motion). `media/` holds the promo video. Publish via repo Settings
 Promo video source: `promo.html` is a 1280×720 scene whose every frame is set by
 `seek(t)` (no timers), `render.mjs` steps it at 30 fps in Playwright and encodes
 `docs/media/promo[.en].mp4` + `.webp` (+ `poster.png`) with the ffmpeg sidecar.
-`node design/promo/render.mjs [ru|en]` (needs `playwright-core`, not a project dependency).
+`node design/promo/render.mjs [en|ru]` defaults to English and needs `playwright-core`, which is outside the project dependencies.
 
 ### `scripts/`
 Build-time Node helpers.

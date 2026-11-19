@@ -1,12 +1,12 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
 <meta charset="utf-8" />
 <title>Mestia promo</title>
 <!--
-  Промо-ролик Mestia (≈22 с, 1280×720). Кадр целиком задаётся функцией seek(t):
+  Промо-ролик Mestia 1.2.1 (35 с, 1280×720). Кадр целиком задаётся функцией seek(t):
   никаких таймеров и requestAnimationFrame — render.mjs вызывает seek(i/30) и
-  снимает скриншот, поэтому рендер детерминированный. ?lang=en — английские подписи,
+  снимает скриншот, поэтому рендер детерминированный. ?lang=ru — русские подписи,
   ?play — просто проиграть в браузере для предпросмотра.
 -->
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -75,7 +75,81 @@
   .faces b { width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--snow); margin-left: -8px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; }
   .faces b:first-child { margin-left: 0; }
 
-  .appicon { width: 180px; height: 180px; border-radius: 40px; display: flex; align-items: center; justify-content: center; }
+  .panel { position: absolute; inset: 0; padding: 38px 36px; }
+  .panel h2, .phone h3 { letter-spacing: -.035em; }
+  .panel h2 { font-size: 31px; padding-bottom: 18px; border-bottom: 2px solid var(--fog); }
+  .addon-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 20px; }
+  .addon { min-width: 0; min-height: 236px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px;
+    padding: 14px; border: 2px solid var(--fog); border-radius: 14px; background: var(--snow); }
+  .addon h3 { font-size: 17px; line-height: 1.2; }
+  .addon p { font-size: 13px; line-height: 1.45; color: var(--smoke); }
+  .badge-icon { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 10px; background: var(--paper); }
+  .pill-group { display: flex; flex-wrap: wrap; gap: 5px; }
+  .pill-group span { padding: 4px 7px; border-radius: 6px; background: var(--paper); font-size: 11px; font-weight: 700; }
+  .cta { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 5px 10px; border: 2px solid var(--accent);
+    border-radius: 9px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; white-space: nowrap; }
+  .cta svg { width: 16px; height: 16px; }
+  .cta.secondary { background: var(--snow); border-color: var(--fog); color: var(--ink); }
+  .addon .cta { margin-top: auto; }
+  .cta i, .badge-icon i, .phone-nav i, .media-control i { display: flex; }
+  .caption { position: absolute; left: 36px; right: 36px; bottom: 41px; border-top: 2px solid var(--fog);
+    padding-top: 16px; color: var(--smoke); font-size: 15px; font-weight: 600; }
+  .model-title { margin-top: 23px; font-size: 18px; font-weight: 700; }
+  .model { min-height: 158px; }
+  .model.focus { border-color: var(--ink); }
+  .model .status { color: var(--smoke); font-size: 12px; font-weight: 700; }
+  .model .bar { width: 100%; margin: 0; }
+
+  #android { position: absolute; inset: 0; display: grid; grid-template-columns: 330px 276px 276px; align-items: center;
+    justify-content: center; gap: 30px; background: #f0f1f2; }
+  .android-title { padding-right: 22px; }
+  .android-title h2 { color: #171717; font-size: 53px; line-height: 1; letter-spacing: -.055em; }
+  .android-title p { color: #555; margin-top: 20px; font-size: 19px; font-weight: 600; line-height: 1.45; }
+  .phone { height: 564px; width: 276px; position: relative; border: 8px solid #191919;
+    border-radius: 37px; overflow: hidden; background: #fbfbfb; box-shadow: 0 22px 44px #0002; }
+  .phone-status { display: flex; justify-content: space-between; align-items: center; height: 37px; padding: 0 16px;
+    font-size: 11px; font-weight: 800; }
+  .phone h3 { font-size: 24px; margin: 7px 14px 12px; }
+  .phone-addon { margin: 0 12px 9px; padding: 11px; min-height: 147px; gap: 6px; }
+  .phone-addon h4 { font-size: 14px; }
+  .phone-addon p { font-size: 11px; }
+  .phone-addon .badge-icon { width: 27px; height: 27px; border-radius: 7px; }
+  .phone-addon .badge-icon svg { width: 16px; height: 16px; }
+  .phone-nav { position: absolute; inset: auto 0 10px; display: flex; justify-content: space-around; align-items: center;
+    height: 43px; border-top: 1px solid var(--fog); color: var(--smoke); }
+  .phone-nav .current { padding: 6px 11px; border-radius: 20px; background: var(--fog); color: var(--ink); }
+  .gesture { position: absolute; z-index: 2; bottom: 4px; left: calc(50% - 43px); width: 86px; height: 4px;
+    border-radius: 4px; background: currentColor; opacity: .65; }
+  .phone-confirm { position: absolute; inset: 0; display: grid; place-items: center; background: #0006; }
+  .phone-confirm > div { margin: 15px; padding: 17px; border-radius: 17px; background: #f7f7f7; }
+  .phone-confirm strong { display: block; font-size: 16px; margin-bottom: 7px; }
+  .phone-confirm p { color: #545454; font-size: 13px; line-height: 1.4; }
+  .phone-confirm b { display: block; text-align: right; margin-top: 14px; font-size: 13px; }
+  .phone-media { background: #1d2030; color: #fff; }
+  .mobile-album { width: 190px; aspect-ratio: 1; margin: 31px auto 20px; border-radius: 20px;
+    background: linear-gradient(140deg, #f2a18d, #a9557c 60%, #593f81); display: grid; place-items: center; overflow: hidden; }
+  .mobile-album i { display: flex; opacity: .83; }
+  .mobile-album svg { width: 60px; height: 60px; }
+  .mobile-track { margin: 0 20px; }
+  .mobile-track strong { display: block; font-size: 18px; line-height: 1.2; }
+  .mobile-track p { font-size: 12px; margin-top: 6px; opacity: .72; }
+  .mobile-controls { margin: 20px 22px 0; }
+  .media-control { display: grid; place-items: center; color: #21182b; background: #fff; width: 39px; height: 39px; border-radius: 50%; }
+  .mobile-controls .media-control { margin: 17px auto 0; }
+  .shade { position: absolute; inset: 0; background: #18191d; color: #fff; }
+  .shade .quick { display: grid; margin: 8px 13px 13px; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .quick span { background: #303139; border-radius: 12px; padding: 10px; font-size: 11px; font-weight: 700; }
+  .quick span:first-child { color: #262038; background: #dcd6f3; }
+  .notice { position: relative; margin: 0 13px; padding: 13px; border-radius: 17px;
+    background: linear-gradient(140deg, #603958, #392d50); }
+  .notice .app { font-size: 11px; opacity: .75; }
+  .notice .track { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 10px 0; }
+  .notice strong { font-size: 14px; line-height: 1.15; }
+  .notice .art { flex: none; width: 44px; height: 44px; margin: 0; border-radius: 8px; }
+  .notice .art svg { width: 22px; height: 22px; }
+  .notice .times { display: flex; justify-content: space-between; font-size: 10px; opacity: .82; margin-top: 5px; }
+  .notice-buttons { margin-top: 11px; display: flex; align-items: center; justify-content: center; gap: 16px; }
+  .notice-buttons i { display: flex; }
 </style>
 </head>
 <body>
@@ -86,7 +160,7 @@
     <div id="s1tag" class="tag" style="margin-top:10px" data-t="tag"></div>
   </div>
 
-  <!-- 2–4. Окно приложения -->
+  <!-- Окно приложения -->
   <div id="win">
     <div id="side">
       <div style="display:flex;align-items:center;gap:8px;margin:0 8px 22px">
@@ -97,6 +171,7 @@
       <div class="nav" id="navLib"><i data-ico="lib"></i><span data-t="nLib"></span></div>
       <div class="nav" id="navHist"><i data-ico="hist"></i><span data-t="nHist"></span></div>
       <div class="nav" id="navNear"><i data-ico="near"></i><span data-t="nNear"></span></div>
+      <div class="nav" id="navAdd"><i data-ico="addon"></i><span data-t="addons"></span></div>
     </div>
     <div id="main">
       <!-- Загрузчик -->
@@ -124,6 +199,12 @@
       <div id="lib">
         <div class="caps" style="position:absolute;left:38px;top:40px" data-t="nLib"></div>
         <div class="grid" id="grid"></div>
+      </div>
+
+      <div id="addons" class="panel">
+        <h2 data-t="addons"></h2>
+        <div id="desktopAddons" class="addon-grid"></div>
+        <p class="caption" data-t="desktopCaption"></p>
       </div>
 
       <!-- Рядом: устройства в сети, передача файла, «Смотреть вместе» -->
@@ -162,6 +243,28 @@
         </div>
       </div>
 
+      <div id="whisper" class="panel">
+        <h2 data-t="transcription"></h2>
+        <div class="model-title" data-t="chooseModel"></div>
+        <div class="addon-grid">
+          <article class="addon model" id="tinyModel">
+            <h3>Whisper Tiny</h3><p data-t="tinyDescription"></p>
+            <div class="status" id="tinyStatus">74 MB</div>
+            <div class="bar" id="modelTrack"><b id="modelProgress"></b></div>
+            <span class="cta" id="modelAction"></span>
+          </article>
+          <article class="addon model">
+            <h3>Whisper Base</h3><p data-t="baseDescription"></p>
+            <div class="status">141 MB</div><span class="cta secondary"><i data-ico="dl"></i><span data-t="downloadModel"></span></span>
+          </article>
+          <article class="addon model">
+            <h3>Whisper Small</h3><p data-t="smallDescription"></p>
+            <div class="status">465 MB</div><span class="cta secondary"><i data-ico="dl"></i><span data-t="downloadModel"></span></span>
+          </article>
+        </div>
+        <p class="caption" data-t="localCaption"></p>
+      </div>
+
       <!-- Плеер -->
       <div id="player">
         <div id="pimg" style="position:absolute;inset:0"></div>
@@ -180,18 +283,51 @@
     </div>
   </div>
 
-  <!-- 5. Темы -->
-  <div id="s5" class="center">
-    <div class="appicon" id="ticon"><svg viewBox="0 0 256 256" width="148" height="148" style="color:#fff" class="m"></svg></div>
-    <div id="tname" style="margin-top:28px;font-size:26px;font-weight:700;letter-spacing:-0.02em"></div>
-    <div class="caps" style="margin-top:8px" data-t="themes"></div>
+  <!-- Android: каталог и системное управление воспроизведением -->
+  <div id="android">
+    <div class="android-title">
+      <h2 data-t="androidTitle"></h2>
+      <p data-t="androidInstall"></p>
+      <p data-t="androidPlayer"></p>
+    </div>
+    <div class="phone" id="phoneAddons">
+      <div class="phone-status"><span>10:42</span><span>Wi-Fi · 100%</span></div>
+      <h3 data-t="addons"></h3>
+      <div id="mobileAddons"></div>
+      <div class="phone-nav"><i data-ico="dl"></i><i data-ico="lib"></i><i data-ico="hist"></i><i class="current" data-ico="addon"></i></div>
+      <div class="gesture"></div>
+      <div class="phone-confirm" id="androidConfirm">
+        <div><strong data-t="confirmTitle"></strong><p data-t="confirmText"></p><b data-t="confirmAction"></b></div>
+      </div>
+    </div>
+    <div class="phone phone-media" id="phonePlayer">
+      <div class="phone-status"><span>10:42</span><span>Wi-Fi · 100%</span></div>
+      <div class="mobile-album"><i data-ico="sound"></i></div>
+      <div class="mobile-track"><strong>Lo-fi beats — live session</strong><p>Mestia</p></div>
+      <div class="mobile-controls">
+        <div class="seek"><b style="width:24%"></b></div>
+        <div class="media-control"><i data-ico="pause"></i></div>
+      </div>
+      <div class="shade" id="androidShade">
+        <div class="phone-status"><span>10:42</span><span>Wi-Fi · 100%</span></div>
+        <div class="quick"><span>Wi-Fi</span><span>Bluetooth</span></div>
+        <div class="notice">
+          <div class="app">Mestia</div>
+          <div class="track"><strong>Lo-fi beats — live session</strong><div class="mobile-album art"><i data-ico="sound"></i></div></div>
+          <div class="seek"><b id="noticeProgress"></b></div>
+          <div class="times"><span id="noticeTime"></span><span>3:42</span></div>
+          <div class="notice-buttons"><i data-ico="rewind"></i><div class="media-control" id="noticeControl"></div><i data-ico="forward"></i></div>
+        </div>
+      </div>
+      <div class="gesture"></div>
+    </div>
   </div>
 
-  <!-- 6. Финал -->
+  <!-- Финал -->
   <div id="s6" class="center">
     <svg class="mark m" viewBox="0 0 256 256" width="110" height="110"></svg>
-    <div class="word" style="font-size:56px">Mestia</div>
-    <div class="tag" style="margin-top:14px">Windows · Linux · Android</div>
+    <div class="word" style="font-size:56px">Mestia 1.2.1</div>
+    <div class="tag" style="margin-top:14px">Windows · macOS · Linux · Android</div>
     <div style="margin-top:26px;padding:10px 18px;border:2px solid var(--ink);border-radius:12px;font-size:16px;font-weight:700">github.com/kweharmony/Mestia</div>
   </div>
 
@@ -215,39 +351,76 @@ const ICO = {
   tablet: '<rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M12 18h.01"/>',
   film: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18M3 7.5h4M3 12h18M3 16.5h4M17 3v18M17 7.5h4M17 16.5h4"/>',
   tv: '<rect width="20" height="15" x="2" y="7" rx="2" ry="2"/><path d="m17 2-5 5-5-5"/>',
+  addon: '<path d="M12 3a2 2 0 0 1 2 2v1h3a2 2 0 0 1 2 2v3h1a2 2 0 0 1 0 4h-1v3a2 2 0 0 1-2 2h-3v-1a2 2 0 0 0-4 0v1H7a2 2 0 0 1-2-2v-3H4a2 2 0 0 1 0-4h1V8a2 2 0 0 1 2-2h3V5a2 2 0 0 1 2-2Z"/>',
+  tag: '<path d="M20 8V4h-4L5 15v4h4L20 8ZM14 6l4 4"/>',
+  sound: '<path d="M3 11v2m4-6v10m5-14v18m5-14v10m4-6v2"/>',
+  play: '<path d="m9 5 11 7-11 7z" fill="currentColor" stroke="none"/>',
+  pause: '<path d="M9 5v14m6-14v14" stroke-width="3.5"/>',
+  rewind: '<path d="m17 6-9 6 9 6z" fill="currentColor"/><path d="M5 5v14"/>',
+  forward: '<path d="m7 6 9 6-9 6z" fill="currentColor"/><path d="M19 5v14"/>',
+  check: '<path d="m5 12 5 5L20 7"/>',
+  trash: '<path d="M4 6h16m-13 0 1 15h8l1-15m-7 0V3h4v3m-4 4v7m4-7v7"/>',
 };
+const svgIcon = (name, size = 20) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">${ICO[name]}</svg>`;
 document.querySelectorAll("[data-ico]").forEach((el) => {
-  const big = el.dataset.ico === "laptop";
-  el.innerHTML = `<svg viewBox="0 0 24 24" width="${big ? 36 : 20}" height="${big ? 36 : 20}" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">${ICO[el.dataset.ico]}</svg>`;
+  el.innerHTML = svgIcon(el.dataset.ico, el.dataset.ico === "laptop" ? 36 : 20);
 });
 
-const L = new URLSearchParams(location.search).get("lang") === "en" ? "en" : "ru";
+const L = new URLSearchParams(location.search).get("lang") === "ru" ? "ru" : "en";
 const T = {
   ru: { tag: "Скачивай. Храни. Смотри.", nDl: "Загрузчик", nLib: "Медиатека", nHist: "История", nNear: "Рядом",
         ask: "Что будем скачивать?", dlg: "Скачивается",
         thisDev: "Этот компьютер", noNet: "Wi-Fi · без интернета", send: "Отправить", online: "В сети",
-        recv: "Получает", got: "Получено", together: "Смотреть вместе", synced: "у всех одновременно", proc: "Обработка…", ok: "Готово", done: "Готово: Lo-fi beats", themes: "8 тем — и иконка под каждую" },
+        recv: "Получает", got: "Получено", together: "Смотреть вместе", synced: "у всех одновременно", proc: "Обработка…", ok: "Готово", done: "Готово: Lo-fi beats",
+        addons: "Дополнения", tags: "Редактор тегов", transcription: "Транскрибация", tagDescription: "Изменяйте теги аудио и видео в медиатеке.",
+        nearDescription: "Передавайте файлы по Wi-Fi и смотрите вместе.", asrDescription: "Преобразуйте речь из аудио и видео в текст.",
+        install: "Установить", installing: "Установка…", open: "Открыть", sendFiles: "Отправка файлов",
+        desktopCaption: "Устанавливайте нужные инструменты отдельно.", chooseModel: "Выберите модель Whisper",
+        tinyDescription: "Лёгкая модель для черновика", baseDescription: "Для повседневных задач", smallDescription: "Баланс скорости и точности",
+        downloadModel: "Скачать модель", deleteModel: "Удалить модель", downloaded: "Скачана", downloading: "Скачивается",
+        localCaption: "Скачивайте модели заранее и распознавайте речь на компьютере.", androidTitle: "Mestia на Android",
+        androidInstall: "Устанавливайте «Редактор тегов» и «Рядом» из каталога.", androidPlayer: "Управляйте музыкой и видео из шторки.",
+        confirmTitle: "Обновить Mestia?", confirmText: "Android установит дополнение в Mestia.", confirmAction: "Обновить",
+        libraryTitles: ["Как устроен двигатель", "Горы Сванетии 4K", "Подкаст #42", "Концерт в Тбилиси", "Лекция по физике"] },
   en: { tag: "Download. Keep. Watch.", nDl: "Downloader", nLib: "Library", nHist: "History", nNear: "Nearby",
         ask: "What shall we download?", dlg: "Downloading",
         thisDev: "This computer", noNet: "Wi-Fi · no internet", send: "Send", online: "Online",
-        recv: "Receiving", got: "Received", together: "Watch together", synced: "in sync for everyone", proc: "Processing…", ok: "Done", done: "Done: Lo-fi beats", themes: "8 themes — each with its own icon" },
+        recv: "Receiving", got: "Received", together: "Watch together", synced: "in sync for everyone", proc: "Processing…", ok: "Done", done: "Done: Lo-fi beats",
+        addons: "Add-ons", tags: "Tag editor", transcription: "Transcription", tagDescription: "Edit audio and video tags in your library.",
+        nearDescription: "Send files over Wi-Fi and watch together.", asrDescription: "Turn speech in audio and video into text.",
+        install: "Install", installing: "Installing…", open: "Open", sendFiles: "Send files",
+        desktopCaption: "Install the tools you need from Add-ons.", chooseModel: "Choose a Whisper model",
+        tinyDescription: "Lightweight model for quick drafts", baseDescription: "An everyday model", smallDescription: "Balance of speed and accuracy",
+        downloadModel: "Download model", deleteModel: "Delete model", downloaded: "Downloaded", downloading: "Downloading",
+        localCaption: "Download models in advance and transcribe on your computer.", androidTitle: "Mestia on Android",
+        androidInstall: "Install Tag editor and Nearby from Add-ons.", androidPlayer: "Control audio and video from the notification shade.",
+        confirmTitle: "Update Mestia?", confirmText: "Android will install the add-on in Mestia.", confirmAction: "Update",
+        libraryTitles: ["How engines work", "Svaneti mountains in 4K", "Podcast #42", "Live in Tbilisi", "Physics lecture"] },
 }[L];
 document.documentElement.lang = L;
 document.querySelectorAll("[data-t]").forEach((e) => (e.textContent = T[e.dataset.t]));
 
-const THEMES = [
-  ["Clean Mono", "#fbfbfb", "#000000", "#1a1a1a"],
-  ["Sunset Lavender", "#f4f2f9", "#7d4c35", "#de8255"],
-  ["Velvet Midnight", "#fdf1f2", "#200d20", "#ae445d"],
-  ["Matcha Oasis", "#f6f3eb", "#2b4f4f", "#458282"],
-  ["Midnight Indigo", "#191826", "#dbe1f2", "#5672af"],
-  ["Deep Forest", "#141a13", "#d8e2d4", "#2a5747"],
+const addonDetails = [
+  ["asr", "sound", T.transcription, T.asrDescription, ["Whisper", "TXT", "Markdown"]],
+  ["tags", "tag", T.tags, T.tagDescription, [L === "ru" ? "Аудио" : "Audio", L === "ru" ? "Видео" : "Video"]],
+  ["nearby", "near", T.nNear, T.nearDescription, [T.sendFiles, T.together]],
 ];
+function addonCard(prefix, [id, icon, name, description, features]) {
+  const mobile = prefix === "mobile";
+  const heading = mobile ? "h4" : "h3";
+  return `<article class="addon${mobile ? " phone-addon" : ""}" id="${prefix}-${id}">
+    <div class="badge-icon">${svgIcon(icon)}</div><${heading}>${name}</${heading}><p>${description}</p>
+    ${mobile ? "" : `<div class="pill-group">${features.map((feature) => `<span>${feature}</span>`).join("")}</div>`}
+    <span class="cta" id="${prefix}-${id}-action"></span>
+  </article>`;
+}
+document.getElementById("desktopAddons").innerHTML = addonDetails.map((card) => addonCard("desktop", card)).join("");
+document.getElementById("mobileAddons").innerHTML = addonDetails.slice(1).map((card) => addonCard("mobile", card)).join("");
 const THUMBS = [
   ["#ff9a8b", "#ff6a88"], ["#a1c4fd", "#c2e9fb"], ["#84fab0", "#8fd3f4"],
   ["#fbc2eb", "#a6c1ee"], ["#fddb92", "#d1fdff"], ["#cfd9df", "#e2ebf0"],
 ];
-const TITLES = ["Lo-fi beats — live session", "Как устроен двигатель", "Горы Сванетии 4K", "Подкаст #42", "Tame Impala — Live", "Лекция по физике"];
+const TITLES = ["Lo-fi beats — live session", ...T.libraryTitles];
 const grid = document.getElementById("grid");
 THUMBS.forEach(([a, b], i) => {
   grid.insertAdjacentHTML("beforeend",
@@ -275,6 +448,24 @@ const ICON = {
   arrow: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>`,
 };
 
+function action(el, label, icon, secondary = false) {
+  if (el.dataset.label !== label) {
+    el.innerHTML = `${svgIcon(icon, 16)}<span>${label}</span>`;
+    el.dataset.label = label;
+  }
+  el.classList.toggle("secondary", secondary);
+}
+
+function installAction(id, time, start, done) {
+  const button = $(`${id}-action`);
+  if (time >= done) action(button, T.open, "check", true);
+  else if (time >= start) action(button, T.installing, "dl");
+  else action(button, T.install, "dl");
+  const press = span(time, start - 0.12, start) - span(time, start, start + 0.18);
+  button.style.transform = `scale(${1 - 0.08 * press})`;
+  $(id).style.borderColor = time >= start && time < done ? "var(--ink)" : "";
+}
+
 function seek(t) {
   // ── 1. Знак (0–2.6) ──
   const s1 = vis(t, 0, 2.6, 0.01, 0.45);
@@ -287,11 +478,12 @@ function seek(t) {
   show($("s1word"), ease(span(t, 0.8, 1.3)), (1 - ease(span(t, 0.8, 1.3))) * 14);
   show($("s1tag"), ease(span(t, 1.2, 1.7)), (1 - ease(span(t, 1.2, 1.7))) * 10);
 
-  // ── Окно (2.4–14.2) ──
-  const w = vis(t, 2.4, 18.6, 0.5, 0.45);
+  // ── Окно (2.4–27.1) ──
+  const w = vis(t, 2.4, 27.1, 0.5, 0.45);
   show($("win"), w, (1 - ease(span(t, 2.4, 2.9))) * 24, 0.97 + 0.03 * ease(span(t, 2.4, 2.9)));
-  const tab = t >= 14.3 ? "Near" : t >= 10.1 ? "Lib" : "Dl";
-  for (const n of ["Dl", "Lib", "Hist", "Near"]) $(`nav${n}`).className = "nav" + (n === tab ? " on" : "");
+  const tab = t >= 23.55 ? "Add" : t >= 19.45 ? "Near" : t >= 14.35 ? "Add" : t >= 10.1 ? "Lib" : "Dl";
+  for (const n of ["Dl", "Lib", "Hist", "Near", "Add"]) $(`nav${n}`).className = "nav" + (n === tab ? " on" : "");
+  $("navNear").style.display = t >= 18.3 ? "flex" : "none";
 
   // ── 2. Ссылка (2.9–6) ──
   const dl = vis(t, 2.6, 10.3, 0.3, 0.3);
@@ -339,63 +531,93 @@ function seek(t) {
   $("pseek").style.width = (ptime / 222) * 100 + "%";
   $("hills").style.transform = `scale(${1.08 - 0.08 * ease(span(t, 12.2, 14.2))})`;
 
-  // ── «Рядом» (14.3–18.6): радар, устройства, файл летит на телефон, комната ──
-  const nr = span(t, 14.3, 14.6);
+  // ── Каталог на ПК (14.3–19.5) ──
+  const addons = vis(t, 14.28, 19.55, 0.34, 0.22);
+  show($("addons"), addons, (1 - addons) * 10);
+  action($("desktop-asr-action"), T.open, "check", true);
+  installAction("desktop-tags", t, 15.45, 16.55);
+  installAction("desktop-nearby", t, 17.15, 18.3);
+
+  // ── «Рядом» (19.4–23.8): радар, передача файла и комната ──
+  const nearbyTime = t - 5.1;
+  const nr = vis(nearbyTime, 14.3, 18.8, 0.3, 0.25);
   show($("near"), nr);
   for (let i = 0; i < 3; i++) {
-    const ph = ((t - 14.3) / 1.8 + i / 3) % 1;
+    const ph = ((nearbyTime - 14.3) / 1.8 + i / 3) % 1;
     $(`w${i}`).style.transform = `scale(${0.35 + 0.75 * ph})`;
-    $(`w${i}`).style.opacity = t < 14.3 ? 0 : 0.55 * (1 - ph);
+    $(`w${i}`).style.opacity = nearbyTime < 14.3 ? 0 : 0.55 * (1 - ph);
   }
   for (let i = 0; i < 2; i++) {
-    const p = ease(span(t, 14.75 + i * 0.3, 15.2 + i * 0.3));
+    const p = ease(span(nearbyTime, 14.75 + i * 0.3, 15.2 + i * 0.3));
     show($(`peer${i}`), p, 0, 0.94 + 0.06 * p);
     $(`peer${i}`).style.transform += ` translateX(${(1 - p) * 30}px)`;
   }
   // нажали «Отправить» → файл летит от радара к Pixel 8
-  const press2 = span(t, 15.45, 15.55) - span(t, 15.55, 15.7);
+  const press2 = span(nearbyTime, 15.45, 15.55) - span(nearbyTime, 15.55, 15.7);
   $("p0send").style.transform = `scale(${1 - 0.1 * press2})`;
-  const fly = inout(span(t, 15.6, 16.3));
+  const fly = inout(span(nearbyTime, 15.6, 16.3));
   const fx = 140 + (520 - 140) * fly, fy = 240 + (128 - 240) * fly - Math.sin(fly * Math.PI) * 70;
   $("chip").style.left = fx + "px";
   $("chip").style.top = fy + "px";
-  show($("chip"), Math.min(span(t, 15.6, 15.75), 1 - span(t, 16.2, 16.35)), 0, 1 - 0.3 * span(t, 16.15, 16.35));
-  const rp = 100 * inout(span(t, 16.3, 17.0));
-  const got = t >= 17.0;
-  $("p0st").textContent = t < 16.3 ? T.online : got ? `✓ ${T.got}` : `${T.recv} · ${Math.round(rp)}%`;
+  show($("chip"), Math.min(span(nearbyTime, 15.6, 15.75), 1 - span(nearbyTime, 16.2, 16.35)), 0, 1 - 0.3 * span(nearbyTime, 16.15, 16.35));
+  const rp = 100 * inout(span(nearbyTime, 16.3, 17.0));
+  const got = nearbyTime >= 17.0;
+  $("p0st").textContent = nearbyTime < 16.3 ? T.online : got ? `✓ ${T.got}` : `${T.recv} · ${Math.round(rp)}%`;
   $("p0st").style.color = got ? "#059669" : "";
-  $("p0barw").style.opacity = t >= 16.3 && !got ? 1 : 0;
+  $("p0barw").style.opacity = nearbyTime >= 16.3 && !got ? 1 : 0;
   $("p0bar").style.width = rp + "%";
-  $("p0send").style.opacity = t >= 16.3 ? 0 : 1;
+  $("p0send").style.opacity = nearbyTime >= 16.3 ? 0 : 1;
   // «Смотреть вместе»: комната, лица по очереди, общий прогресс
-  const rm = ease(span(t, 17.0, 17.4));
+  const rm = ease(span(nearbyTime, 17.0, 17.4));
   show($("room"), rm, (1 - rm) * 16);
   for (let i = 0; i < 3; i++) {
-    const f = back(span(t, 17.25 + i * 0.12, 17.6 + i * 0.12));
+    const f = back(span(nearbyTime, 17.25 + i * 0.12, 17.6 + i * 0.12));
     $(`f${i}`).style.transform = `scale(${f})`;
   }
-  $("roombar").style.width = 22 + 30 * span(t, 17.2, 18.6) + "%";
+  $("roombar").style.width = 22 + 30 * span(nearbyTime, 17.2, 18.6) + "%";
 
-  // ── 5. Темы (18.6–21.1) ──
-  const s5 = vis(t, 18.6, 21.1, 0.35, 0.35);
-  show($("s5"), s5, 0, 0.96 + 0.04 * s5);
-  const k = Math.min(THEMES.length - 1, Math.floor(span(t, 18.75, 20.9) * THEMES.length));
-  const th = THEMES[k];
-  const sceneTheme = t >= 18.6 && t < 21.1;
-  document.body.style.background = sceneTheme ? th[1] : "var(--snow)";
-  $("s5").style.color = th[2];
-  $("ticon").style.background = th[3];
-  $("tname").textContent = th[0];
-  const local = span(t, 18.75, 20.9) * THEMES.length;
-  const bump = 1 - span(local - Math.floor(local), 0, 0.35);
-  $("ticon").style.transform = `scale(${1 + 0.04 * bump})`;
+  // ── Модели Whisper (23.6–27.1) ──
+  const whisper = vis(t, 23.6, 27.1, 0.32, 0.35);
+  show($("whisper"), whisper, (1 - whisper) * 10);
+  const model = inout(span(t, 24.45, 25.66));
+  const downloaded = model >= 1;
+  const downloading = model > 0 && !downloaded;
+  $("tinyModel").classList.toggle("focus", model > 0);
+  $("tinyStatus").textContent = downloaded ? `74 MB · ${T.downloaded}` : downloading ? `${T.downloading} · ${Math.round(model * 100)}%` : "74 MB";
+  $("modelTrack").style.display = downloading ? "block" : "none";
+  $("modelProgress").style.width = `${model * 100}%`;
+  action($("modelAction"), downloaded ? T.deleteModel : downloading ? T.downloading : T.downloadModel, downloaded ? "trash" : "dl", downloaded);
 
-  // ── 6. Финал (21.0–22.4) ──
-  const s6 = ease(span(t, 21.0, 21.5));
+  // ── Android (26.8–32.5) ──
+  const android = vis(t, 26.8, 32.5, 0.4, 0.45);
+  show($("android"), android);
+  const phoneAddons = ease(span(t, 26.93, 27.45));
+  const phonePlayer = ease(span(t, 27.1, 27.65));
+  show($("phoneAddons"), phoneAddons, (1 - phoneAddons) * 34);
+  show($("phonePlayer"), phonePlayer, (1 - phonePlayer) * 34);
+  action($("mobile-tags-action"), T.open, "check", true);
+  installAction("mobile-nearby", t, 27.65, 29.0);
+  const confirm = vis(t, 27.95, 28.88, 0.13, 0.15);
+  show($("androidConfirm"), confirm);
+  const shade = ease(span(t, 29.45, 30));
+  show($("androidShade"), Math.min(1, shade * 2), (shade - 1) * 550);
+  const paused = t >= 30.65 && t < 31.38;
+  const elapsed = 53 + Math.floor(Math.max(0, Math.min(t - 29.5, 1.15) + Math.max(0, t - 31.38)) * 1.7);
+  $("noticeTime").textContent = `0:${elapsed}`;
+  $("noticeProgress").style.width = `${elapsed / 222 * 100}%`;
+  const controls = $("noticeControl");
+  const controlIcon = paused ? "play" : "pause";
+  if (controls.dataset.icon !== controlIcon) {
+    controls.innerHTML = svgIcon(controlIcon);
+    controls.dataset.icon = controlIcon;
+  }
+
+  // ── Финал (32.3–35.0) ──
+  const s6 = ease(span(t, 32.3, 32.8));
   show($("s6"), s6, (1 - s6) * 14);
 }
 window.seek = seek;
-window.DURATION = 22.4;
+window.DURATION = 35;
 seek(0);
 
 // Предпросмотр в браузере: ?play

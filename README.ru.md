@@ -13,7 +13,9 @@
 
 [English](README.md) · **Русский** · [Сайт](https://kweharmony.github.io/Mestia/?lang=ru)
 
-<a href="docs/media/promo.mp4"><img src="docs/media/promo.webp" width="860" alt="Mestia: вставить ссылку, скачать, смотреть" /></a>
+<a href="docs/media/promo.mp4"><img src="docs/media/promo.webp" width="860" alt="Ролик Mestia 1.2.1 о загрузках, дополнениях и плеере Android" /></a>
+
+[Смотреть ролик Mestia 1.2.1](docs/media/promo.mp4)
 
 </div>
 
@@ -172,7 +174,7 @@ Tauri v2 (Rust) + React 18 + TypeScript + Tailwind CSS v4, SQLite, yt-dlp и ffm
 на Android — Kotlin-плагин поверх youtubedl-android. Карта модулей и основные сценарии — в
 [`.context/index.md`](.context/index.md), правила для разработки — в [CLAUDE.md](CLAUDE.md).
 
-Промо-ролик собирается из `design/promo/promo.html` скриптом `design/promo/render.mjs`.
+Русский ролик собирается из `design/promo/promo.html` командой `node design/promo/render.mjs ru`. Без аргумента скрипт соберёт английскую версию.
 
 ## Участие
 
