@@ -6,9 +6,15 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      android_release_tag:
+        description: Rebuild only the Android APKs for an existing draft release
+        required: false
+        type: string
 
 jobs:
   build:
+    if: ${{ !inputs.android_release_tag }}
     permissions:
       contents: write
     strategy:
@@ -134,12 +140,24 @@ jobs:
   # draft-релиз создаёт tauri-action, сюда только докладываем APK.
   android:
     needs: build
-    if: startsWith(github.ref, 'refs/tags/')
+    if: ${{ !cancelled() && ((startsWith(github.ref, 'refs/tags/') && needs.build.result == 'success') || inputs.android_release_tag != '') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.android_release_tag || github.ref_name }}
     steps:
+      - name: Check the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
+
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ format('refs/tags/{0}', inputs.android_release_tag || github.ref_name) }}
 
       - name: Node
         uses: actions/setup-node@v4
@@ -201,13 +219,18 @@ jobs:
 
       # NDK уже есть в образе ubuntu-latest (ANDROID_NDK_LATEST_HOME).
       - name: Сборка APK
-        env:
-          NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
-        run: npm run tauri android build -- --apk --split-per-abi --target aarch64 --target armv7
+        run: |
+          export NDK_HOME="${NDK_HOME:-$ANDROID_NDK_LATEST_HOME}"
+          npm run tauri android build -- --apk --split-per-abi --target aarch64 --target armv7
 
       - name: Build Android add-on APKs
         run: |
-          sdkmanager 'build-tools;36.0.0' 'platforms;android-36'
+          set -euo pipefail
+          if [ ! -x "$ANDROID_HOME/build-tools/36.0.0/aapt2" ] || [ ! -f "$ANDROID_HOME/platforms/android-36/android.jar" ]; then
+            sdkmanager=$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' | sort -V | tail -n 1)
+            test -x "$sdkmanager"
+            "$sdkmanager" --sdk_root="$ANDROID_HOME" 'build-tools;36.0.0' 'platforms;android-36'
+          fi
           export NDK_HOME="${NDK_HOME:-$ANDROID_NDK_LATEST_HOME}"
           OUT=src-tauri/gen/android/app/build/outputs/apk
           python scripts/build-android-addons.py "$OUT/arm64/release/app-arm64-release.apk" --abi arm64-v8a
@@ -224,10 +247,11 @@ jobs:
         run: |
           set -euo pipefail
           VERSION=$(node -p "require('./package.json').version")
+          test "$RELEASE_TAG" = "v$VERSION"
           OUT=src-tauri/gen/android/app/build/outputs/apk
           cp "$OUT/arm64/release/app-arm64-release.apk" "Mestia_${VERSION}_android_arm64.apk"
           cp "$OUT/arm/release/app-arm-release.apk" "Mestia_${VERSION}_android_armv7.apk"
-          gh release upload "${{ github.ref_name }}" Mestia_*_android_*.apk src-tauri/target/addon-apks/Mestia_Addon_*_android_*.apk --clobber
+          gh release upload "$RELEASE_TAG" Mestia_*_android_*.apk src-tauri/target/addon-apks/Mestia_Addon_*_android_*.apk --clobber
 
   # ── Текст релиза ──────────────────────────────────────────────────────────────
   # Описание берётся из .github/release-notes.md (обновляется перед каждым тегом).
